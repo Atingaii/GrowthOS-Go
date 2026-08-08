@@ -1,60 +1,49 @@
 # GrowthOS-Go
 
-GrowthOS-Go is an AI-native marketing and growth platform built as an
-evolutionary engineering course. The Go implementation is completed first;
-database schemas, domain boundaries, and deployment topology evolve only when
-new requirements justify the added complexity.
+GrowthOS-Go 是一个以演进式工程课程方式建设的 AI 原生营销增长平台。第一阶段只完成 Go 版本；数据库结构、领域边界和部署拓扑只在新需求证明复杂度确有必要时演进。
 
-The repository currently contains the project skeleton and the completed
-Lesson 1 product analysis. It deliberately does not contain the final schema,
-microservices, or infrastructure stack.
+当前仓库包含项目骨架和已完成的第 1 节产品分析。仓库有意不包含最终数据库结构、微服务或完整基础设施栈。
 
-## Current State
+## 当前状态
 
-- Course progress: Lesson 1 of 96 complete
-- Product code: not started (first HTTP service in Lesson 11)
-- Database: not introduced (first connection and Migration in Lesson 13)
-- Architecture: planned modular monolith, with evidence-based extraction later
+- 课程进度：96 节中的第 1 节已完成
+- 产品代码：尚未开始，第 11 节建立第一个 HTTP 服务
+- 数据库：尚未接入，第 13 节建立连接和 Migration 机制
+- 架构：规划为模块化单体，后续根据证据拆分服务
 
-See the [documentation home](docs/README.md), [course roadmap](docs/course/README.md),
-and [Lesson 1](docs/course/part-01/lesson-01-why-ai-native-growth-platform.md).
+请先阅读[文档首页](docs/README.md)、[课程路线](docs/course/README.md)和[第 1 节](docs/course/part-01/lesson-01-why-ai-native-growth-platform.md)。
 
-## Repository Shape
+## 仓库结构
 
 ```text
 growth-os-go/
-├── cmd/             # Executables; product entrypoints are added by the course
-├── internal/        # Private domain and infrastructure modules
-├── pkg/             # Deliberately small public Go packages
-├── configs/         # Versioned, non-secret configuration examples
-├── migrations/      # Forward-only SQL migrations, introduced in Lesson 15
-├── scripts/         # Local automation
-├── deploy/          # Deployment assets added as infrastructure appears
-├── docs/            # Product, architecture, ADR, QA, and course evidence
-└── web/             # React applications introduced in Lessons 91-92
+├── cmd/             # 可执行程序；课程按需加入产品入口
+├── internal/        # 私有领域与基础设施模块
+├── pkg/             # 少量稳定的公共 Go 包
+├── configs/         # 可版本化且不含秘密的配置示例
+├── migrations/      # 第 13 节开始使用的前向 SQL Migration
+├── scripts/         # 本地自动化脚本
+├── deploy/          # 随基础设施逐步加入的部署资源
+├── docs/            # 产品、架构、ADR、QA 和课程证据
+└── web/             # 第 14 节开始建设的 React 应用
 ```
 
-Directories that are not needed yet contain only a `.gitkeep`. This preserves
-the intended ownership boundaries without pretending later capabilities exist.
-The React application begins in Lesson 14 and joins its first backend
-integration in Lesson 15.
+当前尚未使用的目录只包含 `.gitkeep`。这样可以保留计划中的边界，同时不把后续能力误写成已实现。React 应用从第 14 节开始，并在第 15 节与后端完成首次联调。
 
-## Quality Gates
+## 质量门禁
 
-Requires Go 1.24 or newer.
+需要 Go 1.24 或更高版本。
 
 ```bash
 make verify
 ```
 
-`make verify` checks formatting, runs tests, validates the 96-lesson status
-registry, checks ADR registration, and detects broken local Markdown links.
+`make verify` 会检查代码格式、运行测试、校验 96 节课程台账、检查 ADR 注册情况，并发现失效的本地 Markdown 链接。
 
-## Working Agreement
+## 协作约定
 
-1. Every behavior or architecture change updates its owning document.
-2. Significant decisions receive an ADR before or with the implementation.
-3. A lesson becomes `completed` only when its lesson document and QA evidence
-   are both registered and pass `make doc-check`.
-4. Database changes are forward-only migrations once migrations are introduced.
-5. Secrets and environment-specific configuration are never committed.
+1. 每次行为或架构变化都要更新对应权威文档。
+2. 重大决策应在实现前或同一变更中补充 ADR。
+3. 课程正文和 QA 证据均已登记且通过 `make doc-check` 后，章节才能标记为 `已完成`。
+4. 引入 Migration 后，数据库变更只能通过前向 Migration 表达。
+5. 秘密和环境专属配置不得提交到仓库。

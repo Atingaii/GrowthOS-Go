@@ -1,6 +1,6 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** Baseline v0
+**状态：** v0 基线
 **更新日期：** 2026-08-08
 **来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)
 

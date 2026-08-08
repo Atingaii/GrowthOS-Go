@@ -1,18 +1,18 @@
-# ADR-0002: Go-First Delivery
+# ADR-0002：Go 优先交付
 
-- **Status:** Accepted
-- **Date:** 2026-08-08
-- **Owners:** GrowthOS maintainers
+- **状态：** 已接受
+- **日期：** 2026-08-08
+- **负责人：** GrowthOS 维护者
 
-## Context
+## 背景
 
 同时维护 Go 和 Java 两套未稳定实现会分散验证精力，并让业务 Specification 在两个代码库之间互相漂移。
 
-## Decision
+## 决策
 
 第一阶段只完成 GrowthOS-Go 的 96 节。仓库不创建 Java 源码、构建文件或镜像模块。Go 版完成且业务契约稳定后，Java 版本作为新的独立实施计划，从零评估工程实现差异。
 
-## Consequences
+## 影响
 
 - 当前所有测试、CI、文档示例和交付物只面向 Go。
 - 通用业务概念可以保持语言中立，但不得为假想的 Java 复用提前抽象 Go 代码。

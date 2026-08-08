@@ -1,6 +1,6 @@
-# Documentation Governance
+# 文档治理规范
 
-**状态：** Accepted
+**状态：** 已接受
 **更新日期：** 2026-08-08
 
 ## 原则

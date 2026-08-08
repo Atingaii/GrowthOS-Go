@@ -1,6 +1,6 @@
 # 第 1 节：大营销系统到底解决什么问题
 
-**状态：** Completed
+**状态：** 已完成
 **完成日期：** 2026-08-08
 **阶段：** 产品需求分析
 **本节不写业务代码、不建业务表。**
@@ -179,7 +179,7 @@ AI Operator 不可以：
 2. [ADR-0001](../../decisions/ADR-0001-evolutionary-delivery.md)：系统按需求演进，不预制终态。
 3. [ADR-0002](../../decisions/ADR-0002-go-first-delivery.md)：第一阶段只实现完整 Go 版本。
 
-对应验收证据见 [Lesson 01 QA](../../qa/lessons/lesson-01.md)。
+对应验收证据见[第 1 节 QA 验收证据](../../qa/lessons/lesson-01.md)。
 
 ## 9. 本节复盘
 

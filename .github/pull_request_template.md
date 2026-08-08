@@ -1,15 +1,15 @@
-## Change
+## 变更内容
 
-<!-- What changed, and which requirement or lesson owns it? -->
+<!-- 修改了什么？对应哪个需求或课程章节？ -->
 
-## Decision And Documentation
+## 决策与文档
 
-- [ ] Owning documentation was updated, or this change has no documentation impact.
-- [ ] An ADR was added/superseded, or no significant decision was made.
-- [ ] Course status and QA evidence were updated when a lesson was completed.
-- [ ] API/event/configuration/database changes are reflected in their contracts.
+- [ ] 已更新对应文档，或本变更不影响文档。
+- [ ] 已新增/替代 ADR，或本变更未产生重大决策。
+- [ ] 完成课程章节时，已更新课程状态和 QA 证据。
+- [ ] API、事件、配置或数据库变更已同步到对应契约。
 
-## Verification
+## 验证
 
-- [ ] `make verify`
-- [ ] Additional evidence is linked below when required.
+- [ ] 已执行 `make verify`
+- [ ] 需要时已在下方附加其他验证证据。

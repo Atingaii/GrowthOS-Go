@@ -1,15 +1,13 @@
-# Contributing
+# 贡献指南
 
-GrowthOS-Go treats documentation as part of the implementation, not as a
-postponed deliverable.
+GrowthOS-Go 将文档视为实现的一部分，而不是延期交付物。
 
-Before opening or merging a change:
+提交或合并变更前：
 
-1. Read the [documentation governance rules](docs/standards/documentation-governance.md).
-2. Update the owning product, architecture, contract, operations, or course document.
-3. Add or supersede an [ADR](docs/decisions/README.md) for a significant decision.
-4. Record verification evidence under [docs/qa](docs/qa/README.md).
-5. Run `make verify`.
+1. 阅读[文档治理规范](docs/standards/documentation-governance.md)。
+2. 更新对应的产品、架构、契约、运维或课程文档。
+3. 对重大决策新增或替代一份 [ADR](docs/decisions/README.md)。
+4. 在 [docs/qa](docs/qa/README.md) 下记录验证证据。
+5. 执行 `make verify`。
 
-Commits should be small enough that code, documentation, tests, and migrations
-describe one coherent change.
+提交应保持足够小，使代码、文档、测试和 Migration 描述同一个完整变更。

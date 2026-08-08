@@ -1,14 +1,14 @@
-# ADR-0003: Documentation As A Deliverable
+# ADR-0003：文档即交付物
 
-- **Status:** Accepted
-- **Date:** 2026-08-08
-- **Owners:** GrowthOS maintainers
+- **状态：** 已接受
+- **日期：** 2026-08-08
+- **负责人：** GrowthOS 维护者
 
-## Context
+## 背景
 
 快速生成代码时，README、架构说明、接口契约和测试证据容易落后于实现。仅依赖人工提醒无法稳定发现缺页、断链和“章节已完成但无验收证据”等漂移。
 
-## Decision
+## 决策
 
 文档与代码在同一仓库、同一变更中维护。`docs/course/status.csv` 是课程完成状态的机器可读事实源。`cmd/doccheck` 在本地 `make verify` 和 CI 中检查：
 
@@ -18,7 +18,7 @@
 - 本地 Markdown 链接有效；
 - 核心治理文档存在。
 
-## Consequences
+## 影响
 
 - 纯代码变更也必须判断文档影响。
 - “完成”需要测试结果和文档证据，不能只看代码是否编译。

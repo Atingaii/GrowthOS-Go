@@ -1,21 +1,21 @@
-# ADR-XXXX: Title
+# ADR-XXXX：标题
 
-- **Status:** Proposed
-- **Date:** YYYY-MM-DD
-- **Owners:** Name or team
+- **状态：** 拟议
+- **日期：** YYYY-MM-DD
+- **负责人：** 姓名或团队
 
-## Context
+## 背景
 
 描述触发决策的需求、约束和证据。
 
-## Options Considered
+## 评估过的方案
 
 列出真正评估过的方案及关键取舍。
 
-## Decision
+## 决策
 
 明确采用什么，以及适用边界。
 
-## Consequences
+## 影响
 
 记录正面影响、成本、风险、迁移与撤销方式。

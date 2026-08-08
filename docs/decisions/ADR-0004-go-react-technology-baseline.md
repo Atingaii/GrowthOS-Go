@@ -1,14 +1,14 @@
-# ADR-0004: Go And React Technology Baseline
+# ADR-0004：Go 与 React 技术基线
 
-- **Status:** Accepted
-- **Date:** 2026-08-08
-- **Owners:** GrowthOS maintainers
+- **状态：** 已接受
+- **日期：** 2026-08-08
+- **负责人：** GrowthOS 维护者
 
-## Context
+## 背景
 
 本项目需要把数据库、后端、前端和基础设施按业务问题逐步引入，同时避免每一节重新争论基础工具。技术栈应形成稳定基线，但具体组件仍不能在问题出现前提前启动。
 
-## Decision
+## 决策
 
 第一版 Go 技术基线为：
 
@@ -31,7 +31,7 @@
 
 MySQL 在第 13 节接入，React 在第 14 节接入，Redis 在第 16 节作为开发环境依赖出现但第 24 节才用于业务缓存，RocketMQ、ClickHouse、OpenSearch 和 Kubernetes 均由后续明确需求推动。
 
-## Consequences
+## 影响
 
 - 技术选择稳定，课程可以专注于需求、数据和系统演进。
 - 组件不会因为“已选型”就提前进入每个环境；接入时必须有对应章节问题和 QA 证据。

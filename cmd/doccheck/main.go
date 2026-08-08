@@ -161,7 +161,7 @@ func checkCourseStatus(root string) []error {
 	if len(records) != 97 {
 		return []error{fmt.Errorf("course registry must contain one header and 96 lessons; got %d rows", len(records))}
 	}
-	expectedHeader := []string{"lesson", "part", "title", "status", "document", "qa"}
+	expectedHeader := []string{"章节", "阶段", "标题", "状态", "正文", "QA证据"}
 	if len(records[0]) != len(expectedHeader) {
 		return []error{fmt.Errorf("course registry header must have %d columns", len(expectedHeader))}
 	}
@@ -171,7 +171,7 @@ func checkCourseStatus(root string) []error {
 		}
 	}
 
-	allowedStatus := map[string]bool{"planned": true, "in_progress": true, "completed": true}
+	allowedStatus := map[string]bool{"计划中": true, "进行中": true, "已完成": true}
 	var problems []error
 	for i, record := range records[1:] {
 		row := i + 2
@@ -192,7 +192,7 @@ func checkCourseStatus(root string) []error {
 		if !allowedStatus[status] {
 			problems = append(problems, fmt.Errorf("lesson %d has invalid status %q", lesson, status))
 		}
-		if status != "completed" {
+		if status != "已完成" {
 			continue
 		}
 		if record[4] == "" || record[5] == "" {
