@@ -56,6 +56,10 @@ func checkRequiredFiles(root string) []error {
 	required := []string{
 		"README.md",
 		"docs/README.md",
+		"docs/api/README.md",
+		"docs/api/frontend-api-conventions.md",
+		"docs/api/lesson-template.md",
+		"docs/api/lessons/README.md",
 		"docs/architecture/repository-map.md",
 		"docs/course/README.md",
 		"docs/course/status.csv",

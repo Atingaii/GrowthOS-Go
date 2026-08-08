@@ -10,6 +10,7 @@
 | 课程实施 | [96 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
+| API 契约 | [API 文档](api/README.md) | 按章节查看前端 API 新增、调整和联调状态 |
 | 架构决策 | [ADR 索引](decisions/README.md) | 稳定决策、取舍和后果 |
 | 质量证据 | [QA 索引](qa/README.md) | 测试策略、验收记录和已知风险 |
 | 完成标准 | [Definition of Done](standards/definition-of-done.md) | 何时可以称为完成 |

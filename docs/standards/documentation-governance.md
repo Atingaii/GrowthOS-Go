@@ -17,7 +17,7 @@
 | --- | --- |
 | 用户、业务目标或范围 | `docs/product`、课程正文 |
 | 模块边界、依赖或部署拓扑 | `docs/architecture`、ADR |
-| HTTP/RPC/Event/MCP 契约 | 后续 `contracts` 与对应接口文档 |
+| HTTP/RPC/Event/MCP 契约或前端 API 调用 | `docs/api`、后续 `contracts` 与对应章节 API 记录 |
 | 数据表、字段、索引或数据所有权 | Migration、数据设计说明、ADR（重大取舍） |
 | 配置项、环境变量或默认值 | 配置参考、部署文档、`.env.example` |
 | 故障恢复或值班操作 | 后续 `docs/runbooks`、QA 故障演练记录 |
@@ -32,5 +32,6 @@
 - Schema 和接口示例是否来自当前实现而不是记忆？
 - QA 记录是否写明命令、日期、结果与剩余风险？
 - 规划能力是否被误写为已经上线？
+- 本节是否在 `docs/api/lessons/lesson-XX.md` 登记了前端 API 变化，或明确写明没有真实 API 变化？
 
 文档检查失败与测试失败同等阻止合并。

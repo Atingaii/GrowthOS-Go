@@ -31,6 +31,7 @@ growth-os-go/
 `web/` 当前复刻既有 GrowthOS UI，页面使用集中 Mock 数据；第 15 节与 Go 后端完成首次联调，后续章节逐步替换真实业务能力。
 
 前端架构与启动方式见[前端工程架构](docs/frontend/frontend-architecture.md)。
+每节新增的前端调用可从[章节 API 记录](docs/api/lessons/README.md)直观查看。
 
 ## 质量门禁
 

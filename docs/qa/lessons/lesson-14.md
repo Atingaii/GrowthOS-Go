@@ -15,6 +15,7 @@
 | TypeScript 类型检查通过 | 通过 | `cd web && pnpm run typecheck` |
 | 生产构建通过 | 通过 | `cd web && pnpm run build` |
 | 未宣称 Go API、数据库或真实权限已完成 | 通过 | 第 14 节正文与前端架构文档 |
+| 前端 API 变化已按章节登记 | 通过 | `docs/api/lessons/lesson-14.md` |
 
 ## 执行命令
 

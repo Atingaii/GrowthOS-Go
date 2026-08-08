@@ -29,6 +29,8 @@ pnpm run build
 
 QA 证据见[第 14 节 QA 验收](../../qa/lessons/lesson-14.md)。
 
+本节没有新增真实后端调用，API 边界见[第 14 节 API 记录](../../api/lessons/lesson-14.md)。
+
 ## 下一节遗留问题
 
 当前页面已经具备真实 API 的接入边界，但后端还没有健康接口和统一响应协议。下一节将让 Go 服务、API 代理和前端状态页面完成第一次联调。

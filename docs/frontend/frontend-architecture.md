@@ -41,3 +41,5 @@ pnpm run build
 ## 当前事实与后续演进
 
 当前页面主要使用 `src/mocks/growthOsMockData.ts`，不代表对应 Go 领域接口已经完成。第 15 节开始建立真实 API 联调边界；抽奖、活动、积分、Feed、MCP 和 Agent 的真实行为仍按课程章节逐步实现。
+
+每节新增或调整前端 API 时，必须同步写入 [章节 API 记录](../api/lessons/README.md)。
