@@ -1,13 +1,14 @@
-# Obsidian 文档双向同步
+# Obsidian 个人文档镜像
 
-项目文档目录 `docs/` 与 Windows 目录 `E:\TencentGo\growthOS`（在 WSL 中为 `/mnt/e/TencentGo/growthOS`）采用双向同步。
+项目文档目录 `docs/` 自动镜像到个人 Windows 目录 `E:\TencentGo\growthOS`（在 WSL 中为 `/mnt/e/TencentGo/growthOS`）。这是给个人阅读和批注使用的副本，不是第二个代码事实源。
 
 ## 同步范围
 
-- 项目源目录：仓库内的 `docs/`。
-- Obsidian 目标目录：`E:\TencentGo\growthOS` 根目录。
+- 唯一源目录：仓库内的 `docs/`。
+- 个人镜像目录：`E:\TencentGo\growthOS` 根目录。
 - 目标目录中的 `.obsidian/` 保留为 Obsidian 配置，不参与同步。
-- `.growthos-sync/manifest.json` 保存共同基线，不参与文档内容同步。
+- `.growthos-sync/manifest.json` 只保存在个人目录，用于记录上次镜像状态，不进入 Git。
+- Vault 中新增的个人笔记、批注和修改不会写回仓库，也不会进入 Git。
 
 ## 使用方式
 
@@ -17,18 +18,25 @@
 make docs-sync VAULT=/mnt/e/TencentGo/growthOS
 ```
 
+持续自动镜像：
+
+```bash
+make docs-sync-watch VAULT=/mnt/e/TencentGo/growthOS
+```
+
 Windows 环境也可以直接运行：
 
 ```powershell
-go run ./cmd/docsync --vault 'E:\TencentGo\growthOS'
+go run ./cmd/docsync --vault 'E:\TencentGo\growthOS' --watch
 ```
 
-首次运行会把项目 `docs/` 写入 Obsidian 根目录。之后每次运行都会比较共同基线：
+首次运行会把项目 `docs/` 写入 Obsidian 根目录。之后同步器只观察项目 `docs/` 的变化：
 
-- 只有项目侧变化：同步到 Obsidian。
-- 只有 Obsidian 侧变化：同步回项目 `docs/`。
-- 两侧同时修改同一文件且内容不同：停止并报告冲突，不覆盖任何一侧。
-- 删除也参与比较；单侧删除会同步到另一侧。
+- 项目侧新增或修改：镜像到 Obsidian。
+- 项目侧删除：删除 Obsidian 中仍保持旧版本的对应文件。
+- Obsidian 侧修改：保留在个人目录；当项目文件再次变化时，以项目版本刷新该文件。
+- Obsidian 侧新增个人笔记：保留，不会复制到项目。
+- 不存在双向合并，也不会因为 Vault 修改阻塞项目同步。
 
 同步完成后必须执行：
 
@@ -36,4 +44,4 @@ go run ./cmd/docsync --vault 'E:\TencentGo\growthOS'
 make verify
 ```
 
-同步工具不会自动提交 Git。文档变更仍需人工检查、运行质量门禁后再提交。
+同步工具不会自动提交 Git，也不会将 Vault 目录加入项目 Git。项目文档变更仍需人工检查、运行质量门禁后再提交。

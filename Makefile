@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check test doc-check docs-sync verify
+.PHONY: help fmt fmt-check test doc-check docs-sync docs-sync-watch verify
 
 help:
 	@printf '%s\n' \
@@ -25,5 +25,9 @@ doc-check:
 docs-sync:
 	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync VAULT=/mnt/e/TencentGo/growthOS' && exit 1)
 	go run ./cmd/docsync --vault "$(VAULT)"
+
+docs-sync-watch:
+	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync-watch VAULT=/mnt/e/TencentGo/growthOS' && exit 1)
+	go run ./cmd/docsync --vault "$(VAULT)" --watch
 
 verify: fmt-check test doc-check

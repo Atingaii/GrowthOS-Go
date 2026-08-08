@@ -1,4 +1,5 @@
-// Command docsync synchronizes repository docs with an external vault.
+// Command docsync mirrors repository docs into a personal Obsidian vault.
+// Vault edits are intentionally private and never flow back into the repo.
 package main
 
 import (
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 const stateDir = ".growthos-sync"
@@ -22,9 +24,14 @@ type manifest map[string]string
 func main() {
 	vault := flag.String("vault", "", "Obsidian 目录路径")
 	dryRun := flag.Bool("dry-run", false, "只显示计划，不写入文件")
+	watch := flag.Bool("watch", false, "持续监听项目 docs/ 并自动同步")
+	interval := flag.Duration("interval", 2*time.Second, "监听轮询间隔")
 	flag.Parse()
 	if strings.TrimSpace(*vault) == "" {
 		fatal(errors.New("必须通过 --vault 指定 Obsidian 目录"))
+	}
+	if *interval <= 0 {
+		fatal(errors.New("--interval 必须大于 0"))
 	}
 	repoDocs, err := repositoryDocs()
 	if err != nil {
@@ -37,67 +44,54 @@ func main() {
 	if err := os.MkdirAll(vaultPath, 0o755); err != nil {
 		fatal(fmt.Errorf("创建 Obsidian 目录失败: %w", err))
 	}
-	basePath := filepath.Join(vaultPath, stateDir, "manifest.json")
-	base, err := readManifest(basePath)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := syncOnce(repoDocs, vaultPath, *dryRun); err != nil {
 		fatal(err)
 	}
+	if !*watch {
+		return
+	}
+	fmt.Printf("开始监听项目 docs/，每 %s 同步一次；按 Ctrl+C 停止\n", interval.String())
+	var previous manifest
+	for {
+		time.Sleep(*interval)
+		current, err := collect(repoDocs)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "文档同步失败:", err)
+			continue
+		}
+		if manifestsEqual(previous, current) {
+			continue
+		}
+		if err := syncOnce(repoDocs, vaultPath, false); err != nil {
+			fmt.Fprintln(os.Stderr, "文档同步失败:", err)
+			continue
+		}
+		previous = current
+	}
+}
+
+func syncOnce(repoDocs, vaultPath string, dryRun bool) error {
+	statePath := filepath.Join(vaultPath, stateDir, "manifest.json")
 	source, err := collect(repoDocs)
 	if err != nil {
-		fatal(fmt.Errorf("读取项目 docs 失败: %w", err))
+		return fmt.Errorf("读取项目 docs 失败: %w", err)
 	}
-	target, err := collect(vaultPath)
-	if err != nil {
-		fatal(fmt.Errorf("读取 Obsidian 目录失败: %w", err))
+	previous, err := readManifest(statePath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
-	if base == nil {
-		if len(target) > 0 {
-			fatal(errors.New("首次同步前目标目录已有文档；请先清理冲突，或手动整理成同一基线"))
-		}
-		if *dryRun {
-			fmt.Printf("首次同步：将项目 docs/ 写入 %s\n", vaultPath)
-			return
-		}
-		if err := apply(repoDocs, vaultPath, source, target, nil); err != nil {
-			fatal(err)
-		}
-		if err := writeManifest(basePath, source); err != nil {
-			fatal(err)
-		}
-		fmt.Printf("首次同步完成：项目 docs/ -> %s\n", vaultPath)
-		return
+	if dryRun {
+		printPlan(source, previous)
+		return nil
 	}
-	union := keys(source, target, base)
-	var conflicts []string
-	for _, path := range union {
-		sourceHash, sourceOK := source[path]
-		targetHash, targetOK := target[path]
-		baseHash, baseOK := base[path]
-		sourceChanged := sourceOK != baseOK || sourceHash != baseHash
-		targetChanged := targetOK != baseOK || targetHash != baseHash
-		if sourceChanged && targetChanged && (sourceOK != targetOK || sourceHash != targetHash) {
-			conflicts = append(conflicts, path)
-		}
+	if err := mirror(repoDocs, vaultPath, source, previous); err != nil {
+		return err
 	}
-	if len(conflicts) > 0 {
-		sort.Strings(conflicts)
-		fatal(fmt.Errorf("检测到双向冲突，请人工处理后重试: %s", strings.Join(conflicts, ", ")))
+	if err := writeManifest(statePath, source); err != nil {
+		return fmt.Errorf("写入同步状态失败: %w", err)
 	}
-	if *dryRun {
-		printPlan(source, target, base)
-		return
-	}
-	if err := apply(repoDocs, vaultPath, source, target, base); err != nil {
-		fatal(err)
-	}
-	updated, err := collect(repoDocs)
-	if err != nil {
-		fatal(fmt.Errorf("同步后读取项目 docs 失败: %w", err))
-	}
-	if err := writeManifest(basePath, updated); err != nil {
-		fatal(err)
-	}
-	fmt.Printf("双向同步完成：%s <-> %s\n", repoDocs, vaultPath)
+	fmt.Printf("已同步项目 docs/ -> %s\n", vaultPath)
+	return nil
 }
 
 func repositoryDocs() (string, error) {
@@ -148,32 +142,27 @@ func collect(root string) (manifest, error) {
 	return result, err
 }
 
-func apply(sourceRoot, targetRoot string, source, target, base manifest) error {
-	for _, path := range keys(source, target, nil) {
-		sourcePath := filepath.Join(sourceRoot, filepath.FromSlash(path))
-		targetPath := filepath.Join(targetRoot, filepath.FromSlash(path))
+func mirror(sourceRoot, targetRoot string, source, previous manifest) error {
+	target, err := collect(targetRoot)
+	if err != nil {
+		return fmt.Errorf("读取 Obsidian 目录失败: %w", err)
+	}
+	for _, path := range keys(source, previous) {
 		sourceHash, sourceOK := source[path]
+		previousHash, previousOK := previous[path]
 		targetHash, targetOK := target[path]
-		if sourceOK && (!targetOK || sourceHash != targetHash) {
-			if !targetOK && base[path] != "" {
-				if err := os.Remove(sourcePath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return fmt.Errorf("同步删除项目文件失败 %s: %w", path, err)
-				}
-				continue
+		sourceChanged := !previousOK || sourceHash != previousHash
+		if sourceOK && sourceChanged {
+			if err := copyFile(filepath.Join(sourceRoot, filepath.FromSlash(path)), filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil {
+				return fmt.Errorf("同步文件失败 %s: %w", path, err)
 			}
-			if err := copyFile(sourcePath, targetPath); err != nil {
-				return fmt.Errorf("同步到 Obsidian 失败 %s: %w", path, err)
-			}
+			continue
 		}
-		if !sourceOK && targetOK {
-			if base[path] != "" {
-				if err := os.Remove(targetPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return fmt.Errorf("同步删除 Obsidian 文件失败 %s: %w", path, err)
+		if !sourceOK && previousOK {
+			if !targetOK || targetHash == previousHash {
+				if err := os.Remove(filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return fmt.Errorf("同步删除文件失败 %s: %w", path, err)
 				}
-				continue
-			}
-			if err := copyFile(targetPath, sourcePath); err != nil {
-				return fmt.Errorf("同步回项目失败 %s: %w", path, err)
 			}
 		}
 	}
@@ -206,6 +195,18 @@ func keys(groups ...manifest) []string {
 	return result
 }
 
+func manifestsEqual(left, right manifest) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for path, hash := range left {
+		if right[path] != hash {
+			return false
+		}
+	}
+	return true
+}
+
 func readManifest(path string) (manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -213,7 +214,7 @@ func readManifest(path string) (manifest, error) {
 	}
 	var result manifest
 	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("解析同步基线失败: %w", err)
+		return nil, fmt.Errorf("解析同步状态失败: %w", err)
 	}
 	return result, nil
 }
@@ -229,10 +230,10 @@ func writeManifest(path string, value manifest) error {
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-func printPlan(source, target, base manifest) {
-	for _, path := range keys(source, target, base) {
-		if source[path] != target[path] {
-			fmt.Printf("将同步: %s\n", path)
+func printPlan(source, previous manifest) {
+	for _, path := range keys(source, previous) {
+		if source[path] != previous[path] {
+			fmt.Printf("将镜像: %s\n", path)
 		}
 	}
 }
