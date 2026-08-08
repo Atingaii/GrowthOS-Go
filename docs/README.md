@@ -13,6 +13,7 @@
 | 质量证据 | [QA 索引](qa/README.md) | 测试策略、验收记录和已知风险 |
 | 完成标准 | [Definition of Done](standards/definition-of-done.md) | 何时可以称为完成 |
 | 文档治理 | [文档治理规范](standards/documentation-governance.md) | 文档归属和漂移控制 |
+| Obsidian 同步 | [双向同步说明](standards/obsidian-sync.md) | 项目文档与 Obsidian Vault 的同步规则 |
 
 ## 当前基线
 
@@ -22,3 +23,6 @@
 - 当前明确未做：业务 API、数据库表、Redis、MQ、微服务、前端和 Java 实现。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。
+
+source edit
+source conflict
