@@ -3,11 +3,10 @@
 - **状态：** 已接受
 - **日期：** 2026-08-08
 - **负责人：** GrowthOS 维护者
-- **替代：** ADR-0004
 
 ## 背景
 
-GrowthOS-Go 的目标包含国内 Go 后端岗位常见的工程实践。Hertz 与 Kitex 在 CloudWeGo 生态内具备价值，但跨公司的使用面和招聘识别度相对有限。项目应优先选择在国内团队中更常见、资料更丰富、便于与多语言服务协作的框架和中间件。
+GrowthOS-Go 的目标包含国内 Go 后端岗位常见的工程实践。项目优先选择在国内团队中更常见、资料更丰富、便于与多语言服务协作的框架和中间件。
 
 ## 决策
 
@@ -32,6 +31,6 @@ Gin、gRPC、RocketMQ、Nacos、Redis、ClickHouse、Elasticsearch、Prometheus 
 ## 影响
 
 - 第 11 节使用 Gin 建立 HTTP 服务，第 75 节使用 gRPC + Protobuf 建立内部服务通信。
-- 课程会在引入时解释技术选型和替代方案，但不再将 Hertz 或 Kitex 作为实现主线。
+- 课程会在引入时解释技术选型和替代方案，但只实现本 ADR 确定的技术主线。
 - RocketMQ、Nacos、Sentinel-Go、ClickHouse 与 Elasticsearch/OpenSearch 不提前启动，仍必须有实际业务、性能或运维需求作为引入证据。
 - 后续若需要变更技术基线，必须新增 ADR 并同步更新课程路线、产品简述、仓库地图与 QA 证据。

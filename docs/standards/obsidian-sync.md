@@ -33,7 +33,7 @@ go run ./cmd/docsync --vault 'E:\TencentGo\growthOS' --watch
 首次运行会把项目 `docs/` 写入 Obsidian 根目录。之后同步器只观察项目 `docs/` 的变化：
 
 - 项目侧新增或修改：镜像到 Obsidian。
-- 项目侧删除：删除 Obsidian 中仍保持旧版本的对应文件。
+- 项目侧删除：直接删除 Obsidian 中此前由同步工具写入的对应文件。
 - Obsidian 侧修改：保留在个人目录；当项目文件再次变化时，以项目版本刷新该文件。
 - Obsidian 侧新增个人笔记：保留，不会复制到项目。
 - 不存在双向合并，也不会因为 Vault 修改阻塞项目同步。

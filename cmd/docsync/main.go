@@ -143,14 +143,9 @@ func collect(root string) (manifest, error) {
 }
 
 func mirror(sourceRoot, targetRoot string, source, previous manifest) error {
-	target, err := collect(targetRoot)
-	if err != nil {
-		return fmt.Errorf("读取 Obsidian 目录失败: %w", err)
-	}
 	for _, path := range keys(source, previous) {
 		sourceHash, sourceOK := source[path]
 		previousHash, previousOK := previous[path]
-		targetHash, targetOK := target[path]
 		sourceChanged := !previousOK || sourceHash != previousHash
 		if sourceOK && sourceChanged {
 			if err := copyFile(filepath.Join(sourceRoot, filepath.FromSlash(path)), filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil {
@@ -159,10 +154,8 @@ func mirror(sourceRoot, targetRoot string, source, previous manifest) error {
 			continue
 		}
 		if !sourceOK && previousOK {
-			if !targetOK || targetHash == previousHash {
-				if err := os.Remove(filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return fmt.Errorf("同步删除文件失败 %s: %w", path, err)
-				}
+			if err := os.Remove(filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("同步删除文件失败 %s: %w", path, err)
 			}
 		}
 	}
