@@ -38,3 +38,15 @@ func TestFindRepositoryRoot(t *testing.T) {
 		t.Fatalf("root = %q, want %q", root, repositoryRoot)
 	}
 }
+
+func TestCompletedLessonsHaveAPIRecords(t *testing.T) {
+	repositoryRoot, err := findRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems := checkCompletedLessonAPIRecords(repositoryRoot); len(problems) > 0 {
+		for _, problem := range problems {
+			t.Error(problem)
+		}
+	}
+}

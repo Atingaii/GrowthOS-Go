@@ -28,6 +28,7 @@ func main() {
 	problems = append(problems, checkMarkdownLinks(root)...)
 	problems = append(problems, checkADRIndex(root)...)
 	problems = append(problems, checkCourseStatus(root)...)
+	problems = append(problems, checkCompletedLessonAPIRecords(root)...)
 	if len(problems) > 0 {
 		fail(problems)
 	}
@@ -207,6 +208,36 @@ func checkCourseStatus(root string) []error {
 			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(registeredPath))); err != nil {
 				problems = append(problems, fmt.Errorf("completed lesson %d references missing %s", lesson, registeredPath))
 			}
+		}
+	}
+	return problems
+}
+
+func checkCompletedLessonAPIRecords(root string) []error {
+	path := filepath.Join(root, "docs", "course", "status.csv")
+	file, err := os.Open(path)
+	if err != nil {
+		return []error{err}
+	}
+	defer file.Close()
+
+	records, err := csv.NewReader(bufio.NewReader(file)).ReadAll()
+	if err != nil {
+		return []error{fmt.Errorf("parse docs/course/status.csv for API records: %w", err)}
+	}
+
+	var problems []error
+	for _, record := range records[1:] {
+		if len(record) < 4 || record[3] != "已完成" {
+			continue
+		}
+		lesson, err := strconv.Atoi(record[0])
+		if err != nil {
+			continue
+		}
+		relativePath := filepath.ToSlash(filepath.Join("docs", "api", "lessons", fmt.Sprintf("lesson-%02d.md", lesson)))
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relativePath))); err != nil {
+			problems = append(problems, fmt.Errorf("completed lesson %d requires API record %s", lesson, relativePath))
 		}
 	}
 	return problems
