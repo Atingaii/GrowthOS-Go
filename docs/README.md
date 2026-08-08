@@ -9,6 +9,7 @@
 | 产品定位 | [产品简述](product/product-brief.md) | 目标用户、问题、范围和成功信号 |
 | 用户旅程 | [用户增长旅程 v1](product/user-growth-journey-v1.md) | 从触达、参与、权益到再次触达的完整体验 |
 | 运营流程 | [运营人员工作流 v1](product/operator-workflow-v1.md) | 从目标、配置、审批到发布、止损和复盘 |
+| AI 运营 | [AI Operator 工作流 v1](product/ai-operator-workflow-v1.md) | 自然语言、结构化计划、Tool、审批与审计边界 |
 | 课程实施 | [96 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
@@ -21,7 +22,7 @@
 
 ## 当前基线
 
-- 当前完成：第 1～3 节和第 14 节前端整体框架。
+- 当前完成：第 1～4 节和第 14 节前端整体框架。
 - 当前代码：Go 产品 API 尚未开始；`web/` 已有可运行的 React/Vite/Tailwind UI 框架，页面当前使用 Mock 数据。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
 - 当前明确未做：业务 API、数据库表、Redis、MQ、微服务和 Java 实现；前端真实 API 联调留给第 15 节。

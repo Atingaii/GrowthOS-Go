@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v1 基线
+**状态：** v2 基线
 **更新日期：** 2026-08-08
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)
 
 ## 一句话定位
 
@@ -54,8 +54,10 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号将在后续章节被细化为 SLO、接口验收和数据指标；v1 不虚构尚未测量的数值目标。
+这些信号将在后续章节被细化为 SLO、接口验收和数据指标；v2 不虚构尚未测量的数值目标。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 
 完整运营角色、配置、审批、发布、止损和复盘流程见[运营人员工作流 v1](operator-workflow-v1.md)。
+
+AI 查询、计划、Tool 调用、审批、失败和审计边界见[AI Operator 工作流 v1](ai-operator-workflow-v1.md)。

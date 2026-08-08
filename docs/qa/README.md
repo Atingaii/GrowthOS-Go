@@ -9,6 +9,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 1 节验收](lessons/lesson-01.md) | 文档与范围评审 | 通过 |
 | [第 2 节验收](lessons/lesson-02.md) | 用户增长旅程与异常体验评审 | 通过 |
 | [第 3 节验收](lessons/lesson-03.md) | 运营工作流、审批与生命周期评审 | 通过 |
+| [第 4 节验收](lessons/lesson-04.md) | AI Operator 权限、审批、执行与失败语义评审 | 通过 |
 | [第 14 节验收](lessons/lesson-14.md) | React 前端整体框架与 UI 基线 | 通过 |
 
 ## 记录格式
