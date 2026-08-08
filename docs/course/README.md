@@ -39,6 +39,7 @@
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
 - [第 3 节：设计运营人员工作流](part-01/lesson-03-operator-workflow.md) 已完成。
 - [第 4 节：设计 AI Operator 工作流](part-01/lesson-04-ai-operator-workflow.md) 已完成。
+- [第 5 节：事件风暴第一次领域分析](part-01/lesson-05-first-event-storm.md) 已完成。
 - 第 14 节前端整体框架已完成；其他章节仍处于规划状态。
 - 产品运行时代码将在第 11 节首次提供 HTTP 服务，前后端在第 15 节完成首次真实 API 联调。
 - 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。
