@@ -1,0 +1,99 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --background: #f5f5f4;
+    --foreground: #0c0a09;
+    --card: #ffffff;
+    --card-foreground: #0c0a09;
+    --popover: #ffffff;
+    --popover-foreground: #0c0a09;
+    --primary: #1d4ed8;
+    --primary-foreground: #ffffff;
+    --secondary: #e7e5e4;
+    --secondary-foreground: #1c1917;
+    --muted: #f5f5f4;
+    --muted-foreground: #78716c;
+    --accent: #eff6ff;
+    --accent-foreground: #1d4ed8;
+    --border: #d6d3d1;
+    --input: #d6d3d1;
+    --ring: #1d4ed8;
+    --radius: 0.5rem;
+
+    --growth-green: #059669;
+    --growth-amber: #d97706;
+    --growth-purple: #7c3aed;
+    --growth-cyan: #0891b2;
+  }
+
+  .dark {
+    --background: #0a0a0a;
+    --foreground: #fafaf9;
+    --card: #141414;
+    --card-foreground: #fafaf9;
+    --popover: #1a1a1a;
+    --popover-foreground: #fafaf9;
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
+    --secondary: #1c1c1c;
+    --secondary-foreground: #e7e5e4;
+    --muted: #1c1c1c;
+    --muted-foreground: #78716c;
+    --accent: #1e1b4b;
+    --accent-foreground: #93c5fd;
+    --border: #262626;
+    --input: #262626;
+    --ring: #3b82f6;
+
+    --growth-green: #34d399;
+    --growth-amber: #fbbf24;
+    --growth-purple: #a78bfa;
+    --growth-cyan: #22d3ee;
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  color: var(--foreground);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre {
+  font-family: var(--font-mono);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Dot Grid Background */
+.bg-grid-pattern {
+  background-image: radial-gradient(circle at center, rgba(37, 99, 235, 0.12) 1.2px, transparent 1.4px);
+  background-size: 20px 20px;
+}
+
+.dark .bg-grid-pattern {
+  background-image: radial-gradient(circle at center, rgba(59, 130, 246, 0.2) 1.2px, transparent 1.4px);
+  background-size: 20px 20px;
+}

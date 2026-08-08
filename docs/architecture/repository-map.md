@@ -16,7 +16,7 @@
 | `migrations` | 前向 SQL Migration | 第 13 节起 |
 | `scripts` | 可重复的本地自动化 | 按需 |
 | `deploy` | Compose、Kubernetes 与发布资产 | 第 16 节起渐进加入 |
-| `web` | React 用户端和运营端 | 第 14 节起渐进加入 |
+| `web` | 复刻 GrowthOS UI 的统一 React 用户端、运营端、MCP 与 AI Operator 框架 | 第 14 节已搭建，后续章节接入真实业务 |
 | `docs` | 产品、架构、决策、QA 和课程事实 | 全程 |
 
 ## 当前依赖规则
@@ -32,6 +32,6 @@
 
 - Gin 是 Go HTTP 基线；gRPC + Protobuf 是后续服务间 RPC 基线，分别在第 11、75 节接入并以测试验证。
 - MySQL、`sqlx`、手写 SQL、连接池和事务封装在第 13 节接入。
-- React、TypeScript、Vite、Ant Design 和 Ant Design Pro 在第 14 节接入。
+- React、TypeScript、Vite、Tailwind CSS、Lucide、Recharts 和 Zustand 在第 14 节接入；页面视觉以设计包为基线。
 - 服务拆分、RPC 和注册中心延迟至第 73 节以后。
 - 最终目录图和 ER 图延迟至第 96 节复盘。

@@ -24,7 +24,7 @@ GrowthOS-Go 的目标包含国内 Go 后端岗位常见的工程实践。项目�
 | 分析存储 | ClickHouse | 第 70 节 |
 | 运营搜索 | Elasticsearch / OpenSearch | 第 80 节 |
 | 可观测性 | OpenTelemetry + Prometheus + Grafana + Tempo + Loki | 第 94 节 |
-| 前端 | React + TypeScript + Vite + Ant Design + Ant Design Pro | 第 14 节 |
+| 前端 | React + TypeScript + Vite + Tailwind CSS + Lucide + Recharts + Zustand | 第 14 节 |
 
 Gin、gRPC、RocketMQ、Nacos、Redis、ClickHouse、Elasticsearch、Prometheus 和 Grafana 都是在国内互联网与企业服务项目中常见的组合。gRPC 虽是国际标准，但在国内多语言微服务协作中使用广泛，因此作为 RPC 契约基线。
 

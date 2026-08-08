@@ -12,7 +12,7 @@
 11,2,使用 Gin 初始化 Go Web 服务,计划中,,
 12,2,配置日志与错误码体系,计划中,,
 13,2,接入 MySQL 与 Migration,计划中,,
-14,2,React TypeScript 前端工程初始化,计划中,,
+14,2,React TypeScript 前端工程初始化,已完成,docs/course/part-02/lesson-14-react-frontend-framework.md,docs/qa/lessons/lesson-14.md
 15,2,前后端第一次联调,计划中,,
 16,2,Docker Compose 开发环境,计划中,,
 17,3,最简单随机抽奖需要什么对象,计划中,,
