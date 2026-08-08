@@ -38,21 +38,3 @@ func TestFindRepositoryRoot(t *testing.T) {
 		t.Fatalf("root = %q, want %q", root, repositoryRoot)
 	}
 }
-
-func TestExpectedPartForLesson(t *testing.T) {
-	tests := map[int]int{
-		1:  1,
-		8:  1,
-		9:  2,
-		80: 10,
-		81: 11,
-		90: 11,
-		91: 12,
-		96: 12,
-	}
-	for lesson, want := range tests {
-		if got := expectedPartForLesson(lesson); got != want {
-			t.Errorf("expectedPartForLesson(%d) = %d, want %d", lesson, got, want)
-		}
-	}
-}

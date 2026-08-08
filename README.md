@@ -12,8 +12,8 @@ microservices, or infrastructure stack.
 ## Current State
 
 - Course progress: Lesson 1 of 96 complete
-- Product code: not started (begins in Lesson 9)
-- Database: not introduced (first connection in Lesson 14)
+- Product code: not started (first HTTP service in Lesson 11)
+- Database: not introduced (first connection and Migration in Lesson 13)
 - Architecture: planned modular monolith, with evidence-based extraction later
 
 See the [documentation home](docs/README.md), [course roadmap](docs/course/README.md),
@@ -36,6 +36,8 @@ growth-os-go/
 
 Directories that are not needed yet contain only a `.gitkeep`. This preserves
 the intended ownership boundaries without pretending later capabilities exist.
+The React application begins in Lesson 14 and joins its first backend
+integration in Lesson 15.
 
 ## Quality Gates
 

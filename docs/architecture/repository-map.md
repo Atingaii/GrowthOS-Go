@@ -12,10 +12,10 @@
 | `internal/*` | 预留私有领域与基础设施边界 | 随对应领域章节引入 |
 | `pkg` | 可被外部导入的少量稳定 Go 包 | 仅在确有跨模块公共契约时 |
 | `configs` | 无秘密、可版本化的配置示例 | 第 11 节起 |
-| `migrations` | 前向 SQL Migration | 第 15 节起 |
+| `migrations` | 前向 SQL Migration | 第 13 节起 |
 | `scripts` | 可重复的本地自动化 | 按需 |
 | `deploy` | Compose、Kubernetes 与发布资产 | 第 16 节起渐进加入 |
-| `web` | React 用户端和运营端 | 第 91～92 节 |
+| `web` | React 用户端和运营端 | 第 14 节起渐进加入 |
 | `docs` | 产品、架构、决策、QA 和课程事实 | 全程 |
 
 ## 当前依赖规则
@@ -29,7 +29,8 @@
 
 ## 有意延迟的决定
 
-- Hertz 与 Gin 的最终选择延迟至第 11 节，以实际中间件、团队熟悉度和基准结果决策。
-- MySQL 驱动、`sqlx` 版本和事务封装延迟至第 14 节。
+- Hertz 是 Go HTTP 基线；Kitex 是后续服务间 RPC 基线，分别在第 11、75 节接入并以测试验证。
+- MySQL、`sqlx`、手写 SQL、连接池和事务封装在第 13 节接入。
+- React、TypeScript、Vite、Ant Design 和 Ant Design Pro 在第 14 节接入。
 - 服务拆分、RPC 和注册中心延迟至第 73 节以后。
 - 最终目录图和 ER 图延迟至第 96 节复盘。

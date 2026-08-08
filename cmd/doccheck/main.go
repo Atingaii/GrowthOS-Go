@@ -183,7 +183,7 @@ func checkCourseStatus(root string) []error {
 		if err != nil || lesson != i+1 {
 			problems = append(problems, fmt.Errorf("course registry row %d must be lesson %d", row, i+1))
 		}
-		expectedPart := expectedPartForLesson(i + 1)
+		expectedPart := ((i + 1 - 1) / 8) + 1
 		part, err := strconv.Atoi(record[1])
 		if err != nil || part != expectedPart {
 			problems = append(problems, fmt.Errorf("lesson %d must belong to part %d", lesson, expectedPart))
@@ -206,16 +206,6 @@ func checkCourseStatus(root string) []error {
 		}
 	}
 	return problems
-}
-
-func expectedPartForLesson(lesson int) int {
-	if lesson <= 80 {
-		return ((lesson - 1) / 8) + 1
-	}
-	if lesson <= 90 {
-		return 11
-	}
-	return 12
 }
 
 func fail(problems []error) {
