@@ -2,7 +2,7 @@
 
 **状态：** v1 基线
 **更新日期：** 2026-08-08
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)
 
 ## 一句话定位
 
@@ -57,3 +57,5 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 这些信号将在后续章节被细化为 SLO、接口验收和数据指标；v1 不虚构尚未测量的数值目标。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
+
+完整运营角色、配置、审批、发布、止损和复盘流程见[运营人员工作流 v1](operator-workflow-v1.md)。
