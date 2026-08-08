@@ -39,7 +39,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 - 不在项目初始化时创建最终 ER 图或全部业务表。
 - 不在流量和团队边界尚未证明前拆分全部微服务。
-- Go 后端技术基线确定为 Hertz、Kitex、sqlx + 手写 SQL、go-redis、RocketMQ、Nacos 和 OpenTelemetry；组件仍按需求逐步接入。
+- Go 后端技术基线确定为 Gin、gRPC + Protobuf、sqlx + 手写 SQL、go-redis、RocketMQ、Nacos、Sentinel-Go 和 OpenTelemetry；组件仍按需求逐步接入。
 - 前端技术基线确定为 React、TypeScript、Vite、Ant Design 与 Ant Design Pro；第 14 节开始接入。
 - 不把 AI 直接连接数据库，也不允许 Agent 绕过业务权限执行写操作。
 - 不在 Go 第一阶段维护 Java 镜像实现。

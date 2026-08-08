@@ -30,7 +30,7 @@
 
 ## 有意延迟的决定
 
-- Hertz 是 Go HTTP 基线；Kitex 是后续服务间 RPC 基线，分别在第 11、75 节接入并以测试验证。
+- Gin 是 Go HTTP 基线；gRPC + Protobuf 是后续服务间 RPC 基线，分别在第 11、75 节接入并以测试验证。
 - MySQL、`sqlx`、手写 SQL、连接池和事务封装在第 13 节接入。
 - React、TypeScript、Vite、Ant Design 和 Ant Design Pro 在第 14 节接入。
 - 服务拆分、RPC 和注册中心延迟至第 73 节以后。

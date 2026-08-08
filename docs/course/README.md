@@ -19,7 +19,7 @@
 | 部分 | 章节 | 主题 | 阶段出口 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 产品边界、用户旅程、领域 v1、NFR 与系统 V0 |
-| 2 | 9～16 | Go + React 从零搭建 | Go、Hertz、MySQL、Migration、React 联调与 Compose |
+| 2 | 9～16 | Go + React 从零搭建 | Go、Gin、MySQL、Migration、React 联调与 Compose |
 | 3 | 17～24 | 从两张表开始做抽奖 | Strategy、Award、Lottery API、React 抽奖页与 Redis |
 | 4 | 25～32 | 规则系统与营销活动 | 规则链、规则树、Activity、运营后台与阶段复盘 |
 | 5 | 33～40 | 活动账户、订单与库存 | SKU、账户流水、订单、MySQL 库存、Redis Lua 与闭环 |
@@ -27,7 +27,7 @@
 | 7 | 49～56 | 积分、优惠券、返利与权益中心 | Reward、Ledger、Coupon、Rebate 与权益重构 |
 | 8 | 57～64 | Growth Feed 与用户行为 | FeedItem、React Feed、Cursor、Behavior Event、画像 |
 | 9 | 65～72 | Feed 推荐、实验与增长分析 | Candidate、Filtering、Ranking、A/B、ClickHouse 与闭环 |
-| 10 | 73～80 | 模块化单体到分布式 | 服务拆分、Kitex、Nacos、Trace、限流、分片与 OpenSearch |
+| 10 | 73～80 | 模块化单体到分布式 | 服务拆分、gRPC、Nacos、Sentinel-Go、Trace、分片与 OpenSearch |
 | 11 | 81～88 | AI MCP Gateway | JSON-RPC、MCP 生命周期、Gateway、动态 Tool、权限审计 |
 | 12 | 89～96 | AI Agent、可观测、压测与上线 | LLM、Agent、审批、Guardrail、OTel、压测与 Kubernetes |
 
