@@ -21,13 +21,13 @@
   <img src="https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.24" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-6%20lessons%20completed-2563EB?style=flat-square" alt="已完成 6 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-7%20lessons%20completed-2563EB?style=flat-square" alt="已完成 7 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～5 节产品分析和第 14 节 React 前端框架；业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把前端 Mock 页面视为这些能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～6 节产品分析和第 14 节 React 前端框架；业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把前端 Mock 页面视为这些能力已经实现。
 
 ## 项目简介
 
@@ -142,7 +142,7 @@ make verify
 
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
-| 1 | 1～8 | 产品需求与系统分析 | 进行中：第 1～5 节完成 |
+| 1 | 1～8 | 产品需求与系统分析 | 进行中：第 1～6 节完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 进行中：第 14 节前端框架完成 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
@@ -191,6 +191,7 @@ GrowthOS-Go/
 | [运营人员工作流](docs/product/operator-workflow-v1.md) | 配置、审批、发布、止损和复盘 |
 | [AI Operator 工作流](docs/product/ai-operator-workflow-v1.md) | AI 计划、Tool、审批、失败与审计边界 |
 | [领域事件地图](docs/product/domain-event-map-v1.md) | 命令、事件、策略、失败和补偿 |
+| [限界上下文地图](docs/product/bounded-context-map-v1.md) | 业务语言、事实所有权和上下文协作 |
 | [前端架构](docs/frontend/frontend-architecture.md) | 页面边界、路由、Mock 和运行方式 |
 | [章节 API 台账](docs/api/lessons/README.md) | 每节新增或调整的前端调用契约 |
 | [ADR 索引](docs/decisions/README.md) | 长期架构决策及其取舍 |

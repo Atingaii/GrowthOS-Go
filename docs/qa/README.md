@@ -11,6 +11,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 3 节验收](lessons/lesson-03.md) | 运营工作流、审批与生命周期评审 | 通过 |
 | [第 4 节验收](lessons/lesson-04.md) | AI Operator 权限、审批、执行与失败语义评审 | 通过 |
 | [第 5 节验收](lessons/lesson-05.md) | 事件风暴、命令/事件分类与异常路径评审 | 通过 |
+| [第 6 节验收](lessons/lesson-06.md) | 限界上下文、统一语言、事实所有权与协作边界评审 | 通过 |
 | [第 14 节验收](lessons/lesson-14.md) | React 前端整体框架与 UI 基线 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |

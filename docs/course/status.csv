@@ -4,7 +4,7 @@
 3,1,设计运营人员工作流,已完成,docs/course/part-01/lesson-03-operator-workflow.md,docs/qa/lessons/lesson-03.md
 4,1,设计 AI Operator 工作流,已完成,docs/course/part-01/lesson-04-ai-operator-workflow.md,docs/qa/lessons/lesson-04.md
 5,1,事件风暴第一次领域分析,已完成,docs/course/part-01/lesson-05-first-event-storm.md,docs/qa/lessons/lesson-05.md
-6,1,第一次划分限界上下文,计划中,,
+6,1,第一次划分限界上下文,已完成,docs/course/part-01/lesson-06-first-bounded-contexts.md,docs/qa/lessons/lesson-06.md
 7,1,确定非功能需求,计划中,,
 8,1,画 V0 系统设计,计划中,,
 9,2,创建 GrowthOS-Go 仓库,计划中,,
