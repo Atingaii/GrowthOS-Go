@@ -3,7 +3,9 @@
 - **日期：** 2026-08-09
 - **对象：** `.github/workflows/quality.yml`
 - **失败运行：** `quality / verify`，Run `31295484606`，Job `93199781289`
-- **结果：** 本地干净环境验证通过，等待修复提交的远端 Actions 验证
+- **修复提交：** `60ea58e`
+- **成功运行：** `quality / verify`，Run `31297863104`，Job `93205774606`
+- **结果：** 通过
 
 ## 故障现象
 
@@ -60,9 +62,15 @@ make verify
 - Vite 生产构建通过；
 - 保留既有的 JavaScript chunk 超过 500 kB 警告，不影响退出码。
 
+## 远端验证
+
+修复提交推送后，GitHub Actions 在全新 `ubuntu-latest` runner 中完成 checkout、Go/Node/pnpm 环境安装、冻结依赖安装和 `make verify`，最终结论为 `success`。
+
+这证明本次问题不是课程文档或前端代码本身失败，而是原工作流没有声明前端构建所需环境。
+
 ## 回归要求
 
 - CI 不得依赖开发机已有的全局工具或 `node_modules`；
 - `web/package.json` 或锁文件变更后，冻结安装必须仍然通过；
 - Go 引入首个外部依赖并生成 `go.sum` 后，可重新评估启用 setup-go 缓存；
-- 修复只有在 GitHub 上新一次 `quality / verify` 成功后才能最终关闭。
+- 后续每次 push 和 pull request 都继续执行相同的 `quality / verify` 门禁。
