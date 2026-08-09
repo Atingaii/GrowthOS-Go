@@ -1,0 +1,268 @@
+# GrowthOS 系统设计 V0
+
+**状态：** V0 逻辑设计基线
+
+**更新日期：** 2026-08-09
+
+**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)
+
+## 1. 文档目的
+
+本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
+
+V0 是后续实现的导航图，不是已完成能力清单。当前仓库只有文档工具和使用 Mock 数据的 React 前端框架，尚无 Go 产品 API、业务数据库、Redis、MQ、MCP Gateway 或 AI Agent 运行时。
+
+## 2. 图例与状态
+
+| 标记 | 含义 |
+| --- | --- |
+| 实线业务边界 | 已确认需要由 GrowthOS 承担的业务职责 |
+| 外部系统 | GrowthOS 只集成，不拥有其主数据和生命周期 |
+| 未来能力 | 路线图方向，协议、部署与技术细节尚未锁定 |
+| 当前实现 | 仓库里已经存在且可以验证的代码或文档 |
+
+逻辑边界“已确认”不等于运行时代码“已实现”。例如 Benefit 是已识别的业务上下文，但积分和优惠券要到对应章节才建模和建表。
+
+## 3. 产品架构图
+
+```mermaid
+flowchart TB
+    subgraph EXPERIENCE[产品体验层]
+        USER[用户端\nGrowth Feed 与权益体验]
+        OPS[运营后台\n活动、策略、权益与数据]
+        AIOPS[AI Operator\n自然语言运营入口]
+    end
+
+    subgraph CONTROL[治理与智能层]
+        GOV[Governance\n权限、审批、风险与审计]
+        AI[AI Operations\n计划、Tool 编排与人工接管]
+    end
+
+    subgraph GROWTH[增长能力层]
+        FEED[Feed\n召回、过滤、排序与频控]
+        BA[Behavior & Analytics\n行为、画像、实验与分析]
+    end
+
+    subgraph BUSINESS[营销业务层]
+        MKT[Marketing\n活动与生命周期]
+        PAR[Participation\n资格、额度与参与]
+        LOT[Lottery\n策略、规则与结果]
+        BEN[Benefit\n奖励、积分与优惠券]
+    end
+
+    USER --> FEED
+    USER --> PAR
+    OPS --> GOV
+    GOV --> MKT
+    GOV --> FEED
+    AIOPS --> AI
+    AI --> GOV
+    FEED --> PAR
+    PAR --> LOT
+    LOT --> BEN
+    FEED --> BA
+    PAR --> BA
+    BEN --> BA
+    BA --> FEED
+    BA --> MKT
+```
+
+这张图按产品职责分层，不表示进程调用顺序。Governance 是人工运营和 AI 运营共用的控制面；AI 不能绕过它直接修改业务事实。
+
+## 4. 系统上下文图
+
+```mermaid
+flowchart LR
+    CUSTOMER[终端用户]
+    OPERATOR[运营人员]
+    APPROVER[审批人员]
+
+    subgraph TRUST[GrowthOS 信任边界]
+        PLATFORM[GrowthOS\n营销、增长、权益与 AI 运营平台]
+    end
+
+    IAM[用户、会员与认证系统]
+    TRADE[支付、交易与订单系统]
+    CHANNEL[外部券、短信与 Push 渠道]
+    CORP[企业 IAM 与组织目录]
+    LLM[LLM Provider]
+
+    CUSTOMER -->|浏览、参与、领取与查询| PLATFORM
+    OPERATOR -->|配置、发布、分析与人工接管| PLATFORM
+    APPROVER -->|审查高风险操作| PLATFORM
+
+    IAM -->|认证结果、用户和会员摘要| PLATFORM
+    TRADE -->|消费、退款和转化事实| PLATFORM
+    PLATFORM -->|发券及消息触达请求| CHANNEL
+    CHANNEL -->|发放与触达结果| PLATFORM
+    CORP -->|操作者、组织和角色| PLATFORM
+    PLATFORM -->|推理请求| LLM
+    LLM -->|推理结果与 Tool 建议| PLATFORM
+```
+
+边界含义：
+
+- GrowthOS 拥有活动、参与、抽奖、平台内权益、Feed、行为分析、审批审计和 AI 任务等事实；
+- 用户身份、商品、购物车、支付和交易订单不是 V0 核心模型；GrowthOS 消费外部系统确认的交易事实，不能根据点击埋点伪造支付成功；
+- 若未来加入自营电商，应作为独立产品范围和上下文重新评审，不直接塞入 Marketing；
+- LLM 只生成建议和结构化计划，业务成功必须由 GrowthOS 的确定性模块确认。
+
+## 5. 用例图
+
+```mermaid
+flowchart LR
+    U((终端用户))
+    O((运营人员))
+    A((审批人员))
+    S((外部业务系统))
+
+    subgraph USECASES[GrowthOS 用例边界]
+        UC1[浏览个性化营销 Feed]
+        UC2[参加活动与抽奖]
+        UC3[领取和查看权益]
+        UC4[创建与配置活动草稿]
+        UC5[提交、审批与发布活动]
+        UC6[暂停、止损与复盘]
+        UC7[查询行为和增长指标]
+        UC8[通过 AI 生成运营计划]
+        UC9[确认高风险 AI 操作]
+        UC10[接收交易与渠道结果]
+    end
+
+    U --> UC1
+    U --> UC2
+    U --> UC3
+    O --> UC4
+    O --> UC5
+    O --> UC6
+    O --> UC7
+    O --> UC8
+    O --> UC9
+    A --> UC5
+    A --> UC9
+    S --> UC10
+```
+
+### 5.1 V0 用例优先级
+
+| 优先级 | 用例 | 说明 |
+| --- | --- | --- |
+| 核心 | 活动配置、参与、抽奖、权益结果 | 构成营销事实主链路，后续按章节逐步实现 |
+| 增长 | Feed、行为、画像、实验与分析 | 建立触达和反馈闭环，核心交易失败时不能靠分析数据修正 |
+| 治理 | 权限、审批、审计、暂停与止损 | 人工和 AI 写操作共用，不是后台页面的附属功能 |
+| 智能 | AI 计划、Tool 调用和人工接管 | 建立在已稳定的业务 API 之上，最后阶段实现 |
+
+## 6. 领域关系图
+
+```mermaid
+flowchart LR
+    MKT[Marketing\n拥有活动版本与状态]
+    GOV[Governance\n拥有审批与审计]
+    FEED[Feed\n拥有候选、顺序与频控]
+    PAR[Participation\n拥有资格、额度与参与订单]
+    LOT[Lottery\n拥有策略与抽奖结果]
+    BEN[Benefit\n拥有权益、余额与流水]
+    BA[Behavior & Analytics\n拥有行为、画像与分析投影]
+    AI[AI Operations\n拥有 AI 任务与执行过程]
+
+    GOV -->|批准活动版本| MKT
+    MKT -->|提供可投放活动摘要| FEED
+    FEED -->|引导合法活动入口| PAR
+    PAR -->|提交已校验抽奖请求| LOT
+    LOT -->|产生奖励选择结果| BEN
+    BEN -->|请求增加参与次数奖励| PAR
+    FEED -->|曝光事实| BA
+    PAR -->|参与事实| BA
+    BEN -->|权益事实| BA
+    BA -->|画像与指标投影| FEED
+    BA -->|活动效果指标| MKT
+    AI -->|申请执行受控命令| GOV
+    BA -->|提供只读指标| AI
+```
+
+箭头只表达业务协作和事实方向。V0 不锁定 HTTP、gRPC、消息队列、数据库 JOIN 或进程边界；这些选择由真实一致性、延迟和部署问题推动。
+
+## 7. 第一版运行形态
+
+第 9～16 节的目标是一个模块化单体，而不是上图中每个方框一个服务：
+
+```mermaid
+flowchart LR
+    BROWSER[浏览器]
+    WEB[React Web\n当前为 Mock 框架]
+    API[Go Gin API\n第 11 节开始]
+    MODULES[模块化单体\n按业务上下文组织]
+    MYSQL[(MySQL\n第 13 节接入)]
+    REDIS[(Redis\n按业务需求接入)]
+
+    BROWSER --> WEB
+    WEB -.第 15 节首次联调.-> API
+    API --> MODULES
+    MODULES -.后续事实数据.-> MYSQL
+    MODULES -.后续派生缓存.-> REDIS
+```
+
+### 7.1 当前、近期和远期边界
+
+| 时间范围 | 能力 | 状态 |
+| --- | --- | --- |
+| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与 Mock 数据 | 已存在 |
+| 第 9～16 节 | Go Gin 健康接口、配置日志错误码、MySQL 连接与 Migration、前后端联调、开发环境 | 近期构建 |
+| 第 17～72 节 | 抽奖、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
+| 第 73～96 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
+
+这里不承诺 Redis、RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署，也不为这些未来组件预建空业务表。
+
+## 8. 数据与信任边界
+
+### 8.1 数据分类
+
+| 数据类别 | 示例 | V0 原则 |
+| --- | --- | --- |
+| 核心事实 | 参与订单、抽奖结果、权益流水、审批记录 | 由唯一上下文确认，不能由缓存、分析或模型文字覆盖 |
+| 配置 | 活动版本、抽奖策略、Feed 规则、Tool Schema | 允许版本、快照和适度 JSON，具体结构随需求出现 |
+| 派生数据 | Redis 缓存、用户画像、搜索索引、分析指标 | 可延迟、可重建，不能成为交易事实源 |
+| 外部事实 | 用户身份、支付订单、外部券结果 | 保留来源标识和时间，通过防腐层映射，不接管外部生命周期 |
+
+### 8.2 信任原则
+
+- 浏览器、客户端埋点、模型输出和外部回调都属于待验证输入；
+- 所有写操作由服务端校验身份、业务状态、幂等标识和资源范围；
+- 高风险人工与 AI 操作都经过 Governance，审批和执行参数绑定；
+- 秘密不进入前端包、日志、Prompt、仓库和行为事件；
+- 跨上下文复制的数据是只读摘要、快照或投影，必须说明权威来源。
+
+## 9. NFR 如何约束 V0
+
+| 质量目标 | V0 架构约束 |
+| --- | --- |
+| 正确性 | 核心事实有唯一所有者，不能由页面、分析表或 AI 宣布成功 |
+| 幂等 | 参与、抽奖、发放和高风险 Tool 将使用业务请求标识与结果查询语义 |
+| 可用性 | Feed/分析/AI 可降级，权限、库存和权益不变量不能跳过 |
+| 可扩展性 | 先模块化单体，边界清晰但不提前承担分布式复杂度 |
+| 可追踪 | 后续 HTTP、RPC、消息、Tool 和任务统一传播关联标识 |
+| 恢复 | 核心事实、配置和可重建投影采用不同 RPO/RTO，不把缓存当备份 |
+| 安全审计 | 外部输入默认不可信，高风险动作需要权限、审批和不可覆盖的审计 |
+
+具体目标值和验证里程碑以[非功能需求基线 v1](non-functional-requirements-v1.md)为准。
+
+## 10. V0 明确不做
+
+- 不给出最终 ER 图、表清单、Migration 编号或分库分表方案；
+- 不把限界上下文等同于微服务、Go package 或独立数据库；
+- 不引入自营商品、购物车、支付和交易订单模型；
+- 不确定同步调用、RPC、MQ 或事件主题；
+- 不根据远期峰值提前部署全套基础设施；
+- 不声称 Mock 前端代表真实业务闭环已经完成。
+
+## 11. 演进和漂移规则
+
+1. 每次新增业务能力先指出现有设计不足，再调整上下文、数据或运行形态；
+2. 系统边界或事实所有权变化时同步本文件、限界上下文地图、课程正文和 QA；
+3. API、事件或数据契约出现时登记对应章节台账；
+4. 形成长期且跨章节的技术决策时新增 ADR；
+5. 第 96 节只依据实际代码、Migration 和部署资产重画最终架构与 ER 图。
+
+## 12. 下一阶段输入
+
+第 9 节开始建立仓库工程基线。它必须保持 V0 的真实状态表达：目录只为当前职责服务，空目录不等于能力已实现，未来服务和基础设施不能提前伪装成交付物。

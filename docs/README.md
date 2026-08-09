@@ -13,6 +13,7 @@
 | 领域分析 | [领域事件地图 v1](product/domain-event-map-v1.md) | 命令、事件、查询、策略、失败和补偿的统一基线 |
 | 领域边界 | [限界上下文地图 v1](product/bounded-context-map-v1.md) | 业务语言、职责、事实所有权和协作关系 |
 | 质量目标 | [非功能需求基线 v1](product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复、安全和降级目标 |
+| 系统设计 | [GrowthOS 系统设计 V0](product/system-design-v0.md) | 产品架构、系统上下文、用例、领域关系与近期运行形态 |
 | 课程实施 | [96 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
@@ -25,7 +26,7 @@
 
 ## 当前基线
 
-- 当前完成：第 1～7 节和第 14 节前端整体框架。
+- 当前完成：第 1～8 节和第 14 节前端整体框架。
 - 当前代码：Go 产品 API 尚未开始；`web/` 已有可运行的 React/Vite/Tailwind UI 框架，页面当前使用 Mock 数据。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
 - 当前明确未做：业务 API、数据库表、Redis、MQ、微服务和 Java 实现；前端真实 API 联调留给第 15 节。
