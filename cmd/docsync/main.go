@@ -1,4 +1,4 @@
-// Command docsync mirrors repository docs into a personal Obsidian vault.
+// Command docsync mirrors the repository README and docs into a personal Obsidian vault.
 // Vault edits are intentionally private and never flow back into the repo.
 package main
 
@@ -18,13 +18,20 @@ import (
 )
 
 const stateDir = ".growthos-sync"
+const projectReadmeMirror = "项目README.md"
+const projectReadmeMirrorVersion = "v1"
 
 type manifest map[string]string
+
+type syncSource struct {
+	repositoryRoot string
+	docsRoot       string
+}
 
 func main() {
 	vault := flag.String("vault", "", "Obsidian 目录路径")
 	dryRun := flag.Bool("dry-run", false, "只显示计划，不写入文件")
-	watch := flag.Bool("watch", false, "持续监听项目 docs/ 并自动同步")
+	watch := flag.Bool("watch", false, "持续监听项目 README.md 和 docs/ 并自动同步")
 	interval := flag.Duration("interval", 2*time.Second, "监听轮询间隔")
 	flag.Parse()
 	if strings.TrimSpace(*vault) == "" {
@@ -33,7 +40,7 @@ func main() {
 	if *interval <= 0 {
 		fatal(errors.New("--interval 必须大于 0"))
 	}
-	repoDocs, err := repositoryDocs()
+	source, err := repositorySource()
 	if err != nil {
 		fatal(err)
 	}
@@ -44,17 +51,17 @@ func main() {
 	if err := os.MkdirAll(vaultPath, 0o755); err != nil {
 		fatal(fmt.Errorf("创建 Obsidian 目录失败: %w", err))
 	}
-	if err := syncOnce(repoDocs, vaultPath, *dryRun); err != nil {
+	if err := syncOnce(source, vaultPath, *dryRun); err != nil {
 		fatal(err)
 	}
 	if !*watch {
 		return
 	}
-	fmt.Printf("开始监听项目 docs/，每 %s 同步一次；按 Ctrl+C 停止\n", interval.String())
+	fmt.Printf("开始监听项目 README.md 和 docs/，每 %s 同步一次；按 Ctrl+C 停止\n", interval.String())
 	var previous manifest
 	for {
 		time.Sleep(*interval)
-		current, err := collect(repoDocs)
+		current, err := collect(source)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "文档同步失败:", err)
 			continue
@@ -62,7 +69,7 @@ func main() {
 		if manifestsEqual(previous, current) {
 			continue
 		}
-		if err := syncOnce(repoDocs, vaultPath, false); err != nil {
+		if err := syncOnce(source, vaultPath, false); err != nil {
 			fmt.Fprintln(os.Stderr, "文档同步失败:", err)
 			continue
 		}
@@ -70,11 +77,11 @@ func main() {
 	}
 }
 
-func syncOnce(repoDocs, vaultPath string, dryRun bool) error {
+func syncOnce(sourceRoot syncSource, vaultPath string, dryRun bool) error {
 	statePath := filepath.Join(vaultPath, stateDir, "manifest.json")
-	source, err := collect(repoDocs)
+	source, err := collect(sourceRoot)
 	if err != nil {
-		return fmt.Errorf("读取项目 docs 失败: %w", err)
+		return fmt.Errorf("读取项目文档失败: %w", err)
 	}
 	previous, err := readManifest(statePath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -84,46 +91,46 @@ func syncOnce(repoDocs, vaultPath string, dryRun bool) error {
 		printPlan(source, previous)
 		return nil
 	}
-	if err := mirror(repoDocs, vaultPath, source, previous); err != nil {
+	if err := mirror(sourceRoot, vaultPath, source, previous); err != nil {
 		return err
 	}
 	if err := writeManifest(statePath, source); err != nil {
 		return fmt.Errorf("写入同步状态失败: %w", err)
 	}
-	fmt.Printf("已同步项目 docs/ -> %s\n", vaultPath)
+	fmt.Printf("已同步项目 README.md + docs/ -> %s\n", vaultPath)
 	return nil
 }
 
-func repositoryDocs() (string, error) {
+func repositorySource() (syncSource, error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return syncSource{}, err
 	}
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return filepath.Join(dir, "docs"), nil
+			return syncSource{repositoryRoot: dir, docsRoot: filepath.Join(dir, "docs")}, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("找不到项目根目录")
+			return syncSource{}, errors.New("找不到项目根目录")
 		}
 		dir = parent
 	}
 }
 
-func collect(root string) (manifest, error) {
+func collect(source syncSource) (manifest, error) {
 	result := manifest{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(source.docsRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if path != root && (entry.Name() == ".obsidian" || entry.Name() == stateDir) {
+			if path != source.docsRoot && (entry.Name() == ".obsidian" || entry.Name() == stateDir) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
+		rel, err := filepath.Rel(source.docsRoot, path)
 		if err != nil {
 			return err
 		}
@@ -139,16 +146,32 @@ func collect(root string) (manifest, error) {
 		result[rel] = hex.EncodeToString(digest[:])
 		return nil
 	})
-	return result, err
+	if err != nil {
+		return nil, err
+	}
+	readmePath := filepath.Join(source.repositoryRoot, "README.md")
+	data, err := os.ReadFile(readmePath)
+	if err != nil {
+		return nil, fmt.Errorf("读取根 README.md 失败: %w", err)
+	}
+	digest := sha256.Sum256(append(data, []byte("\x00"+projectReadmeMirrorVersion)...))
+	result[projectReadmeMirror] = hex.EncodeToString(digest[:])
+	return result, nil
 }
 
-func mirror(sourceRoot, targetRoot string, source, previous manifest) error {
+func mirror(sourceRoot syncSource, targetRoot string, source, previous manifest) error {
 	for _, path := range keys(source, previous) {
 		sourceHash, sourceOK := source[path]
 		previousHash, previousOK := previous[path]
 		sourceChanged := !previousOK || sourceHash != previousHash
 		if sourceOK && sourceChanged {
-			if err := copyFile(filepath.Join(sourceRoot, filepath.FromSlash(path)), filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil {
+			var err error
+			if path == projectReadmeMirror {
+				err = copyProjectReadme(sourcePath(sourceRoot, path), filepath.Join(targetRoot, filepath.FromSlash(path)))
+			} else {
+				err = copyFile(sourcePath(sourceRoot, path), filepath.Join(targetRoot, filepath.FromSlash(path)))
+			}
+			if err != nil {
 				return fmt.Errorf("同步文件失败 %s: %w", path, err)
 			}
 			continue
@@ -162,6 +185,13 @@ func mirror(sourceRoot, targetRoot string, source, previous manifest) error {
 	return nil
 }
 
+func sourcePath(source syncSource, path string) string {
+	if path == projectReadmeMirror {
+		return filepath.Join(source.repositoryRoot, "README.md")
+	}
+	return filepath.Join(source.docsRoot, filepath.FromSlash(path))
+}
+
 func copyFile(from, to string) error {
 	data, err := os.ReadFile(from)
 	if err != nil {
@@ -171,6 +201,22 @@ func copyFile(from, to string) error {
 		return err
 	}
 	return os.WriteFile(to, data, 0o644)
+}
+
+func copyProjectReadme(from, to string) error {
+	data, err := os.ReadFile(from)
+	if err != nil {
+		return err
+	}
+	content := strings.NewReplacer(
+		`src="docs/`, `src="`,
+		`href="docs/`, `href="`,
+		`](docs/`, `](`,
+	).Replace(string(data))
+	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(to, []byte(content), 0o644)
 }
 
 func keys(groups ...manifest) []string {

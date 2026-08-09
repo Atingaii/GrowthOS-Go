@@ -13,6 +13,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 5 节验收](lessons/lesson-05.md) | 事件风暴、命令/事件分类与异常路径评审 | 通过 |
 | [第 14 节验收](lessons/lesson-14.md) | React 前端整体框架与 UI 基线 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
+| [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 
 ## 记录格式
 
