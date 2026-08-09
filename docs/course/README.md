@@ -41,6 +41,7 @@
 - [第 4 节：设计 AI Operator 工作流](part-01/lesson-04-ai-operator-workflow.md) 已完成。
 - [第 5 节：事件风暴第一次领域分析](part-01/lesson-05-first-event-storm.md) 已完成。
 - [第 6 节：第一次划分限界上下文](part-01/lesson-06-first-bounded-contexts.md) 已完成。
+- [第 7 节：确定非功能需求](part-01/lesson-07-non-functional-requirements.md) 已完成。
 - 第 14 节前端整体框架已完成；其他章节仍处于规划状态。
 - 产品运行时代码将在第 11 节首次提供 HTTP 服务，前后端在第 15 节完成首次真实 API 联调。
 - 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。

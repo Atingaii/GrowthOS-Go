@@ -20,6 +20,7 @@
 | 第 4 节 | AI Operator 工作流，无真实前端调用 | 已完成 | [第 4 节 API 记录](lessons/lesson-04.md) |
 | 第 5 节 | 事件风暴分析，无真实前端调用 | 已完成 | [第 5 节 API 记录](lessons/lesson-05.md) |
 | 第 6 节 | 限界上下文分析，无真实前端调用 | 已完成 | [第 6 节 API 记录](lessons/lesson-06.md) |
+| 第 7 节 | 非功能需求分析，无真实前端调用 | 已完成 | [第 7 节 API 记录](lessons/lesson-07.md) |
 | 第 14 节 | 建立 Mock 数据边界，未新增真实后端调用 | 已完成 | [第 14 节 API 记录](lessons/lesson-14.md) |
 | 第 15 节 | Go 健康接口与前端首次联调 | 计划中 | 待本节实现后补充 |
 

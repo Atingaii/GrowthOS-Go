@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v4 基线
+**状态：** v5 基线
 **更新日期：** 2026-08-09
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)
 
 ## 一句话定位
 
@@ -54,7 +54,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号将在后续章节被细化为 SLO、接口验收和数据指标；v2 不虚构尚未测量的数值目标。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前没有 Go 业务后端，全部实测值仍保持“未测量”，不能将目标值当作项目成绩。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 
@@ -65,3 +65,5 @@ AI 查询、计划、Tool 调用、审批、失败和审计边界见[AI Operator
 命令、领域事件、查询、策略、失败和补偿的统一分析见[领域事件地图 v1](domain-event-map-v1.md)。
 
 营销活动、抽奖、参与、权益、Feed、行为分析、治理和 AI 运营的职责与事实所有权见[限界上下文地图 v1](bounded-context-map-v1.md)。
+
+容量、延迟、可用性、一致性、恢复、安全与降级目标见[非功能需求基线 v1](non-functional-requirements-v1.md)。

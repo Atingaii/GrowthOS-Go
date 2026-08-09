@@ -173,7 +173,7 @@ GrowthOS 可以通过防腐层适配这些系统，但不能假设自己拥有�
 ## 10. 当前假设与演进触发条件
 
 - Participation 与 Marketing 当前分开建模；若后续规则始终共同变化且没有独立生命周期，可重新合并评估；
-- Points、Coupon 和 Quota 暂归 Benefit；当团队、合规或负载差异足够大时再讨论拆分；
+- Points 和 Coupon 暂归 Benefit，活动参与 Quota 归 Participation；当团队、合规或负载差异足够大时再讨论拆分；
 - Behavior 与 Analytics 暂为一个上下文；采集和分析出现完全不同的团队及运行约束后再拆；
 - Governance 同时服务人工与 AI；若平台接入企业级统一 IAM，应通过外部系统适配而不是复制权限事实；
 - Feed 的曝光确认语义需要在行为协议章节继续验证，当前不把接口返回等同于真实曝光。

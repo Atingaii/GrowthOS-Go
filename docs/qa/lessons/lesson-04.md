@@ -36,6 +36,6 @@ make verify
 ## 未覆盖与剩余风险
 
 - 本节没有实现 Agent、LLM、MCP、审批存储或真实 Tool，因此不执行协议、接口和安全测试；
-- 风险阈值、审批 SLA、Tool 超时和任务恢复时限尚未量化，留给第 7 节及后续实现；
+- 第 7 节已建立审批有效期、Tool 网关开销、结果未知核对和任务恢复候选目标；具体业务 Tool 超时与风险阈值仍随真实接口和场景验证；
 - Prompt Injection、RAG 和 Agent Evaluation 这里只定义产品边界，完整技术措施留给第 93 节；
 - 当前 AI Operator 页面仍是 Mock 框架，不作为工作流已运行的证据。
