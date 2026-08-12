@@ -10,3 +10,6 @@
 .env
 .env.*
 !.env.example
+
+# CCB 多代理协作运行时目录（不进入 Git）
+/.ccb/

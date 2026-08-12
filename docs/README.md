@@ -22,7 +22,8 @@
 | 质量证据 | [QA 索引](qa/README.md) | 测试策略、验收记录和已知风险 |
 | 完成标准 | [Definition of Done](standards/definition-of-done.md) | 何时可以称为完成 |
 | 文档治理 | [文档治理规范](standards/documentation-governance.md) | 文档归属和漂移控制 |
-| Obsidian 同步 | [双向同步说明](standards/obsidian-sync.md) | 项目文档与 Obsidian Vault 的同步规则 |
+| 双代理协作 | [协作协议](standards/collaboration-protocol.md) | Codex 规划/验收、Claude 实现/测试的闭环规则 |
+| Obsidian 同步 | [同步说明](standards/obsidian-sync.md) | 根 README/docs 单向镜像到个人 Vault；含每任务最终同步门禁（见协作协议） |
 
 ## 当前基线
 

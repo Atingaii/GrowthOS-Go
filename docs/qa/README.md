@@ -18,6 +18,8 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |
+| [双代理协作协议](collaboration-protocol-2026-08-12.md) | 规则内容验收通过；原工作区 `make verify` 存在已知 `.ccb` 断链误报的基础设施失败 | 规则内容通过；原工作区整体验证有已知失败 |
+| [Obsidian 同步门禁与 .ccb 排除](collaboration-protocol-obsidian-gate-2026-08-12.md) | 工具/治理/文档变更评审 + 实际 Obsidian 同步 | 通过 |
 
 ## 记录格式
 

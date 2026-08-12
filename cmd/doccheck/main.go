@@ -87,7 +87,7 @@ func checkMarkdownLinks(root string) []error {
 		}
 		if entry.IsDir() {
 			name := entry.Name()
-			if name == ".git" || name == "vendor" || name == "node_modules" {
+			if name == ".git" || name == "vendor" || name == "node_modules" || name == ".ccb" {
 				return filepath.SkipDir
 			}
 			return nil
