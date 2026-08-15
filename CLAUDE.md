@@ -4,6 +4,8 @@
 
 完整、唯一的规则正文在 **[docs/standards/collaboration-protocol.md](docs/standards/collaboration-protocol.md)**（下称"协作协议"）。本文件只做入口，不重复维护规则副本；协议有任何修订都更新正文，两个入口保持一致。
 
+**激活边界**：双代理职责、任务包、交付报告与同步门禁仅在 CCB 模式下激活——即当前会话由 CCB 管理、且 Codex 与 Claude 作为同一 CCB 项目的协作代理存在。单独运行 Claude、非 CCB 会话或没有 CCB 项目上下文时，本协议不激活，按宿主自身规则正常工作，不得要求虚构 Codex 或进行双代理验收。识别以项目 `.ccb/ccb.config`/CCB 运行时为准。
+
 职责速览（细节以协作协议为准）：
 
 - **实现**：所有代码与文档修改。

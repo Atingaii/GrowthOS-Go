@@ -20,6 +20,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |
 | [双代理协作协议](collaboration-protocol-2026-08-12.md) | 规则内容验收通过；原工作区 `make verify` 存在已知 `.ccb` 断链误报的基础设施失败 | 规则内容通过；原工作区整体验证有已知失败 |
 | [Obsidian 同步门禁与 .ccb 排除](collaboration-protocol-obsidian-gate-2026-08-12.md) | 工具/治理/文档变更评审 + 实际 Obsidian 同步 | 通过 |
+| [双代理协作激活边界](collaboration-protocol-activation-boundary-2026-08-12.md) | 协作规则激活边界评审 + 实际 Obsidian 同步 | 通过 |
 
 ## 记录格式
 

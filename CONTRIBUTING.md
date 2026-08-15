@@ -4,8 +4,9 @@ GrowthOS-Go 将文档视为实现的一部分，而不是延期交付物。
 
 ## 双代理协作
 
-仓库由 Codex 与 Claude 双代理协作开发。完整规则见 [双代理协作协议](docs/standards/collaboration-protocol.md)（根级 `AGENTS.md`/`CLAUDE.md` 为入口）：
+仓库在 **CCB 模式**下由 Codex 与 Claude 双代理协作开发。完整规则见 [双代理协作协议](docs/standards/collaboration-protocol.md)（根级 `AGENTS.md`/`CLAUDE.md` 为入口）：
 
+- **激活边界**：双代理职责、任务包、验收与同步门禁仅在 CCB 管理且 Codex/Claude 作为同一 CCB 项目协作代理时激活；单独运行 Codex 或单独运行 Claude、非 CCB 会话或无 CCB 项目上下文时不激活，代理按宿主自身规则工作，不被要求虚构另一代理或双代理验收。
 - **Codex**：规划与验收负责人——拆分任务、定义范围与验收标准，仅基于 diff、文档和测试证据验收。
 - **Claude**：唯一实现与测试负责人——负责所有代码/文档修改与测试，并为每个任务提交交付/QA 记录。
 
