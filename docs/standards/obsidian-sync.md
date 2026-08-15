@@ -47,11 +47,3 @@ make verify
 ```
 
 同步工具不会自动提交 Git，也不会将 Vault 目录加入项目 Git。项目文档变更仍需人工检查、运行质量门禁后再提交。
-
-## 作为协作验收门禁
-
-在 **CCB 模式**的双代理协作中，Obsidian 最终同步是交付前的最后文档镜像步骤，规则见 [双代理协作协议](collaboration-protocol.md)。该门禁仅在 CCB 激活边界内适用（当前会话由 CCB 管理且 Codex/Claude 作为同一 CCB 项目协作代理）；单独运行 Codex/Claude、非 CCB 会话或没有 CCB 项目上下文时不强制此门禁。要点：
-
-- 每个任务无论是否修改 `README.md`/`docs`/QA，都必须在提交交付报告前执行 `make docs-sync VAULT=/mnt/e/TencentGo/growthOS`，不允许跳过；
-- 同步命令、结果与一致性核验写入交付/QA 记录；Codex 缺此证据不得验收通过；
-- 最终同步之后不再修改仓库 `README.md`/`docs/`，否则需重新同步。
