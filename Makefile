@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-status compose-smoke compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
 
 COMPOSE_FILE ?= deploy/compose/compose.yaml
 COMPOSE_PROJECT ?= growthos
@@ -28,6 +28,9 @@ help:
 		'  make web-test   Run frontend unit and component tests' \
 		'  make web-verify Run frontend tests, typecheck, and production build' \
 		'  make compose-up Start the isolated local Compose stack and wait for health' \
+		'  make compose-migrate Apply migrations and reconcile application grants' \
+		'  make compose-grants Reconcile the exact application table-grant allowlist' \
+		'  make compose-status Inspect migration state with the freshly built image' \
 		'  make compose-down Stop the Compose stack while retaining named volumes' \
 		'  make compose-ps  Show Compose services and health' \
 		'  make compose-smoke Verify normal stack state, HTTP contracts, and port isolation' \
@@ -60,6 +63,7 @@ db-status:
 	go run ./cmd/growth-migrate status
 
 test-integration-mysql:
+	@test "$${GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES:-}" = 'lesson-18-isolated-schema' || (printf '%s\n' 'set GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES=lesson-18-isolated-schema for a dedicated disposable test schema' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_API_ADDRESS:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_ADDRESS' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_API_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_DATABASE' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_API_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_USER' && exit 1)
@@ -68,7 +72,7 @@ test-integration-mysql:
 	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_DATABASE' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_USER' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_PASSWORD:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_PASSWORD' && exit 1)
-	go test -count=1 -run 'Integration$$' ./internal/infrastructure/mysql ./internal/infrastructure/migration
+	go test -count=1 -run 'Integration$$' ./internal/infrastructure/mysql ./internal/infrastructure/migration ./migrations
 
 doc-check:
 	go run ./cmd/doccheck
@@ -103,7 +107,7 @@ compose-down:
 	$(COMPOSE) down --remove-orphans
 
 compose-reset:
-	@test "$(CONFIRM)" = 'reset-growthos-data' || (printf '%s\n' 'refusing to delete the Compose volume; retry with CONFIRM=reset-growthos-data' >&2 && exit 1)
+	@test "$(CONFIRM)" = 'reset-growthos-data' || (printf '%s\n' 'refusing to delete the Compose data and socket volumes; retry with CONFIRM=reset-growthos-data' >&2 && exit 1)
 	$(COMPOSE) down --volumes --remove-orphans
 
 compose-ps:
@@ -113,10 +117,14 @@ compose-logs:
 	$(COMPOSE) logs --tail=200
 
 compose-migrate: compose-secrets
-	$(COMPOSE) run --rm migrate up
+	$(COMPOSE) run --rm --build migrate up
+	$(COMPOSE) run --rm --no-deps mysql-grants
+
+compose-grants: compose-secrets
+	$(COMPOSE) run --rm --no-deps mysql-grants
 
 compose-status: compose-secrets
-	$(COMPOSE) run --rm migrate status
+	$(COMPOSE) run --rm --build migrate status
 
 compose-smoke:
 	GROWTHOS_COMPOSE_PROJECT="$(COMPOSE_PROJECT)" \

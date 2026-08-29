@@ -34,8 +34,6 @@ MYSQL_PWD="${MYSQL_ROOT_PASSWORD:?mysql root password is unavailable}" mysql \
 CREATE USER 'growthos_app'@'%' IDENTIFIED BY '${app_password}';
 CREATE USER 'growthos_migrator'@'%' IDENTIFIED BY '${migration_password}';
 
-GRANT SELECT, INSERT, UPDATE, DELETE
-    ON \`growthos\`.* TO 'growthos_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
     ON \`growthos\`.* TO 'growthos_migrator'@'%';
 SQL

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-# Read-only smoke test for the lesson-16 Docker Compose development stack.
+# Read-only smoke test for the current Docker Compose development stack.
 # Supported overrides:
 #   GROWTHOS_COMPOSE_PROJECT       Compose project name (default: growthos)
 #   GROWTHOS_COMPOSE_FILE          Compose file path
@@ -141,15 +141,126 @@ for service_name in mysql api redis web; do
     assert_running_healthy "$service_name"
 done
 
+assert_completed_successfully() {
+    inspected_service=$1
+    resolve_container "$inspected_service"
+    inspect_value '{{.State.Status}}' state
+    completed_state=$inspected_value
+    inspect_value '{{.State.ExitCode}}' exit-code
+    completed_exit_code=$inspected_value
+    if [ "$completed_state" != 'exited' ] || [ "$completed_exit_code" != '0' ]; then
+        fail "$inspected_service is $completed_state with exit code $completed_exit_code instead of exited with code 0"
+    fi
+    ok "$inspected_service exited successfully"
+}
+
+assert_completed_successfully migrate
+assert_completed_successfully mysql-grants
+
 resolve_container migrate
-inspect_value '{{.State.Status}}' state
-migrate_state=$inspected_value
-inspect_value '{{.State.ExitCode}}' exit-code
-migrate_exit_code=$inspected_value
-if [ "$migrate_state" != 'exited' ] || [ "$migrate_exit_code" != '0' ]; then
-    fail "migrate is $migrate_state with exit code $migrate_exit_code instead of exited with code 0"
+inspect_value '{{.Config.Image}}' image
+if [ "$inspected_value" != 'growthos/migrate:lesson-18' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-18"
 fi
-ok 'migrate exited successfully'
+ok 'migrate image identifies the lesson-18 schema build'
+
+resolve_container api
+inspect_value '{{.Config.Image}}' image
+if [ "$inspected_value" != 'growthos/api:lesson-18' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-18"
+fi
+ok 'api image identifies the lesson-18 compatible release'
+
+# The dollar-prefixed expressions belong to the container shell.
+# shellcheck disable=SC2016
+if ! migration_state=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_migration_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_migrator --database=growthos \
+        --batch --silent --skip-column-names \
+        --execute="SELECT CONCAT(version, CHAR(58), dirty) FROM schema_migrations"
+'); then
+    fail 'could not inspect the migration version through the migration identity'
+fi
+if [ "$migration_state" != '2:0' ]; then
+    fail "migration state is $migration_state instead of clean version 2"
+fi
+ok 'schema migrations are clean at version 2'
+
+# shellcheck disable=SC2016
+if ! name_constraint_state=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_migration_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_migrator --database=growthos \
+        --batch --silent --skip-column-names --execute="
+            SELECT CONCAT(
+                SUM(constraint_name IN (
+                    0x63686b5f6c6f74746572795f73747261746567795f6e616d655f6261736963,
+                    0x63686b5f6c6f74746572795f73747261746567795f61776172645f6e616d655f6261736963
+                )),
+                CHAR(58),
+                SUM(constraint_name IN (
+                    0x63686b5f6c6f74746572795f73747261746567795f6e616d655f63616e6f6e6963616c,
+                    0x63686b5f6c6f74746572795f73747261746567795f61776172645f6e616d655f63616e6f6e6963616c
+                ))
+            )
+            FROM information_schema.table_constraints
+            WHERE constraint_schema = DATABASE()
+        "
+'); then
+    fail 'could not inspect the lesson-18 name constraints'
+fi
+if [ "$name_constraint_state" != '2:0' ]; then
+    fail "name constraint state is $name_constraint_state instead of two basic constraints and no stale canonical labels"
+fi
+ok 'live name constraints match the final lesson-18 migration contract'
+
+# shellcheck disable=SC2016
+if ! compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="SELECT 1 FROM lottery_strategy LIMIT 0; SELECT 1 FROM lottery_strategy_award LIMIT 0"
+' >/dev/null; then
+    fail 'growthos_app cannot read the lesson-18 business table allowlist'
+fi
+# shellcheck disable=SC2016
+if ! actual_app_grants=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos \
+        --batch --silent --skip-column-names --execute="SHOW GRANTS FOR CURRENT_USER"
+' | LC_ALL=C sort); then
+    fail 'could not inspect growthos_app grants'
+fi
+expected_app_grants=$(LC_ALL=C sort <<'EOF'
+GRANT SELECT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
+GRANT SELECT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
+GRANT USAGE ON *.* TO `growthos_app`@`%`
+EOF
+)
+if [ "$actual_app_grants" != "$expected_app_grants" ]; then
+    fail 'growthos_app grants differ from the lesson-18 allowlist'
+fi
+# Mandatory roles are effective privileges even though they are not assigned
+# directly to growthos_app, so an exact per-account SHOW GRANTS check is not
+# sufficient on its own.
+# shellcheck disable=SC2016
+if ! mandatory_roles=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos \
+        --batch --silent --skip-column-names --execute="SELECT @@GLOBAL.mandatory_roles"
+'); then
+    fail 'could not inspect MySQL mandatory roles through growthos_app'
+fi
+if [ -n "$mandatory_roles" ]; then
+    fail "MySQL mandatory roles expand growthos_app privileges: $mandatory_roles"
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="SELECT version FROM schema_migrations"
+' >/dev/null 2>&1; then
+    fail 'growthos_app unexpectedly has access to schema_migrations'
+fi
+ok 'growthos_app can read only the intended business schema surface'
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-compose-smoke.XXXXXX")
 cleanup() {
@@ -256,7 +367,7 @@ published_ports() {
     service_published_ports=$inspected_value
 }
 
-for service_name in api mysql redis migrate; do
+for service_name in api mysql redis migrate mysql-grants; do
     resolve_container "$service_name"
     published_ports
     if [ -n "$service_published_ports" ]; then

@@ -19,6 +19,7 @@ services:
       - mysql_migration_password
     volumes:
       - mysql_data:/var/lib/mysql
+      - mysql_socket:/var/run/mysqld
       - ./mysql/init/10-create-growthos-users.sh:/docker-entrypoint-initdb.d/10-create-growthos-users.sh:ro
     networks:
       - data
@@ -26,8 +27,8 @@ services:
       test:
         - CMD-SHELL
         - >-
-          MYSQL_PWD="$$(cat /run/secrets/mysql_app_password)"
-          mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app
+          MYSQL_PWD="$$(cat /run/secrets/mysql_migration_password)"
+          mysql --protocol=tcp --host=127.0.0.1 --user=growthos_migrator
           --database=growthos --silent --skip-column-names
           --execute='SELECT 1' | grep -qx 1
       interval: 5s
@@ -39,13 +40,13 @@ services:
     logging: *json-logging
 
   migrate:
-    image: growthos/migrate:lesson-16
+    image: growthos/migrate:lesson-18
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
       target: migrate
       args:
-        VERSION: lesson-16
+        VERSION: lesson-18
     environment:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_LOG_FORMAT: json
@@ -73,14 +74,43 @@ services:
     stop_grace_period: 50s
     logging: *json-logging
 
+  mysql-grants:
+    image: mysql:8.4.11
+    user: "999:999"
+    entrypoint: [/bin/sh, /usr/local/bin/reconcile-growthos-app-grants.sh]
+    command: []
+    secrets:
+      - mysql_root_password
+    volumes:
+      - ./mysql/grants/empty:/var/lib/mysql:ro
+      - mysql_socket:/var/run/mysqld:ro
+      - ./mysql/grants/reconcile-growthos-app-grants.sh:/usr/local/bin/reconcile-growthos-app-grants.sh:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: "no"
+    stop_grace_period: 10s
+    logging: *json-logging
+
   api:
-    image: growthos/api:lesson-16
+    image: growthos/api:lesson-18
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
       target: api
       args:
-        VERSION: lesson-16
+        VERSION: lesson-18
     environment:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_HTTP_ADDRESS: 0.0.0.0:8080
@@ -95,7 +125,7 @@ services:
     secrets:
       - mysql_app_password
     depends_on:
-      migrate:
+      mysql-grants:
         condition: service_completed_successfully
       mysql:
         condition: service_healthy
@@ -191,6 +221,7 @@ secrets:
 
 volumes:
   mysql_data:
+  mysql_socket:
 
 networks:
   edge:

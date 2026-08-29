@@ -164,7 +164,7 @@ func TestProductionFactoryConstructionFailureReliesOnOwnershipContractWithoutLea
 	}
 }
 
-func TestProductionFactoryBuildsEmbeddedNoMigrationsRunnerAndTransfersOwnership(t *testing.T) {
+func TestProductionFactoryWithEmbeddedMigrationsRequiresDatabaseAndReleasesOwnershipOnFailure(t *testing.T) {
 	database := unopenedTestDatabase(t)
 	factory := newProductionRunnerFactory(
 		func(context.Context, mysqlstore.MigrationConfig) (*sql.DB, error) {
@@ -177,21 +177,11 @@ func TestProductionFactoryBuildsEmbeddedNoMigrationsRunnerAndTransfersOwnership(
 		LockTimeout:      40 * time.Second,
 		StatementTimeout: 30 * time.Second,
 	})
-	if err != nil {
-		t.Fatalf("factory error = %v", err)
-	}
-	result, err := runner.Up(context.Background())
-	if err != nil {
-		t.Fatalf("Up() error = %v", err)
-	}
-	if result.State != dbmigration.ResultNoMigrations {
-		t.Fatalf("Up() result = %#v, want no migrations", result)
-	}
-	if err := runner.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
+	if err == nil || runner != nil {
+		t.Fatalf("factory = runner %v, error %v; real embedded migrations must open the database", runner, err)
 	}
 	if err := database.PingContext(context.Background()); err == nil {
-		t.Fatal("Runner.Close did not release the owned database")
+		t.Fatal("migration construction failure did not release the owned database")
 	}
 }
 

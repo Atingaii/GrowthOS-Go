@@ -4,9 +4,9 @@ package migrations
 
 import "embed"
 
-// Files contains the migration policy and the sql subtree. Lesson 13
-// intentionally ships without a real .up.sql file; the first business schema
-// starts in Lesson 18 as 000001_*.up.sql.
+// Files contains the migration policy and the sql subtree. Lesson 18 adds the
+// first business schema as two single-DDL migrations: Strategy followed by its
+// strategy-scoped Awards.
 //
 //go:embed README.md sql
 var Files embed.FS
