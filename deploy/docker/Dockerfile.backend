@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GO_VERSION=1.26.6
+ARG ALPINE_VERSION=3.23
+
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS builder
+
+ARG TARGETOS=linux
+ARG TARGETARCH
+ARG VERSION=compose-dev
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && go mod verify
+
+COPY cmd ./cmd
+COPY internal ./internal
+COPY migrations ./migrations
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -buildvcs=false -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/growth-api ./cmd/growth-api && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -buildvcs=false -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/growth-migrate ./cmd/growth-migrate
+
+FROM alpine:${ALPINE_VERSION} AS runtime
+
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S -g 65532 growthos && \
+    adduser -S -D -H -u 65532 -G growthos -s /sbin/nologin growthos
+
+WORKDIR /app
+USER 65532:65532
+
+FROM runtime AS api
+
+COPY --from=builder --chown=65532:65532 /out/growth-api /usr/local/bin/growth-api
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/growth-api"]
+
+FROM runtime AS migrate
+
+COPY --from=builder --chown=65532:65532 /out/growth-migrate /usr/local/bin/growth-migrate
+
+ENTRYPOINT ["/usr/local/bin/growth-migrate"]
+CMD ["up"]

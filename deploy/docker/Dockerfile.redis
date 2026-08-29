@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1.7
+
+ARG REDIS_VERSION=7.4.11
+ARG REDIS_ALPINE_VERSION=3.21
+
+FROM redis:${REDIS_VERSION}-alpine${REDIS_ALPINE_VERSION}
+
+COPY --chmod=0555 deploy/docker/redis-entrypoint.sh /usr/local/bin/growthos-redis-entrypoint
+
+USER 999:999
+ENTRYPOINT ["/usr/local/bin/growthos-redis-entrypoint"]
+CMD ["redis-server", "/tmp/growthos-redis/redis.conf"]
