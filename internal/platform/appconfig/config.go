@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +36,7 @@ const (
 	mysqlWriteTimeoutVariable     = "GROWTHOS_MYSQL_WRITE_TIMEOUT"
 	mysqlUserVariable             = "GROWTHOS_MYSQL_USER"
 	mysqlPasswordVariable         = "GROWTHOS_MYSQL_PASSWORD"
+	mysqlPasswordFileVariable     = "GROWTHOS_MYSQL_PASSWORD_FILE"
 	mysqlPingTimeoutVariable      = "GROWTHOS_MYSQL_PING_TIMEOUT"
 	mysqlMaxOpenConnsVariable     = "GROWTHOS_MYSQL_MAX_OPEN_CONNS"
 	mysqlMaxIdleConnsVariable     = "GROWTHOS_MYSQL_MAX_IDLE_CONNS"
@@ -41,6 +44,7 @@ const (
 	mysqlConnMaxIdleTimeVariable  = "GROWTHOS_MYSQL_CONN_MAX_IDLE_TIME"
 	migrationUserVariable         = "GROWTHOS_MYSQL_MIGRATION_USER"
 	migrationPasswordVariable     = "GROWTHOS_MYSQL_MIGRATION_PASSWORD"
+	migrationPasswordFileVariable = "GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE"
 	migrationReadTimeoutVariable  = "GROWTHOS_MYSQL_MIGRATION_READ_TIMEOUT"
 	migrationLockTimeoutVariable  = "GROWTHOS_MYSQL_MIGRATION_LOCK_TIMEOUT"
 	migrationStatementVariable    = "GROWTHOS_MYSQL_MIGRATION_STATEMENT_TIMEOUT"
@@ -83,6 +87,7 @@ const (
 	readinessResponseBudget       = time.Second
 	migrationTimeoutBudget        = 5 * time.Second
 	maximumPasswordBytes          = 1024
+	maximumPasswordFileBytes      = maximumPasswordBytes + 3
 )
 
 const (
@@ -324,7 +329,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		&problems,
 	)
 	loadMySQLUser(lookup, mysqlUserVariable, &config.MySQL.User, &problems)
-	loadRequiredPassword(lookup, mysqlPasswordVariable, &config.MySQL.Password, &problems)
+	loadRequiredPassword(lookup, mysqlPasswordVariable, mysqlPasswordFileVariable, &config.MySQL.Password, &problems)
 	mysqlPingTimeoutValid := loadDuration(lookup, mysqlPingTimeoutVariable, maximumMySQLPingTimeout, &config.MySQL.PingTimeout, &problems)
 	maxOpenValid := loadInteger(lookup, mysqlMaxOpenConnsVariable, 1, maximumMySQLConnections, &config.MySQL.MaxOpenConnections, &problems)
 	maxIdleValid := loadInteger(lookup, mysqlMaxIdleConnsVariable, 0, maximumMySQLConnections, &config.MySQL.MaxIdleConnections, &problems)
@@ -367,7 +372,7 @@ func LoadMigration(lookup LookupFunc) (MigrationConfig, error) {
 		&problems,
 	)
 	loadMySQLUser(lookup, migrationUserVariable, &config.MySQL.User, &problems)
-	loadRequiredPassword(lookup, migrationPasswordVariable, &config.MySQL.Password, &problems)
+	loadRequiredPassword(lookup, migrationPasswordVariable, migrationPasswordFileVariable, &config.MySQL.Password, &problems)
 	migrationLockTimeoutValid := loadDurationRange(lookup, migrationLockTimeoutVariable, 11*time.Second, maximumMigrationLockTimeout, &config.MySQL.LockTimeout, &problems)
 	migrationStatementTimeoutValid := loadDuration(lookup, migrationStatementVariable, maximumMigrationStatement, &config.MySQL.StatementTimeout, &problems)
 	if migrationReadTimeoutValid && migrationStatementTimeoutValid &&
@@ -508,21 +513,66 @@ func loadMySQLUser(lookup LookupFunc, variable string, destination *string, prob
 	*destination = value
 }
 
-func loadRequiredPassword(lookup LookupFunc, variable string, destination *string, problems *[]error) {
-	value, found := lookup(variable)
-	if !found {
-		*problems = append(*problems, fmt.Errorf("%s is required", variable))
+func loadRequiredPassword(
+	lookup LookupFunc,
+	variable string,
+	fileVariable string,
+	destination *string,
+	problems *[]error,
+) {
+	value, valuePresent := lookup(variable)
+	filePath, filePresent := lookup(fileVariable)
+	if valuePresent && filePresent {
+		*problems = append(*problems, fmt.Errorf("%s and %s are mutually exclusive", variable, fileVariable))
 		return
 	}
-	if len(value) == 0 {
-		*problems = append(*problems, fmt.Errorf("%s must not be empty", variable))
+	if !valuePresent && !filePresent {
+		*problems = append(*problems, fmt.Errorf("exactly one of %s or %s is required", variable, fileVariable))
 		return
 	}
-	if len(value) > maximumPasswordBytes {
-		*problems = append(*problems, fmt.Errorf("%s must be no more than %d bytes", variable, maximumPasswordBytes))
+
+	if valuePresent {
+		if len(value) == 0 {
+			*problems = append(*problems, fmt.Errorf("%s must not be empty", variable))
+			return
+		}
+		if len(value) > maximumPasswordBytes {
+			*problems = append(*problems, fmt.Errorf("%s must be no more than %d bytes", variable, maximumPasswordBytes))
+			return
+		}
+		*destination = value
 		return
 	}
-	*destination = value
+
+	if strings.TrimSpace(filePath) == "" {
+		*problems = append(*problems, fmt.Errorf("%s must not be empty", fileVariable))
+		return
+	}
+	passwordFile, err := os.Open(filePath)
+	if err != nil {
+		*problems = append(*problems, fmt.Errorf("%s could not be read", fileVariable))
+		return
+	}
+	contents, readErr := io.ReadAll(io.LimitReader(passwordFile, maximumPasswordFileBytes+1))
+	closeErr := passwordFile.Close()
+	if readErr != nil || closeErr != nil {
+		*problems = append(*problems, fmt.Errorf("%s could not be read", fileVariable))
+		return
+	}
+	if len(contents) > maximumPasswordFileBytes {
+		*problems = append(*problems, fmt.Errorf("%s must contain no more than %d password bytes", fileVariable, maximumPasswordBytes))
+		return
+	}
+	password := strings.TrimRight(string(contents), "\r\n")
+	if len(password) == 0 {
+		*problems = append(*problems, fmt.Errorf("%s must contain a non-empty password", fileVariable))
+		return
+	}
+	if len(password) > maximumPasswordBytes {
+		*problems = append(*problems, fmt.Errorf("%s must contain no more than %d password bytes", fileVariable, maximumPasswordBytes))
+		return
+	}
+	*destination = password
 }
 
 func loadInteger(

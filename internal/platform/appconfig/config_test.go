@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -517,11 +519,12 @@ func TestLoadRequiresReadinessBudgetBeforeHTTPWriteDeadline(t *testing.T) {
 
 func TestLoadIgnoresMigrationAccountVariables(t *testing.T) {
 	config, err := Load(mapLookup(apiVariables(map[string]string{
-		migrationUserVariable:        "",
-		migrationPasswordVariable:    "",
-		migrationReadTimeoutVariable: "not-a-duration",
-		migrationLockTimeoutVariable: "not-a-duration",
-		migrationStatementVariable:   "not-a-duration",
+		migrationUserVariable:         "",
+		migrationPasswordVariable:     "",
+		migrationPasswordFileVariable: "/DO_NOT_READ_MIGRATION_PASSWORD_FILE",
+		migrationReadTimeoutVariable:  "not-a-duration",
+		migrationLockTimeoutVariable:  "not-a-duration",
+		migrationStatementVariable:    "not-a-duration",
 	})))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want migration-only variables ignored", err)
@@ -588,6 +591,200 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 	}
 	if config.MySQL.Password != "   " {
 		t.Fatal("Load() did not preserve whitespace password exactly")
+	}
+}
+
+func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
+	type loader struct {
+		name         string
+		fileVariable string
+		loadPassword func(LookupFunc) (string, error)
+	}
+	loaders := []loader{
+		{
+			name:         "api",
+			fileVariable: mysqlPasswordFileVariable,
+			loadPassword: func(lookup LookupFunc) (string, error) {
+				config, err := Load(lookup)
+				return config.MySQL.Password, err
+			},
+		},
+		{
+			name:         "migration",
+			fileVariable: migrationPasswordFileVariable,
+			loadPassword: func(lookup LookupFunc) (string, error) {
+				config, err := LoadMigration(lookup)
+				return config.MySQL.Password, err
+			},
+		},
+	}
+	passwords := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{name: "exact", contents: "file-secret", want: "file-secret"},
+		{name: "line feed", contents: "file-secret\n", want: "file-secret"},
+		{name: "CRLF and repeated terminators", contents: "file-secret\r\n\n", want: "file-secret"},
+		{name: "preserves other whitespace", contents: " file-secret \t\r\n", want: " file-secret \t"},
+		{name: "maximum bytes plus CRLF", contents: strings.Repeat("x", maximumPasswordBytes) + "\r\n", want: strings.Repeat("x", maximumPasswordBytes)},
+	}
+
+	for _, loader := range loaders {
+		for _, password := range passwords {
+			t.Run(loader.name+"/"+password.name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "password")
+				if err := os.WriteFile(path, []byte(password.contents), 0o600); err != nil {
+					t.Fatalf("os.WriteFile() error = %v", err)
+				}
+				got, err := loader.loadPassword(mapLookup(map[string]string{loader.fileVariable: path}))
+				if err != nil {
+					t.Fatalf("load password file error = %v", err)
+				}
+				if got != password.want {
+					t.Fatalf("password = %q, want exact file value with only trailing CR/LF removed", got)
+				}
+			})
+		}
+	}
+}
+
+func TestPasswordFileSourcesRejectInvalidInputsWithoutLeakingSecretsOrPaths(t *testing.T) {
+	type loader struct {
+		name             string
+		passwordVariable string
+		fileVariable     string
+		load             func(LookupFunc) error
+	}
+	loaders := []loader{
+		{
+			name:             "api",
+			passwordVariable: mysqlPasswordVariable,
+			fileVariable:     mysqlPasswordFileVariable,
+			load: func(lookup LookupFunc) error {
+				_, err := Load(lookup)
+				return err
+			},
+		},
+		{
+			name:             "migration",
+			passwordVariable: migrationPasswordVariable,
+			fileVariable:     migrationPasswordFileVariable,
+			load: func(lookup LookupFunc) error {
+				_, err := LoadMigration(lookup)
+				return err
+			},
+		},
+	}
+
+	testDirectory := t.TempDir()
+	emptyPath := filepath.Join(testDirectory, "EMPTY_FILE_DO_NOT_ECHO")
+	if err := os.WriteFile(emptyPath, nil, 0o600); err != nil {
+		t.Fatalf("write empty password file: %v", err)
+	}
+	newlineOnlyPath := filepath.Join(testDirectory, "NEWLINE_ONLY_DO_NOT_ECHO")
+	if err := os.WriteFile(newlineOnlyPath, []byte("\r\n\n"), 0o600); err != nil {
+		t.Fatalf("write newline-only password file: %v", err)
+	}
+	oversizedSecret := "OVERSIZED_SECRET_" + strings.Repeat("x", maximumPasswordBytes)
+	oversizedPath := filepath.Join(testDirectory, "OVERSIZED_FILE_DO_NOT_ECHO")
+	if err := os.WriteFile(oversizedPath, []byte(oversizedSecret+"\r\n"), 0o600); err != nil {
+		t.Fatalf("write oversized password file: %v", err)
+	}
+	missingPath := filepath.Join(testDirectory, "MISSING_FILE_DO_NOT_ECHO")
+	unreadablePath := filepath.Join(testDirectory, "DIRECTORY_NOT_FILE_DO_NOT_ECHO")
+	if err := os.Mkdir(unreadablePath, 0o700); err != nil {
+		t.Fatalf("create unreadable password source: %v", err)
+	}
+
+	for _, loader := range loaders {
+		tests := []struct {
+			name          string
+			variables     map[string]string
+			wantVariables []string
+			wantReason    string
+			doNotEcho     []string
+		}{
+			{
+				name:          "neither source",
+				wantVariables: []string{loader.passwordVariable, loader.fileVariable},
+				wantReason:    "exactly one",
+			},
+			{
+				name: "conflicting sources",
+				variables: map[string]string{
+					loader.passwordVariable: "CONFLICTING_PASSWORD_DO_NOT_ECHO",
+					loader.fileVariable:     missingPath,
+				},
+				wantVariables: []string{loader.passwordVariable, loader.fileVariable},
+				wantReason:    "mutually exclusive",
+				doNotEcho:     []string{"CONFLICTING_PASSWORD_DO_NOT_ECHO", missingPath},
+			},
+			{
+				name:          "empty path",
+				variables:     map[string]string{loader.fileVariable: "   "},
+				wantVariables: []string{loader.fileVariable},
+				wantReason:    "must not be empty",
+				doNotEcho:     []string{"   "},
+			},
+			{
+				name:          "missing file",
+				variables:     map[string]string{loader.fileVariable: missingPath},
+				wantVariables: []string{loader.fileVariable},
+				wantReason:    "could not be read",
+				doNotEcho:     []string{missingPath},
+			},
+			{
+				name:          "unreadable source",
+				variables:     map[string]string{loader.fileVariable: unreadablePath},
+				wantVariables: []string{loader.fileVariable},
+				wantReason:    "could not be read",
+				doNotEcho:     []string{unreadablePath},
+			},
+			{
+				name:          "empty file",
+				variables:     map[string]string{loader.fileVariable: emptyPath},
+				wantVariables: []string{loader.fileVariable},
+				wantReason:    "non-empty password",
+				doNotEcho:     []string{emptyPath},
+			},
+			{
+				name:          "newline-only file",
+				variables:     map[string]string{loader.fileVariable: newlineOnlyPath},
+				wantVariables: []string{loader.fileVariable},
+				wantReason:    "non-empty password",
+				doNotEcho:     []string{newlineOnlyPath},
+			},
+			{
+				name:          "oversized file",
+				variables:     map[string]string{loader.fileVariable: oversizedPath},
+				wantVariables: []string{loader.fileVariable},
+				wantReason:    "no more than 1024 password bytes",
+				doNotEcho:     []string{oversizedPath, oversizedSecret},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(loader.name+"/"+test.name, func(t *testing.T) {
+				err := loader.load(mapLookup(test.variables))
+				if err == nil {
+					t.Fatal("load error = nil, want password source failure")
+				}
+				for _, variable := range test.wantVariables {
+					if !strings.Contains(err.Error(), variable) {
+						t.Fatalf("load error = %q, want variable %s", err, variable)
+					}
+				}
+				if !strings.Contains(err.Error(), test.wantReason) {
+					t.Fatalf("load error = %q, want stable reason %q", err, test.wantReason)
+				}
+				for _, sensitive := range test.doNotEcho {
+					if sensitive != "" && strings.Contains(err.Error(), sensitive) {
+						t.Fatalf("load error leaked password or file path: %q", err)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -815,6 +1012,7 @@ func TestLoadMigrationIgnoresHTTPAndAPIVariables(t *testing.T) {
 		httpShutdownTimeoutVariable:  "not-a-duration",
 		mysqlUserVariable:            "",
 		mysqlPasswordVariable:        "",
+		mysqlPasswordFileVariable:    "/DO_NOT_READ_API_PASSWORD_FILE",
 		mysqlReadTimeoutVariable:     "not-a-duration",
 		mysqlPingTimeoutVariable:     "not-a-duration",
 		mysqlMaxOpenConnsVariable:    "not-an-integer",
