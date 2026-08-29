@@ -87,6 +87,9 @@ func abortWithFaultStatus(ginContext *gin.Context, status int, publicFault *faul
 	if publicFault == nil {
 		publicFault = internalServerFault
 	}
+	// Error envelopes carry a request-specific correlation identifier. They must
+	// never be replayed from a browser, CDN, or shared intermediary cache.
+	ginContext.Header("Cache-Control", "no-store")
 	ginContext.AbortWithStatusJSON(status, errorEnvelope{
 		Error: errorBody{
 			Code:      publicFault.Code(),

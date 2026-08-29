@@ -26,12 +26,12 @@ import { AgentWorkspacePage } from '../pages/agent/workspace/AgentWorkspacePage'
 import { GenericAgentPage } from '../pages/agent/GenericAgentPage';
 
 import {
-  StatusPage,
   Error403Page,
   Error404Page,
   Error500Page,
   LoginPage,
 } from '../pages/system/SystemPages';
+import { SystemStatusPage } from '../pages/system/status/SystemStatusPage';
 
 import {
   Target,
@@ -123,7 +123,7 @@ export const router = createBrowserRouter([
       { path: 'login', Component: LoginPage },
     ],
   },
-  { path: '/system/status', Component: StatusPage },
+  { path: '/system/status', Component: SystemStatusPage },
   { path: '/403', Component: Error403Page },
   { path: '/500', Component: Error500Page },
   { path: '*', Component: Error404Page },

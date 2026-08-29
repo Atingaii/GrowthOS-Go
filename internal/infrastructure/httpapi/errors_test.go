@@ -213,6 +213,9 @@ func assertErrorEnvelope(t *testing.T, recorder *httptest.ResponseRecorder, want
 	if got := recorder.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
 		t.Fatalf("Content-Type = %q, want JSON", got)
 	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
 	if got := recorder.Header().Get(RequestIDHeader); got != want.RequestID {
 		t.Fatalf("response request ID = %q, want %q", got, want.RequestID)
 	}

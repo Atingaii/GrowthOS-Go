@@ -1,38 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router';
-import { ArrowLeft, ShieldAlert } from 'lucide-react';
-
-export const StatusPage: React.FC = () => {
-  return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">系统运行状态</h1>
-        <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> 全部正常
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {[
-          { name: '接口网关', latency: '12ms' },
-          { name: '营销活动引擎', latency: '18ms' },
-          { name: '抽奖与策略', latency: '15ms' },
-          { name: '积分账本', latency: '22ms' },
-          { name: 'AI 工具调度', latency: '28ms' },
-          { name: '智能增长助手', latency: '45ms' },
-        ].map((svc, i) => (
-          <div key={i} className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-            <div className="font-medium text-slate-900 dark:text-white">{svc.name}</div>
-            <div className="flex items-center gap-3">
-              <span className="text-stone-400 font-mono">{svc.latency}</span>
-              <span className="text-emerald-500 font-mono">● 正常</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+import { ShieldAlert } from 'lucide-react';
 
 export const Error403Page: React.FC = () => (
   <div className="text-center py-16 space-y-4">

@@ -14,6 +14,7 @@ import {
   Bot,
   Terminal,
   Bell,
+  Activity,
 } from 'lucide-react';
 import { GrowthOSLogo } from '../components/common/GrowthOSGraphics';
 import { useAppStore } from '../stores/appStore';
@@ -76,6 +77,9 @@ export const UserLayout: React.FC = () => {
               </Link>
               <Link to="/agent/workspace" className="px-2 py-1 text-xs text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 flex items-center gap-1 rounded font-mono">
                 <Bot className="w-3 h-3" /> Agent
+              </Link>
+              <Link to="/system/status" className="px-2 py-1 text-xs text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 flex items-center gap-1 rounded font-mono">
+                <Activity className="w-3 h-3" /> Status
               </Link>
             </div>
 

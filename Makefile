@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-typecheck web-build web-verify docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-test web-typecheck web-build web-verify docs-sync docs-sync-watch verify
 
 help:
 	@printf '%s\n' \
@@ -13,7 +13,8 @@ help:
 		'  make db-status  Inspect the current MySQL migration status' \
 		'  make test-integration-mysql  Verify MySQL identity separation and migrations' \
 		'  make doc-check  Check documentation integrity and course evidence' \
-		'  make web-verify Run frontend typecheck and production build' \
+		'  make web-test   Run frontend unit and component tests' \
+		'  make web-verify Run frontend tests, typecheck, and production build' \
 		'  make verify     Run all local quality gates'
 
 fmt:
@@ -58,13 +59,16 @@ doc-check:
 web-install:
 	cd web && pnpm install --frozen-lockfile
 
+web-test:
+	cd web && pnpm run test
+
 web-typecheck:
 	cd web && pnpm run typecheck
 
 web-build:
 	cd web && pnpm run build
 
-web-verify: web-typecheck web-build
+web-verify: web-test web-typecheck web-build
 
 docs-sync:
 	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync VAULT=/absolute/path/to/growthOS' && exit 1)
