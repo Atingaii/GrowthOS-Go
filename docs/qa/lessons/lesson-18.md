@@ -451,18 +451,18 @@ make verify
 9. 没有定义生产数据库身份和部署 job 的等价实现；
 10. 本节没有业务写路径，所以权限扩展策略仍需第 19 节用真实 SQL证明。
 
-## 15. 验收结论模板
-
-章节最终收尾时只在真实复跑后填写：
+## 15. 验收结论
 
 ```text
-实现提交：<sha>
-文档提交：<sha>
-最终检查点：<sha>
-真实 MySQL：PASS / FAIL（MySQL 版本、独立 schema、无 skip）
-Compose smoke：PASS / FAIL
-全仓 verify/race：PASS / FAIL
-清理：<精确目标与结果>
+实现提交：7593aaa
+策略内 AwardID 身份加固：f74fdf2
+文档内容提交：215abd1
+最终检查点：origin/codex/lesson-18-lottery-schema 的最终分支 tip
+真实 MySQL：PASS（MySQL 8.4.11，独立实例，显式 opt-in，无 skip）
+Compose smoke：PASS（默认保留数据升级；独立 project 首次与重复启动）
+全仓 verify/race/doc-check：PASS
 ```
 
-任何失败必须保留失败阶段、修复和复跑证据，不能只保留最后一行绿色输出。
+最终源码 tip 上已通过 `make verify`、`go test -race ./...`、`make doc-check`、Compose config、shellcheck 与 live smoke。任务创建的直接 MySQL/dirty 容器、独立 Compose project 及其 volumes、确认无引用的匿名 volume 均已按精确名称清理；仅为验证生成的 `web/dist` 已恢复性移动到系统废纸篓。默认 `growthos` 运行栈、`growthos_mysql_data`、`growthos_mysql_socket`、Secret、`node_modules` 与 Go 缓存均保留。
+
+提交本节最后的检查点登记后，完整章节以同名远端分支 tip 为准。若未来复跑出现失败，仍必须保留失败阶段、修复和复跑证据，不能只记录最后一行绿色输出。
