@@ -32,6 +32,3 @@
 - 当前明确未做：业务 API、数据库表、Redis、MQ、微服务和 Java 实现；前端真实 API 联调留给第 15 节。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。
-
-source edit
-source conflict

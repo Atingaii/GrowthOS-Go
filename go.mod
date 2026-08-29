@@ -1,3 +1,3 @@
-module github.com/growthos/growth-os-go
+module github.com/Atingaii/GrowthOS-Go
 
 go 1.24.0

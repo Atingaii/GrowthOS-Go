@@ -20,6 +20,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |
+| [工程基线加固](engineering-baseline-hardening-2026-08-29.md) | module 身份、测试隔离、镜像安全、领域占位与分支 CI | 通过 |
 
 ## 记录格式
 

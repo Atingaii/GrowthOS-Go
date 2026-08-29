@@ -8,7 +8,7 @@
 - API、事件、配置和数据契约已同步更新；前端 API 变化已登记到 `docs/api/lessons/`。
 - 重大选择有 ADR，且替代关系清楚。
 - QA 文档记录实际执行命令、结果、日期与剩余风险。
-- Obsidian 最终同步已执行：`make docs-sync VAULT=/mnt/e/TencentGo/growthOS`，同步命令、结果与一致性证据写入 QA 记录。
+- 已配置个人 Obsidian Vault 时，最终执行 `make docs-sync VAULT=/absolute/path/to/growthOS`，并把命令、结果与一致性证据写入 QA；当前执行环境无法访问个人 Vault 时，QA 必须如实记录原因，不能伪造成功结果。
 - 课程正文包含本节复盘和下一节遗留问题。
 - `docs/course/status.csv` 与实际产物一致。
 - `make verify` 在干净工作区重新执行通过。

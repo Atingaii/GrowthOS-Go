@@ -12,21 +12,20 @@ func TestFindRepositoryRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repositoryRoot, err := findRepositoryRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
 	t.Cleanup(func() {
 		if err := os.Chdir(original); err != nil {
 			t.Errorf("restore working directory: %v", err)
 		}
 	})
 
+	repositoryRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repositoryRoot, "go.mod"), []byte("module example.com/test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	nested := filepath.Join(repositoryRoot, "testdata", "nested")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(repositoryRoot, "testdata")) })
 	if err := os.Chdir(nested); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +34,15 @@ func TestFindRepositoryRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if root != repositoryRoot {
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repositoryInfo, err := os.Stat(repositoryRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(rootInfo, repositoryInfo) {
 		t.Fatalf("root = %q, want %q", root, repositoryRoot)
 	}
 }

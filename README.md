@@ -201,7 +201,7 @@ GrowthOS-Go/
 仓库 `docs/` 是唯一事实源；个人 Obsidian 目录只接收镜像同步，不回写、不提交：
 
 ```bash
-make docs-sync VAULT=/mnt/e/TencentGo/growthOS
+make docs-sync VAULT=/absolute/path/to/growthOS
 ```
 
 ## 参与贡献

@@ -13,7 +13,7 @@ GrowthOS-Go 将文档视为实现的一部分，而不是延期交付物。
 在所有 `README.md`/`docs/`/QA 修改完成后，按 [Obsidian 同步说明](docs/standards/obsidian-sync.md) 执行最终同步：
 
 ```bash
-make docs-sync VAULT=/mnt/e/TencentGo/growthOS
+make docs-sync VAULT=/absolute/path/to/growthOS
 ```
 
 提交应保持足够小，使代码、文档、测试和 Migration 描述同一个完整变更。

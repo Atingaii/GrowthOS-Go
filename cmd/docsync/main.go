@@ -161,15 +161,19 @@ func collect(source syncSource) (manifest, error) {
 
 func mirror(sourceRoot syncSource, targetRoot string, source, previous manifest) error {
 	for _, path := range keys(source, previous) {
+		targetPath, err := safeMirrorTarget(targetRoot, path)
+		if err != nil {
+			return fmt.Errorf("拒绝不安全的镜像路径 %q: %w", path, err)
+		}
 		sourceHash, sourceOK := source[path]
 		previousHash, previousOK := previous[path]
 		sourceChanged := !previousOK || sourceHash != previousHash
 		if sourceOK && sourceChanged {
 			var err error
 			if path == projectReadmeMirror {
-				err = copyProjectReadme(sourcePath(sourceRoot, path), filepath.Join(targetRoot, filepath.FromSlash(path)))
+				err = copyProjectReadme(sourcePath(sourceRoot, path), targetPath)
 			} else {
-				err = copyFile(sourcePath(sourceRoot, path), filepath.Join(targetRoot, filepath.FromSlash(path)))
+				err = copyFile(sourcePath(sourceRoot, path), targetPath)
 			}
 			if err != nil {
 				return fmt.Errorf("同步文件失败 %s: %w", path, err)
@@ -177,9 +181,63 @@ func mirror(sourceRoot syncSource, targetRoot string, source, previous manifest)
 			continue
 		}
 		if !sourceOK && previousOK {
-			if err := os.Remove(filepath.Join(targetRoot, filepath.FromSlash(path))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			if err := os.Remove(targetPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("同步删除文件失败 %s: %w", path, err)
 			}
+		}
+	}
+	return nil
+}
+
+func safeMirrorTarget(targetRoot, manifestPath string) (string, error) {
+	if strings.TrimSpace(manifestPath) == "" {
+		return "", errors.New("路径不能为空")
+	}
+
+	localPath := filepath.FromSlash(manifestPath)
+	if filepath.IsAbs(localPath) || filepath.VolumeName(localPath) != "" {
+		return "", errors.New("必须是相对路径")
+	}
+	cleanPath := filepath.Clean(localPath)
+	if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+		return "", errors.New("路径不能离开 Vault")
+	}
+	if cleanPath != localPath {
+		return "", errors.New("路径必须已经规范化")
+	}
+
+	parts := strings.Split(filepath.ToSlash(cleanPath), "/")
+	if parts[0] == ".obsidian" || parts[0] == stateDir {
+		return "", errors.New("路径不能修改 Vault 私有元数据")
+	}
+
+	target := filepath.Join(targetRoot, cleanPath)
+	relative, err := filepath.Rel(targetRoot, target)
+	if err != nil {
+		return "", err
+	}
+	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return "", errors.New("解析后的路径离开 Vault")
+	}
+	if err := rejectSymlinkTraversal(targetRoot, relative); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
+func rejectSymlinkTraversal(targetRoot, relative string) error {
+	current := targetRoot
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("路径经过符号链接 %s", current)
 		}
 	}
 	return nil

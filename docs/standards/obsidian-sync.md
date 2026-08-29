@@ -1,6 +1,6 @@
 # Obsidian 个人文档镜像
 
-项目根 `README.md` 和文档目录 `docs/` 自动镜像到个人 Windows 目录 `E:\TencentGo\growthOS`（在 WSL 中为 `/mnt/e/TencentGo/growthOS`）。这是给个人阅读和批注使用的副本，不是第二个代码事实源。
+项目根 `README.md` 和文档目录 `docs/` 可以单向镜像到个人 Obsidian Vault。Vault 路径由执行者显式传入；Windows 可使用 `E:\TencentGo\growthOS`，WSL 可使用 `/mnt/e/TencentGo/growthOS`，macOS 则使用本机 Vault 的绝对路径。这是给个人阅读和批注使用的副本，不是第二个代码事实源。
 
 ## 同步范围
 
@@ -17,13 +17,13 @@
 在仓库根目录执行：
 
 ```bash
-make docs-sync VAULT=/mnt/e/TencentGo/growthOS
+make docs-sync VAULT=/absolute/path/to/growthOS
 ```
 
 持续自动镜像：
 
 ```bash
-make docs-sync-watch VAULT=/mnt/e/TencentGo/growthOS
+make docs-sync-watch VAULT=/absolute/path/to/growthOS
 ```
 
 Windows 环境也可以直接运行：
@@ -45,5 +45,7 @@ go run ./cmd/docsync --vault 'E:\TencentGo\growthOS' --watch
 ```bash
 make verify
 ```
+
+如果当前执行环境不能访问个人 Vault，不创建假的替代目录冒充个人镜像；在对应 QA 中记录未同步原因，并继续以仓库 `README.md` 和 `docs/` 为唯一事实源。
 
 同步工具不会自动提交 Git，也不会将 Vault 目录加入项目 Git。项目文档变更仍需人工检查、运行质量门禁后再提交。

@@ -67,7 +67,7 @@ GrowthOS-Go/
 根目录 `go.mod` 建立单一 Go module：
 
 ```text
-github.com/growthos/growth-os-go
+github.com/Atingaii/GrowthOS-Go
 ```
 
 本节不引入第三方运行时依赖。Go 标准库已经足以实现当前的文档检查和同步工具；Gin、配置、日志、MySQL 驱动与 Migration 工具分别等待对应章节按真实需要接入。

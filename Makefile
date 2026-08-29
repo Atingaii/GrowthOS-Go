@@ -35,11 +35,11 @@ web-build:
 web-verify: web-typecheck web-build
 
 docs-sync:
-	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync VAULT=/mnt/e/TencentGo/growthOS' && exit 1)
+	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync VAULT=/absolute/path/to/growthOS' && exit 1)
 	go run ./cmd/docsync --vault "$(VAULT)"
 
 docs-sync-watch:
-	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync-watch VAULT=/mnt/e/TencentGo/growthOS' && exit 1)
+	@test -n "$(VAULT)" || (printf '%s\n' '请指定 VAULT，例如 make docs-sync-watch VAULT=/absolute/path/to/growthOS' && exit 1)
 	go run ./cmd/docsync --vault "$(VAULT)" --watch
 
 verify: fmt-check test doc-check web-verify
