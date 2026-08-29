@@ -112,6 +112,20 @@ func TestScanVersions(t *testing.T) {
 			},
 			wantFail: true,
 		},
+		{
+			name: "sql file without forward suffix rejected",
+			files: fstest.MapFS{
+				"sql/000001_first.sql": {Data: []byte("SELECT 1")},
+			},
+			wantFail: true,
+		},
+		{
+			name: "nested migration directory rejected",
+			files: fstest.MapFS{
+				"sql/nested/000001_first.up.sql": {Data: []byte("SELECT 1")},
+			},
+			wantFail: true,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
@@ -136,6 +150,54 @@ func TestScanVersions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewRejectsInvalidFactoryResultsAndClosesOwnedResources(t *testing.T) {
+	t.Parallel()
+
+	openCause := errors.New("private engine construction failure")
+	unexpectedEngine := &fakeEngine{}
+	var typedNil *fakeEngine
+	tests := []struct {
+		name    string
+		factory engineFactory
+	}{
+		{
+			name: "nil engine success",
+			factory: func(context.Context, fs.FS, *sql.DB, normalizedConfig) (migrationEngine, error) {
+				return nil, nil
+			},
+		},
+		{
+			name: "typed nil engine success",
+			factory: func(context.Context, fs.FS, *sql.DB, normalizedConfig) (migrationEngine, error) {
+				return typedNil, nil
+			},
+		},
+		{
+			name: "engine returned with error",
+			factory: func(context.Context, fs.FS, *sql.DB, normalizedConfig) (migrationEngine, error) {
+				return unexpectedEngine, openCause
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := sql.OpenDB(&countingConnector{})
+			runner, err := newRunner(context.Background(), fstest.MapFS{
+				"sql/000001_initial.up.sql": {Data: []byte("SELECT 1")},
+			}, db, Config{}, test.factory)
+			if runner != nil || !IsStage(err, StageOpen) {
+				t.Fatalf("newRunner() = runner %v, error %v; want safe open failure", runner, err)
+			}
+			if pingErr := db.PingContext(context.Background()); pingErr == nil {
+				t.Fatal("constructor failure left the owned database open")
+			}
+		})
+	}
+	if unexpectedEngine.closeCalls.Load() != 1 {
+		t.Fatalf("unexpected engine close calls = %d, want 1", unexpectedEngine.closeCalls.Load())
 	}
 }
 
@@ -166,12 +228,13 @@ func TestRunnerUpOutcomesAndDirtySafety(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		engine      *fakeEngine
-		wantState   ResultState
-		wantVersion uint
-		wantDirty   bool
-		wantApply   bool
+		name         string
+		engine       *fakeEngine
+		wantState    ResultState
+		wantVersion  uint
+		wantDirty    bool
+		wantApply    bool
+		wantMismatch bool
 	}{
 		{
 			name:        "applied",
@@ -200,6 +263,11 @@ func TestRunnerUpOutcomesAndDirtySafety(t *testing.T) {
 			engine:    &fakeEngine{upErr: errors.New("private pre-apply failure"), version: 1},
 			wantApply: true,
 		},
+		{
+			name:         "successful engine cannot report an unknown version",
+			engine:       &fakeEngine{version: 2},
+			wantMismatch: true,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
@@ -219,6 +287,12 @@ func TestRunnerUpOutcomesAndDirtySafety(t *testing.T) {
 			if tc.wantApply {
 				if !IsStage(err, StageApply) || err.Error() != string(StageApply) {
 					t.Fatalf("Up() error = %v, want safe apply error", err)
+				}
+				return
+			}
+			if tc.wantMismatch {
+				if !errors.Is(err, ErrVersionMismatch) || !IsStage(err, StageVersionMismatch) {
+					t.Fatalf("Up() error = %v, want version mismatch", err)
 				}
 				return
 			}

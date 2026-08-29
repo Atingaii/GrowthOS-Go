@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -145,7 +146,13 @@ func newRunner(ctx context.Context, fsys fs.FS, ownedDB *sql.DB, cfg Config, fac
 	if len(versions) > 0 {
 		engine, err := factory(ctx, fsys, ownedDB, normalized)
 		if err != nil {
+			if !nilMigrationEngine(engine) {
+				_ = engine.Close()
+			}
 			return nil, newError(StageOpen, err)
+		}
+		if nilMigrationEngine(engine) {
+			return nil, newError(StageOpen, errInvalidConfig)
 		}
 		runner.engine = engine
 	}
@@ -307,6 +314,9 @@ func (r *Runner) cleanVersion() (uint, error) {
 	if dirty {
 		return 0, dirtyError(migrate.ErrDirty{Version: int(version)})
 	}
+	if !containsVersion(r.versions, version) {
+		return 0, newError(StageVersionMismatch, errors.Join(ErrVersionMismatch, errInvalidSource))
+	}
 	return version, nil
 }
 
@@ -377,13 +387,16 @@ func scanVersions(fsys fs.FS, path string) ([]uint, error) {
 	versions := make([]uint, 0)
 	for _, entry := range entries {
 		if entry.IsDir() {
-			continue
+			return nil, errInvalidSource
 		}
 		name := entry.Name()
 		if strings.HasSuffix(name, ".down.sql") {
 			return nil, errInvalidSource
 		}
 		if !strings.HasSuffix(name, ".up.sql") {
+			if strings.HasSuffix(name, ".sql") {
+				return nil, errInvalidSource
+			}
 			continue
 		}
 		matches := migrationNamePattern.FindStringSubmatch(name)
@@ -406,6 +419,19 @@ func scanVersions(fsys fs.FS, path string) ([]uint, error) {
 	}
 	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
 	return versions, nil
+}
+
+func nilMigrationEngine(engine migrationEngine) bool {
+	if engine == nil {
+		return true
+	}
+	value := reflect.ValueOf(engine)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func classifyEngineError(stage Stage, err error) error {
