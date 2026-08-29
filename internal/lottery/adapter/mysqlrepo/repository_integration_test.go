@@ -3,6 +3,7 @@ package mysqlrepo
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math"
@@ -18,6 +19,8 @@ import (
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/application"
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/domain"
 	projectmigrations "github.com/Atingaii/GrowthOS-Go/migrations"
+	drivermysql "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 )
 
 const rollbackProbeAwardID = uint64(math.MaxUint64 - 1)
@@ -84,6 +87,8 @@ func TestRepositoryMySQLIntegration(t *testing.T) {
 		baseID + 7,
 		baseID + 8,
 		baseID + 9,
+		baseID + 10,
+		baseID + 11,
 		math.MaxUint64,
 	}
 	if err := cleanupRepositoryFixtures(verificationDatabase, testIDs, rollbackConstraint); err != nil {
@@ -94,6 +99,7 @@ func TestRepositoryMySQLIntegration(t *testing.T) {
 			t.Errorf("final repository fixture cleanup: %v", err)
 		}
 	}()
+	assertReadSnapshotOptionsReachMySQL(t, ctx, applicationDatabase, baseID+11)
 
 	if _, err := repository.FindByID(ctx, 0); !errors.Is(err, domain.ErrStrategyIDRequired) {
 		t.Fatalf("FindByID(zero) error = %v, want strategy ID required", err)
@@ -243,6 +249,76 @@ func TestRepositoryMySQLIntegration(t *testing.T) {
 	}
 	assertAggregateRowCounts(t, verificationDatabase, uint64(canceledStrategy.ID()), 0, 0)
 
+	retryDatabase, err := mysqlstore.Open(ctx, mysqlstore.Config{
+		ConnectionConfig:      applicationConnection,
+		PingTimeout:           5 * time.Second,
+		MaxOpenConnections:    1,
+		MaxIdleConnections:    1,
+		ConnectionMaxLifetime: time.Minute,
+		ConnectionMaxIdleTime: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("open single-connection retry probe database: %v", err)
+	}
+	defer func() { _ = retryDatabase.Close() }()
+	if _, err := retryDatabase.ExecContext(ctx, "SET SESSION innodb_lock_wait_timeout = 1"); err != nil {
+		t.Fatalf("set retry probe lock wait timeout: %v", err)
+	}
+	var lockWaitTimeout int
+	if err := retryDatabase.GetContext(ctx, &lockWaitTimeout, "SELECT @@session.innodb_lock_wait_timeout"); err != nil {
+		t.Fatalf("read retry probe lock wait timeout: %v", err)
+	}
+	if lockWaitTimeout != 1 {
+		t.Fatalf("retry probe lock wait timeout = %d, want 1", lockWaitTimeout)
+	}
+	retryRepository, err := New(retryDatabase)
+	if err != nil {
+		t.Fatalf("construct retry probe repository: %v", err)
+	}
+	retryStrategy := mustStrategy(
+		t,
+		domain.StrategyID(baseID+10),
+		"Lock wait retry classification",
+		[]domain.Award{mustAward(t, 1, "Blocked award", 1, domain.AwardOutcomeReward)},
+	)
+	retryBlocker, err := verificationDatabase.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		t.Fatalf("begin retry classification gap-lock blocker: %v", err)
+	}
+	defer func() { _ = retryBlocker.Rollback() }()
+	retryLockedRows, err := retryBlocker.QueryContext(ctx, `
+		SELECT award_id
+		FROM lottery_strategy_award
+		WHERE strategy_id = ?
+		FOR UPDATE`, uint64(retryStrategy.ID()))
+	if err != nil {
+		_ = retryBlocker.Rollback()
+		t.Fatalf("lock retry classification award range: %v", err)
+	}
+	if err := retryLockedRows.Close(); err != nil {
+		_ = retryBlocker.Rollback()
+		t.Fatalf("close retry classification lock rows: %v", err)
+	}
+	retryStartedAt := time.Now()
+	retryErr := retryRepository.Create(ctx, retryStrategy)
+	if !errors.Is(retryErr, application.ErrRepositoryRetryable) {
+		_ = retryBlocker.Rollback()
+		t.Fatalf("Create(lock wait timeout) error = %v, want retryable", retryErr)
+	}
+	var retryMySQLError *drivermysql.MySQLError
+	if !errors.As(retryErr, &retryMySQLError) || retryMySQLError.Number != 1205 {
+		_ = retryBlocker.Rollback()
+		t.Fatalf("Create(lock wait timeout) cause = %v, want MySQL 1205", retryErr)
+	}
+	if elapsed := time.Since(retryStartedAt); elapsed < 800*time.Millisecond {
+		_ = retryBlocker.Rollback()
+		t.Fatalf("lock wait timeout returned after %s, want server-side wait evidence", elapsed)
+	}
+	if err := retryBlocker.Rollback(); err != nil {
+		t.Fatalf("release retry classification gap-lock blocker: %v", err)
+	}
+	assertAggregateRowCounts(t, verificationDatabase, uint64(retryStrategy.ID()), 0, 0)
+
 	blocker, err := verificationDatabase.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
 	if err != nil {
 		t.Fatalf("begin award gap-lock blocker: %v", err)
@@ -300,10 +376,7 @@ func TestRepositoryMySQLIntegration(t *testing.T) {
 	if err := repository.Create(ctx, snapshotOld); err != nil {
 		t.Fatalf("Create(snapshot fixture): %v", err)
 	}
-	reader, err := applicationDatabase.BeginTxx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelRepeatableRead,
-		ReadOnly:  true,
-	})
+	reader, err := applicationDatabase.BeginTxx(ctx, readSnapshotOptions())
 	if err != nil {
 		t.Fatalf("begin snapshot reader: %v", err)
 	}
@@ -389,6 +462,52 @@ func repositoryIntegrationConnection(t *testing.T, prefix string) mysqlstore.Con
 		ConnectTimeout: 5 * time.Second,
 		ReadTimeout:    25 * time.Second,
 		WriteTimeout:   15 * time.Second,
+	}
+}
+
+func assertReadSnapshotOptionsReachMySQL(
+	t *testing.T,
+	ctx context.Context,
+	database *sqlx.DB,
+	probeID uint64,
+) {
+	t.Helper()
+
+	tx, err := database.BeginTxx(ctx, readSnapshotOptions())
+	if err != nil {
+		t.Fatalf("begin read snapshot option probe: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var isolation string
+	if err := tx.GetContext(ctx, &isolation, "SELECT @@transaction_isolation"); err != nil {
+		t.Fatalf("read snapshot isolation: %v", err)
+	}
+	if isolation != "REPEATABLE-READ" {
+		t.Fatalf("read snapshot isolation = %q, want REPEATABLE-READ", isolation)
+	}
+	_, writeErr := tx.ExecContext(
+		ctx,
+		"INSERT INTO lottery_strategy (strategy_id, name) VALUES (?, 'read only probe')",
+		probeID,
+	)
+	// mysqlstore deliberately enables go-sql-driver/mysql rejectReadOnly. The
+	// driver maps server error 1792 to driver.ErrBadConn so database/sql drops a
+	// connection that could instead be a read-only failover target.
+	if !errors.Is(writeErr, driver.ErrBadConn) {
+		t.Fatalf("read-only snapshot write error = %v, want driver bad connection mapped from MySQL 1792", writeErr)
+	}
+	_ = tx.Rollback()
+	var storedRows int
+	if err := database.GetContext(
+		ctx,
+		&storedRows,
+		"SELECT COUNT(*) FROM lottery_strategy WHERE strategy_id = ?",
+		probeID,
+	); err != nil {
+		t.Fatalf("verify read-only snapshot probe: %v", err)
+	}
+	if storedRows != 0 {
+		t.Fatalf("read-only snapshot probe stored %d rows, want none", storedRows)
 	}
 }
 

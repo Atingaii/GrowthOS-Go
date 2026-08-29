@@ -128,10 +128,7 @@ func (r *Repository) FindByID(ctx context.Context, id domain.StrategyID) (domain
 		return domain.Strategy{}, domain.ErrStrategyIDRequired
 	}
 
-	tx, err := r.database.BeginTxx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelRepeatableRead,
-		ReadOnly:  true,
-	})
+	tx, err := r.database.BeginTxx(ctx, readSnapshotOptions())
 	if err != nil {
 		return domain.Strategy{}, classifyOperationError(err)
 	}
@@ -157,6 +154,13 @@ func (r *Repository) FindByID(ctx context.Context, id domain.StrategyID) (domain
 		return domain.Strategy{}, classifyReadCommitError(ctx, err)
 	}
 	return restoreStrategy(strategyRow, storedAwards)
+}
+
+func readSnapshotOptions() *sql.TxOptions {
+	return &sql.TxOptions{
+		Isolation: sql.LevelRepeatableRead,
+		ReadOnly:  true,
+	}
 }
 
 func loadStoredStrategy(

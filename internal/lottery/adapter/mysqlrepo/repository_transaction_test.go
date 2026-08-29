@@ -58,11 +58,15 @@ func TestCreateClassifiesDriverCommitFailureAsUnknownOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	award, err := domain.NewAward(1, "积分", 1, domain.AwardOutcomeReward)
+	laterAward, err := domain.NewAward(2, "未中奖", 9, domain.AwardOutcomeNoReward)
 	if err != nil {
 		t.Fatalf("NewAward() error = %v", err)
 	}
-	strategy, err := domain.NewStrategy(42, "提交语义", []domain.Award{award})
+	earlierAward, err := domain.NewAward(1, "积分", 1, domain.AwardOutcomeReward)
+	if err != nil {
+		t.Fatalf("NewAward() error = %v", err)
+	}
+	strategy, err := domain.NewStrategy(42, "提交语义", []domain.Award{laterAward, earlierAward})
 	if err != nil {
 		t.Fatalf("NewStrategy() error = %v", err)
 	}
@@ -74,6 +78,9 @@ func TestCreateClassifiesDriverCommitFailureAsUnknownOutcome(t *testing.T) {
 	prepared := mock.ExpectPrepare(regexp.QuoteMeta(insertAwardSQL))
 	prepared.ExpectExec().
 		WithArgs(uint64(42), uint64(1), "积分", uint64(1), "reward").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	prepared.ExpectExec().
+		WithArgs(uint64(42), uint64(2), "未中奖", uint64(9), "no_reward").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	prepared.WillBeClosed()
 	commitCause := errors.New("driver lost the commit response")
