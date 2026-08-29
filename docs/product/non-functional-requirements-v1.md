@@ -20,17 +20,17 @@
 
 | 项目 | 当前事实 |
 | --- | --- |
-| Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17 节新增未装配进 API 的 Lottery 纯领域对象，第 18 节新增持久化结构但仍无业务 API |
-| 业务数据库 | MySQL 8.4 连接池、账号隔离和前向 Migration 机制已通过功能联调；`000001` / `000002` 创建 `lottery_strategy` / `lottery_strategy_award`，latest 2；应用只可读两表且不能访问 `schema_migrations` |
-| Lottery 领域 | Strategy/Award 已有正 ID、名称、至少一个候选、AwardID 唯一、正整数相对权重、显式 reward/no_reward、总和溢出与 slice 所有权单元测试；两表验证可表达的单行/引用约束；仍没有 Repository、业务写路径、随机算法、Draw/Result 或业务运行实测 |
+| Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～19 节新增 Lottery 领域、两表与尚未装配进 API 的内部 Strategy Repository，仍无业务 HTTP API |
+| 业务数据库 | MySQL 8.4 连接池、账号隔离和前向 Migration 机制已通过功能联调；`000001` / `000002` 创建 `lottery_strategy` / `lottery_strategy_award`，latest 2；Create/FindByID 用手写 SQL、写事务和只读 RR 快照；应用只有两表 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations` |
+| Lottery 领域 | Strategy/Award 已有正 ID、名称、至少一个候选、AwardID 唯一、正整数相对权重、显式 reward/no_reward、总和溢出与 slice 所有权单元测试；Repository 已验证原子 Create、快照 FindByID、坏数据失败关闭、并发/取消和错误分类；仍没有随机算法、Draw/Result、HTTP 运行链或业务性能实测 |
 | React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API，其余业务页面仍使用 Mock；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
 | 前端质量门 | Vitest、TypeScript typecheck 与 Vite build 已纳入验证；真实浏览器核对正常、数据库不可用和 API 离线的状态展示与可访问性 |
 | 性能实测 | M0 `/health` 在本机 Docker Desktop 上以 100 RPS 持续 5 分钟：30,000/30,000 成功、P99 4.1495 ms；`/ready` 20 RPS 持续 30 秒：600/600 成功、P99 6.841375 ms。仅代表工程探针，不代表业务接口 |
 | 可用性实测 | 两个短窗口内错误、异常状态和丢弃均为 0；没有长稳、跨主机、灾备或生产可用性证据 |
 | 恢复演练 | 已演练 MySQL、API、Redis 单点停止与恢复；验证 liveness/readiness 分离、SPA 存活和 Nginx 动态重解析。未验证宿主机故障或数据灾难恢复 |
-| 安全与故障演练 | 已验证应用仅两表 SELECT、无 `schema_migrations` 权限，授权作业无网络且只经 socket，并对精确 grants 与空 mandatory roles 失败关闭；还验证唯一回环端口、内部网络隔离、非 root/只读/capability 边界、日志 query/Referer 脱敏和 502 请求关联；不等于生产渗透测试 |
+| 安全与故障演练 | 已验证应用仅两表 `SELECT, INSERT`、无 UPDATE/DELETE/`schema_migrations` 权限，授权作业无网络且只经 socket，并对精确 grants 与空 mandatory roles 失败关闭；还验证唯一回环端口、内部网络隔离、非 root/只读/capability 边界、日志 query/Referer 脱敏和 502 请求关联；不等于生产渗透测试 |
 
-第 13 节真实 MySQL 8.4.11 集成测试证明身份、连接、探针和 Migration 机制能工作；第 15 节真实浏览器关联验收证明系统状态页能区分正常、数据库不可用和 API 离线；第 16 节再形成可复现 Compose 栈、短时故障演练和 M0 探针负载基线；第 17 节纯单元测试证明 Lottery 配置对象拒绝已知非法状态；第 18 节隔离 MySQL 与 Compose 验收证明两条 Migration、约束、dirty 停止、精确权限和启动门符合当前设计。这些都是有界证据：Schema 测试没有 Repository、随机执行或并发结果，探针没有业务查询，五分钟也没有覆盖连接池长期抖动、数据增长、宿主机故障或灾备，因此不能把下面任何业务候选 SLO 标为已达到。
+第 13 节真实 MySQL 8.4.11 集成测试证明身份、连接、探针和 Migration 机制能工作；第 15 节真实浏览器关联验收证明系统状态页能区分正常、数据库不可用和 API 离线；第 16 节再形成可复现 Compose 栈、短时故障演练和 M0 探针负载基线；第 17～18 节证明 Lottery 配置对象与两表约束；第 19 节以独立 MySQL 8.4.11 验证 Repository 原子性、并发/取消、RR 快照、坏数据、执行计划和精确权限。这些都是有界证据：Repository 测试没有随机选择、HTTP 调用或业务负载，探针没有业务查询，五分钟也没有覆盖连接池长期抖动、数据增长、宿主机故障或灾备，因此不能把下面任何业务候选 SLO 标为已达到。
 
 ### M0 工程探针实测
 
@@ -130,6 +130,7 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 | M0 · 第 16 节 | 健康接口负载、连接池与 Compose 稳定性 | 已验证；仅为本机短时工程基线，详见第 16 节 QA |
 | 第 17 节领域前置 | Strategy/Award 构造、边界、溢出、所有权与确定性单元测试 | 已验证纯内存配置对象；没有 Draw/Result，INV-03 和业务 SLO 尚未验证 |
 | 第 18 节持久化前置 | 两表 DDL、约束、latest 2/dirty、应用只读权限与 Compose 授权启动门 | 已验证 Schema/权限，不含 Repository、业务写入、抽奖执行或业务 SLO |
+| 第 19 节仓储前置 | 父子原子 Create、RR/read-only FindByID、恢复校验、并发/取消、1205、执行计划与精确权限 | 已在隔离 MySQL 8.4.11 验证；尚无算法、HTTP 业务负载、Draw/Result 或业务 SLO |
 | M1 · 第 24 节 | 抽奖算法与缓存性能基线 | 待验证 |
 | M2 · 第 40 节 | 活动参与、库存、锁和幂等报告 | 待验证 |
 | M4 · 第 72 节 | Feed、事件接收与分析水位报告 | 待验证 |

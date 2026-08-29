@@ -2,7 +2,7 @@
 
 ## 定位
 
-`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。第 17 节虽已加入 Lottery Strategy/Award 纯 Go 领域对象，第 18 节也已加入两张 Lottery 业务表，但仍没有 Repository、业务 API 或前端适配，因此其余业务能力继续按后续章节逐步接入。
+`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。第 17～19 节虽已加入 Lottery 领域对象、两张业务表和内部 Strategy Repository，但仍没有业务 API、产品进程装配或前端适配，因此其余业务能力继续按后续章节逐步接入。
 
 ## 工作台
 
@@ -49,7 +49,7 @@ pnpm preview
 
 ## 当前事实与后续演进
 
-当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取是真实联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`。仓库已有第 17 节 `internal/lottery/domain` 的 Strategy/Award 配置对象，以及第 18 节 `lottery_strategy` / `lottery_strategy_award` 两张表；但尚无 Repository、业务写路径、概率算法和业务 API。`/lottery` 的客户端随机演示与文案不会读取这两张表，不构成领域对象运行调用链，也不代表一次抽奖结果、Redis 锁或发奖已经实现。
+当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取是真实联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`。仓库已有 Strategy/Award 配置对象、两张表和第 19 节 Create/FindByID Repository；但 Repository 没有装配进 `growth-api`，也没有概率算法或业务 API。`/lottery` 的客户端随机演示与文案不会调用该 Repository，不构成领域对象运行调用链，也不代表一次抽奖结果、Redis 锁或发奖已经实现。
 
 第 22 节接入第一个真实 React 抽奖页时，必须显式替换或隔离对应 Mock，通过同源 API 获取服务端决定的结果，并保留 `reward`、`no_reward` 与系统错误的不同语义。在此之前，不把前端 `LotteryPrize` 展示类型反向用作 Go 领域或数据库契约，也不把表的行级 `updated_at` 当成前端聚合版本、ETag 或缓存失效标记。
 

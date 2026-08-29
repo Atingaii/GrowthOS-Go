@@ -14,28 +14,28 @@
 
 | 角色 | 账号 | 权限边界 |
 | --- | --- | --- |
-| API 进程 | `growthos_app`（可覆盖） | 第 18 节只允许 `SELECT` 两张 Lottery 业务表；无业务写权限、DDL 或 `schema_migrations` 权限 |
+| API 进程 | `growthos_app`（可覆盖） | 第 19 节只允许两张 Lottery 业务表 `SELECT, INSERT`；无 UPDATE、DELETE、DDL 或 `schema_migrations` 权限 |
 | Migration 进程 | `growthos_migrator`（可覆盖） | 仅目标 schema 的审核 DDL、版本记录和必要 DML |
 | DBA/管理员 | 部署环境管理的独立身份 | 创建 schema/账号、授权、备份和事故恢复；不进入应用配置 |
 
 不要让 API 使用 Migrator 密码“临时解决权限问题”，也不要让 Migration 借用 API 密码。管理员应通过环境自己的 Secret 与账号管理流程创建身份，再用 `SHOW GRANTS` 核对；仓库不提供真实密码。
 
-第 18 节的当前应用权限 allowlist 如下（host 范围必须替换为环境实际受控来源，账号应由安全流程预先创建）：
+第 19 节的当前应用权限 allowlist 如下（host 范围必须替换为环境实际受控来源，账号应由安全流程预先创建）：
 
 ```sql
-GRANT SELECT
+GRANT SELECT, INSERT
   ON growthos.lottery_strategy TO 'growthos_app'@'<api-host>';
 
-GRANT SELECT
+GRANT SELECT, INSERT
   ON growthos.lottery_strategy_award TO 'growthos_app'@'<api-host>';
 
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
   ON growthos.* TO 'growthos_migrator'@'<migration-host>';
 ```
 
-这不是复制即用的生产授权：生产 host、管理员身份、mandatory role 与撤权流程必须由环境安全设计决定。当前没有 Repository 或业务写路径，因此不预授予 INSERT/UPDATE/DELETE。第 19 节出现真实 SQL 后，应从用例所需语句重新计算应用权限；后续 Migration 使用 VIEW、TRIGGER、EVENT 或其他对象时，也应按已审核文件增加 Migrator 最小权限，禁止直接授予应用或 Migrator 全局 `ALL PRIVILEGES`。
+这不是复制即用的生产授权：生产 host、管理员身份、mandatory role 与撤权流程必须由环境安全设计决定。当前 Repository 只有 Create/FindByID，所以 INSERT 与 SELECT 足够；没有更新/删除用例就不授予 UPDATE/DELETE。后续增加新 SQL、VIEW、TRIGGER、EVENT 或其他对象时，应从已审核用例重新计算 API/Migrator 最小权限，禁止直接授予应用或 Migrator 全局 `ALL PRIVILEGES`。
 
-Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛这个 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销应用旧授权，再精确授予两张表 `SELECT`，最后比较排序后的 `SHOW GRANTS`。它还要求 `@@GLOBAL.mandatory_roles` 为空，防止角色在 `SHOW GRANTS` 表面 allowlist 之外隐式扩权；任一断言失败都会阻止 API 启动。其他环境若启用 mandatory role，必须把有效权限纳入独立安全评审，不能直接删掉断言后照搬 Compose 作业。
+Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛这个 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销应用旧授权，再精确授予两张表 `SELECT, INSERT`，最后比较排序后的 `SHOW GRANTS`。它还要求 `@@GLOBAL.mandatory_roles` 为空，防止角色在 `SHOW GRANTS` 表面 allowlist 之外隐式扩权；任一断言失败都会阻止 API 启动。其他环境若启用 mandatory role，必须把有效权限纳入独立安全评审，不能直接删掉断言后照搬 Compose 作业。
 
 ## 3. 必要配置
 
@@ -115,7 +115,7 @@ make db-status
 | --- | --- |
 | `uninitialized` | 已有首个迁移，确认目标库为空或符合初始条件后继续 |
 | `pending` | 核对当前/最新版本与发布内容后继续 |
-| `clean` | 第 18 节已部署环境必须确认 `version=latest=2`；重复 `up` 应为 `no_change` |
+| `clean` | 第 19 节已部署环境仍必须确认 `version=latest=2`；重复 `up` 应为 `no_change` |
 
 任何命令失败、dirty、version mismatch、未知状态或日志环境不符都必须停止。
 
@@ -151,7 +151,15 @@ Migration 成功并核对后再收敛应用授权，授权通过后才部署 API
 - 单行 `weight > 0` 不能证明同一 Strategy 跨行权重总和未溢出 `uint64`；
 - `lottery_strategy.updated_at` 与 Award 行的 `updated_at` 都只是各自行元数据。更新 Award 不会触碰根行，因此两者都不能充当聚合版本、ETag 或缓存失效水位。
 
-第 19 节 Repository 必须按稳定顺序读取根和 Award，并通过领域构造器重建聚合；非法存量数据应失败关闭，而不是绕过构造器返回半合法对象。
+第 19 节 Repository 已按稳定顺序读取根和 Award，并通过 `RestoreAward` / `RestoreStrategy` 原样重建聚合；非法存量数据失败关闭，而不是 trim、跳过坏行或返回半合法对象。Create 在一个事务中写完整父子聚合，应用身份不需要独立 UPDATE/DELETE 来“补偿”部分成功。
+
+### 5.5 Repository 事务故障的操作边界
+
+- MySQL 1205（lock wait timeout）和 1213（deadlock）只被标记为 retryable；adapter 不自动重试。上层只有在请求幂等、仍有 deadline 预算并采用有界退避时才能重试。
+- 根 INSERT 的 1062 表示 Strategy 身份已存在；子 INSERT 的 1062 不等价于根冲突，应按数据/代码不一致调查。
+- 写 COMMIT 返回普通驱动错误时，系统返回“commit outcome unknown”。此时数据库可能已经提交，禁止直接重新 Create；先按 StrategyID 查询权威事实、结合请求/审计信息对账，再由用例决定是否补偿。
+- 读取使用 read-only RR 快照，保证单次根/子聚合内部一致，不保证绝对最新。不得为了“刷新”在运维层擅自改隔离级别或加锁定读。
+- stored-invalid 表示物理行无法构成合法领域聚合，应隔离调用、保留诊断证据并由受控修复流程处理；不要在 SQL 控制台直接 trim 或删除坏行来让告警消失。
 
 ## 6. timeout 预算
 
@@ -223,22 +231,27 @@ Migration 执行成功但连接/source 关闭失败时，命令仍非零退出�
 普通 `make test` 可能因缺少环境变量而 skip MySQL 集成测试。强制联调使用：
 
 ```bash
-export GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES=lesson-18-isolated-schema
+export GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES=lesson-19-isolated-schema
+export GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES=lesson-19-isolated-repository
 make test-integration-mysql
 ```
 
-该目标必须连接专用、可丢弃且事先授权改变结构的 schema。除了显式 opt-in 精确值，它在进入 Go 测试前还逐项要求 API 与 Migration 的 address/database/user/password 八个变量，缺失即失败且只输出变量名；测试会确认两个身份指向同一 address/database 且用户名不同。可选 TLS 变量沿用各测试前缀。不要把真实密码写入示例、shell history 或 QA。
+该目标必须连接专用、可丢弃且事先授权改变结构与写入 Repository fixture 的 schema。两个 opt-in 必须同时为精确值；它在进入 Go 测试前还逐项要求 API 与 Migration 的 address/database/user/password 八个变量，缺失即失败且只输出变量名。测试会确认两个身份指向同一 address/database 且用户名不同。可选 TLS 变量沿用各测试前缀。不要把真实密码写入示例、shell history 或 QA。
 
 集成测试验证：
 
 - Migrator 应用嵌入迁移后状态为 clean latest 2；
 - 两张表使用 InnoDB 与 `utf8mb4_0900_bin`，正 ID/权重、复合主键、外键 `RESTRICT`、封闭 outcome 和名称长度/基础形态约束有效；
 - 128 个中文字符和 `uint64` 最大值可往返，组合/分解 Unicode 在二进制 collation 下保持不同；
-- API 可读取两张业务表，但业务 INSERT 和 `schema_migrations` 读写被 MySQL 权限拒绝；
+- API 可在事务中 INSERT/SELECT 两张业务表并回滚，但 UPDATE、DELETE 和 `schema_migrations` 读写被 MySQL 1142 拒绝；
+- SHOW GRANTS 精确等于两表 `SELECT, INSERT` 加全局 USAGE，mandatory role 为空；
+- Repository 对 Unicode/SQL 特殊字符和 `uint64` 上限往返，串行/并发重复、父子回滚、取消、坏快照与连接池复用均符合语义；
+- 同一 RR 事务在并发修改中读取旧根/旧 Award 集，后续公开读取看到新根/新 Award 集；
+- 生产根/子查询的真实 EXPLAIN 使用主键，Award 排序不出现 filesort；
 - Migrator 单连接可执行隔离多语句 DDL；
 - UTC/`utf8mb4` 会话不变量；
 - 临时迁移首次 applied、再次 no_change、最终 clean；
-- schema 探针数据在事务中回滚，通用临时表和独立版本表完成清理。
+- schema 探针数据在事务中回滚；Repository fixture、定向临时 CHECK、通用临时表和独立版本表完成精确清理。
 
 测试只可以连接专用测试 schema，禁止对共享开发 volume、staging 或 production 运行。显式 opt-in 只是防误操作的一道门，不替代目标地址、数据库归属和清理核对。
 

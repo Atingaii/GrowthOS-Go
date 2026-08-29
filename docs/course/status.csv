@@ -17,7 +17,7 @@
 16,2,Docker Compose 开发环境,已完成,docs/course/part-02/lesson-16-docker-compose-development.md,docs/qa/lessons/lesson-16.md
 17,3,最简单随机抽奖需要什么对象,已完成,docs/course/part-03/lesson-17-lottery-domain-objects.md,docs/qa/lessons/lesson-17.md
 18,3,第一次正式业务建表,已完成,docs/course/part-03/lesson-18-lottery-schema.md,docs/qa/lessons/lesson-18.md
-19,3,实现仓储层,计划中,,
+19,3,实现仓储层,已完成,docs/course/part-03/lesson-19-lottery-repository.md,docs/qa/lessons/lesson-19.md
 20,3,实现最简单概率抽奖,计划中,,
 21,3,开放第一个 Lottery API,计划中,,
 22,3,实现第一个 React 抽奖页,计划中,,

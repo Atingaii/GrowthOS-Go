@@ -8,11 +8,11 @@
 
 **数据边界：** 只有本项目 `mysql_data` named volume 持久业务/迁移数据；`mysql_socket` named volume 只承载运行期 Unix socket；Redis 明确不持久；用户已有 MySQL、Redis、RabbitMQ、PostgreSQL 等资源不在本手册操作范围内
 
-架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)和[决策索引中的第 18 节授权决策](../decisions/README.md)，HTTP/部署契约见[第 16 节 API 记录](../api/lessons/lesson-16.md)与[第 18 节 API 记录](../api/lessons/lesson-18.md)，最终环境证据见[第 16 节 QA](../qa/lessons/lesson-16.md)和[第 18 节 QA](../qa/lessons/lesson-18.md)。
+架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)与[ADR-0016](../decisions/ADR-0016-lottery-repository-boundaries.md)，HTTP/部署契约见[第 16 节 API 记录](../api/lessons/lesson-16.md)与[第 19 节 API 记录](../api/lessons/lesson-19.md)，当前环境证据见[第 16 节 QA](../qa/lessons/lesson-16.md)和[第 19 节 QA](../qa/lessons/lesson-19.md)。
 
 ## 1. 目的
 
-本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括第 18 节新增的 Lottery Migration 与应用授权收敛门。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
+本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括 Lottery Migration 与第 19 节按真实 Repository SQL 更新的应用授权收敛门。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
 
 它不是生产发布手册，不授权操作者删除用户现有容器/volume、修改共享数据库账号、绕过 Secret guard，或把本地 HTTP/密码/TLS 配置复制到 staging/production。
 
@@ -185,8 +185,8 @@ make compose-build
 预期本地 image：
 
 ```text
-growthos/api:lesson-18
-growthos/migrate:lesson-18
+growthos/api:lesson-19
+growthos/migrate:lesson-19
 growthos/web:lesson-16
 growthos/redis:7.4.11
 ```
@@ -235,7 +235,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 | `migrate` | exited, code 0 |
 | `mysql-grants` | exited, code 0 |
 
-不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。前者执行结构演进，后者只经 Unix socket 撤销旧应用授权并建立当前两表只读 allowlist；两者职责不可互换。
+不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。前者执行结构演进，后者只经 Unix socket 撤销旧应用授权并建立当前两表 `SELECT, INSERT` allowlist；两者职责不可互换。
 
 ### 7.2 手工只读检查
 
@@ -267,8 +267,8 @@ make compose-smoke
 - Migration 与 mysql-grants 两个 one-shot 均 exited 0；
 - Migrator 身份读取到 `schema_migrations version=2, dirty=0`；
 - 两张表存在预期的 `*_name_basic` 约束，不残留旧约束名；
-- 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 SELECT，`@@GLOBAL.mandatory_roles` 为空；
-- 应用身份能读两张业务表，但不能读 `schema_migrations`；
+- 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT, INSERT`，`@@GLOBAL.mandatory_roles` 为空；
+- 应用身份能读两张业务表，精确 grants 包含 INSERT；UPDATE、DELETE 和 `schema_migrations` 访问均被拒绝，smoke 的负向语句不改变数据；
 - `/health`、`/ready` 为 200 JSON；
 - SPA `/` 为 200；
 - 未知 `/api/...` 为 Go `route_not_found` 404 JSON；
@@ -381,7 +381,7 @@ make compose-migrate
 make compose-grants
 ```
 
-授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份的旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT`，精确比较 `SHOW GRANTS`，并要求 `@@GLOBAL.mandatory_roles` 为空。任何多余权限、mandatory role 或 socket/Secret 错误都会非零退出。不要为“兼容”已有额外角色而放宽脚本；先由管理员评审有效权限来源。
+授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份的旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT, INSERT`，精确比较 `SHOW GRANTS`，并要求 `@@GLOBAL.mandatory_roles` 为空。任何多余权限、mandatory role 或 socket/Secret 错误都会非零退出。不要为“兼容”已有额外角色而放宽脚本；先由管理员评审有效权限来源。
 
 遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status 和授权核对。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
 
@@ -557,7 +557,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 make compose-status
 ```
 
-先确认 Migration 已 clean latest 2，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。脚本要求 mandatory role 为空，并要求最终授权精确等于 USAGE + 两张 Lottery 表 SELECT；任意额外角色/权限都会故意失败。不要把脚本切换到 TCP、授予 schema wildcard、改用 Migrator 身份启动 API 或删掉校验。
+先确认 Migration 已 clean latest 2，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。脚本要求 mandatory role 为空，并要求最终授权精确等于 USAGE + 两张 Lottery 表 `SELECT, INSERT`；任意额外角色/权限都会故意失败。不要把脚本切换到 TCP、授予 schema wildcard、改用 Migrator 身份启动 API 或删掉校验。
 
 ### 12.7 API 启动失败
 
@@ -681,7 +681,7 @@ rm -rf deploy/compose/secrets
 - Docker Engine、Compose、Go 版本和主机架构；
 - Compose project/file、Web loopback 端口；
 - 六个 service 最终状态：四个常驻 healthy，Migration 与 mysql-grants 两个 one-shot exit code 0；
-- `schema_migrations` clean latest 2、两张 Lottery 表存在、应用精确只读授权和 mandatory role 为空；
+- `schema_migrations` clean latest 2、两张 Lottery 表存在、应用精确 `SELECT, INSERT` 授权和 mandatory role 为空；
 - smoke 输出；
 - 两段 healthload 单行 JSON、退出码；
 - 资源快照及其“瞬时非峰值”限制；

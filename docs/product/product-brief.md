@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v7 基线
+**状态：** v8 基线
 **更新日期：** 2026-08-29
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)
 
 ## 一句话定位
 
@@ -46,11 +46,11 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 ## 当前产品实现切片
 
-第 17 节把 Lottery 最小业务语言落成纯 Go 领域对象：`Strategy` 管理至少一个 `Award`，候选使用正整数相对权重，并显式区分 `reward` 与 `no_reward`。第 18 节用 `000001` / `000002` 分别创建 `lottery_strategy` 与 `lottery_strategy_award`，保存 Strategy 根行和隶属于它的 Award 候选；当前产品 Migration latest 为 2。
+第 17 节把 Lottery 最小业务语言落成纯 Go 领域对象：`Strategy` 管理至少一个 `Award`，候选使用正整数相对权重，并显式区分 `reward` 与 `no_reward`。第 18 节用 `000001` / `000002` 分别创建 `lottery_strategy` 与 `lottery_strategy_award`，保存 Strategy 根行和隶属于它的 Award 候选；当前产品 Migration latest 为 2。第 19 节再以两个窄 application 端口和 MySQL adapter 实现 Strategy Create/FindByID：完整父子聚合原子写入，一次读取来自同一个只读 RR 快照，恢复时重新验证领域不变量。
 
 数据库只承担它能可靠表达的子集：正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性以及基础名称形态。`*_name_basic` 只拒绝空串和首尾 ASCII U+0020 空格，不等价于领域层完整名称契约；外键不能保证至少一个 Award，单行约束也不能验证跨行总权重是否溢出。两表的 `updated_at` 是行级元数据，不是聚合版本，Award 更新不会自动推进 Strategy 时间戳。
 
-当前应用身份仅可 `SELECT` 两张业务表，没有业务写权限，也不能访问 `schema_migrations`。这意味着已经有可验证的持久化结构，但仍没有 Repository、业务写路径、抽奖算法、API、真实 React 抽奖页或 Redis 缓存。
+当前应用身份仅可对两张业务表 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations`。这意味着已经有可验证的领域、持久化结构和内部 Repository，但它尚未装配进 `growth-api`，仍没有抽奖算法、业务 API、真实 React 抽奖页或 Redis 缓存。
 
 尤其，Award 是可被选择的配置候选，不是一次用户抽奖的最终结果；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。当前没有 Draw/Result 实现，因此“一次抽奖只能有一个最终结果”仍是待后续章节验证的业务不变量。
 
@@ -64,7 +64,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象与两张持久化表，但没有业务运行链路；抽奖、参与、权益等业务 SLO 仍全部“未测量”，不能把领域/Schema 测试或 M0 工程探针成绩外推为产品能力或业务性能。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象、两张持久化表与 Strategy Repository，但没有业务 HTTP/浏览器运行链路；抽奖、参与、权益等业务 SLO 仍全部“未测量”，不能把领域/Schema/Repository 测试或 M0 工程探针成绩外推为产品能力或业务性能。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 
