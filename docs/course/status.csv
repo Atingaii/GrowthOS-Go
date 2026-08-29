@@ -16,7 +16,7 @@
 15,2,前后端第一次联调,已完成,docs/course/part-02/lesson-15-first-fullstack-integration.md,docs/qa/lessons/lesson-15.md
 16,2,Docker Compose 开发环境,已完成,docs/course/part-02/lesson-16-docker-compose-development.md,docs/qa/lessons/lesson-16.md
 17,3,最简单随机抽奖需要什么对象,已完成,docs/course/part-03/lesson-17-lottery-domain-objects.md,docs/qa/lessons/lesson-17.md
-18,3,第一次正式业务建表,计划中,,
+18,3,第一次正式业务建表,已完成,docs/course/part-03/lesson-18-lottery-schema.md,docs/qa/lessons/lesson-18.md
 19,3,实现仓储层,计划中,,
 20,3,实现最简单概率抽奖,计划中,,
 21,3,开放第一个 Lottery API,计划中,,

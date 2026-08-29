@@ -2,7 +2,7 @@
 
 **适用范围：** GrowthOS-Go 第 13 节及之后的 MySQL 前向 Migration
 
-**当前边界：** 生产迁移集为空；首个真实 `000001_*.up.sql` 在第 18 节加入
+**当前边界：** 产品迁移 latest 为 2；`000001` / `000002` 分别创建 `lottery_strategy` / `lottery_strategy_award`
 
 ## 1. 目的
 
@@ -14,23 +14,28 @@
 
 | 角色 | 账号 | 权限边界 |
 | --- | --- | --- |
-| API 进程 | `growthos_app`（可覆盖） | 仅后续业务需要的 DML/查询权限，不授予 DDL |
+| API 进程 | `growthos_app`（可覆盖） | 第 18 节只允许 `SELECT` 两张 Lottery 业务表；无业务写权限、DDL 或 `schema_migrations` 权限 |
 | Migration 进程 | `growthos_migrator`（可覆盖） | 仅目标 schema 的审核 DDL、版本记录和必要 DML |
 | DBA/管理员 | 部署环境管理的独立身份 | 创建 schema/账号、授权、备份和事故恢复；不进入应用配置 |
 
 不要让 API 使用 Migrator 密码“临时解决权限问题”，也不要让 Migration 借用 API 密码。管理员应通过环境自己的 Secret 与账号管理流程创建身份，再用 `SHOW GRANTS` 核对；仓库不提供真实密码。
 
-一个最小权限方向示例（host 范围必须替换为环境实际受控来源，账号应由安全流程预先创建）：
+第 18 节的当前应用权限 allowlist 如下（host 范围必须替换为环境实际受控来源，账号应由安全流程预先创建）：
 
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE
-  ON growthos.* TO 'growthos_app'@'<api-host>';
+GRANT SELECT
+  ON growthos.lottery_strategy TO 'growthos_app'@'<api-host>';
+
+GRANT SELECT
+  ON growthos.lottery_strategy_award TO 'growthos_app'@'<api-host>';
 
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
   ON growthos.* TO 'growthos_migrator'@'<migration-host>';
 ```
 
-这只是起点，不是复制即用的生产授权。后续 Migration 使用 VIEW、TRIGGER、EVENT 或其他对象时，应按已审核文件增加最小权限，禁止直接授予全局 `ALL PRIVILEGES`。
+这不是复制即用的生产授权：生产 host、管理员身份、mandatory role 与撤权流程必须由环境安全设计决定。当前没有 Repository 或业务写路径，因此不预授予 INSERT/UPDATE/DELETE。第 19 节出现真实 SQL 后，应从用例所需语句重新计算应用权限；后续 Migration 使用 VIEW、TRIGGER、EVENT 或其他对象时，也应按已审核文件增加 Migrator 最小权限，禁止直接授予应用或 Migrator 全局 `ALL PRIVILEGES`。
+
+Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛这个 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销应用旧授权，再精确授予两张表 `SELECT`，最后比较排序后的 `SHOW GRANTS`。它还要求 `@@GLOBAL.mandatory_roles` 为空，防止角色在 `SHOW GRANTS` 表面 allowlist 之外隐式扩权；任一断言失败都会阻止 API 启动。其他环境若启用 mandatory role，必须把有效权限纳入独立安全评审，不能直接删掉断言后照搬 Compose 作业。
 
 ## 3. 必要配置
 
@@ -82,7 +87,14 @@ migrations/sql/NNNNNN_description.up.sql
 - [ ] 已在与生产版本一致的影子库/测试库演练；
 - [ ] 已准备备份、恢复负责人和停止条件。
 
-第 13 节迁移集为空。不要为了让命令“看起来执行过”而添加空 `000001`；`no_migrations` 是当前正确结果。
+当前不可变清单：
+
+| 版本 | 文件 | 单条 DDL | 结果 |
+| ---: | --- | --- | --- |
+| 1 | `000001_create_lottery_strategy.up.sql` | `CREATE TABLE lottery_strategy` | Strategy 聚合根行、正 ID、基础名称与行时间戳 |
+| 2 | `000002_create_lottery_strategy_award.up.sql` | `CREATE TABLE lottery_strategy_award` | 复合主键、正 ID/权重、封闭 outcome、父表 `RESTRICT` 外键与行时间戳 |
+
+每个版本只有一条 MySQL DDL，因为 MySQL atomic DDL 的原子边界是一条语句，不是任意多语句文件。若版本 2 失败，版本 1 可以已经完整存在，而版本表明确记录 version 2 dirty；这比把两个 `CREATE TABLE` 塞入一个看似整体、实际并不跨语句原子的文件更容易恢复。已共享文件只追加不回写，并由嵌入字节 hash 测试保护；任何改动都应新增更高版本。
 
 ## 5. 标准发布流程
 
@@ -101,10 +113,9 @@ make db-status
 
 | 状态 | 操作 |
 | --- | --- |
-| `no_migrations` | 当前第 13 节正常；无需生成版本表 |
 | `uninitialized` | 已有首个迁移，确认目标库为空或符合初始条件后继续 |
 | `pending` | 核对当前/最新版本与发布内容后继续 |
-| `clean` | 若已是最新，无需重复变更；`up` 应为 `no_change` |
+| `clean` | 第 18 节已部署环境必须确认 `version=latest=2`；重复 `up` 应为 `no_change` |
 
 任何命令失败、dirty、version mismatch、未知状态或日志环境不符都必须停止。
 
@@ -114,11 +125,10 @@ make db-status
 make db-migrate
 ```
 
-成功结果只能是：
+当前成功结果只能是：
 
-- `no_migrations`：没有真实文件；
-- `no_change`：已经最新；
-- `applied`：应用了待执行版本。
+- `no_change`：已经 latest 2；
+- `applied`：应用了一个或两个待执行版本。
 
 命令退出 0 之后再次检查：
 
@@ -126,11 +136,22 @@ make db-migrate
 make db-status
 ```
 
-有真实迁移时应达到 `clean` 且数据库版本等于二进制嵌入的 latest。当前空迁移集仍为 `no_migrations`。
+应达到 `clean` 且 `version=latest=2`。如果数据库版本高于二进制 latest、dirty、或 latest 不是预期的 2，停止发布并核对构建 SHA 与目标库。
 
 ### 5.3 部署 API
 
-Migration 成功并核对后再部署 API。`growth-api` 自身不会运行 DDL，只会用 API 身份打开有界连接池并 Ping。应用回滚前必须确认旧版本与新 schema 兼容；二进制回滚不会自动回滚数据库。
+Migration 成功并核对后再收敛应用授权，授权通过后才部署 API。`growth-api` 自身不会运行 DDL 或授权，只会用 API 身份打开有界连接池并 Ping。Compose 由依赖链自动执行 `migrate → mysql-grants → api`；其他环境必须提供等价、可审计且失败关闭的发布步骤。应用回滚前必须确认旧版本与新 schema、权限 allowlist 都兼容；二进制回滚不会自动回滚数据库或恢复旧授权。
+
+### 5.4 Schema 约束的责任边界
+
+第 18 节数据库约束不是完整领域模型的替代品：
+
+- `chk_*_name_basic` 只校验非空且没有首尾 ASCII U+0020 空格；它不等价于 Go 名称构造器对 Unicode 空白/控制字符的完整处理；
+- 外键只能阻止孤儿 Award 与父 Strategy 被误删，不能保证每个 Strategy 至少有一个 Award；
+- 单行 `weight > 0` 不能证明同一 Strategy 跨行权重总和未溢出 `uint64`；
+- `lottery_strategy.updated_at` 与 Award 行的 `updated_at` 都只是各自行元数据。更新 Award 不会触碰根行，因此两者都不能充当聚合版本、ETag 或缓存失效水位。
+
+第 19 节 Repository 必须按稳定顺序读取根和 Award，并通过领域构造器重建聚合；非法存量数据应失败关闭，而不是绕过构造器返回半合法对象。
 
 ## 6. timeout 预算
 
@@ -202,21 +223,24 @@ Migration 执行成功但连接/source 关闭失败时，命令仍非零退出�
 普通 `make test` 可能因缺少环境变量而 skip MySQL 集成测试。强制联调使用：
 
 ```bash
+export GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES=lesson-18-isolated-schema
 make test-integration-mysql
 ```
 
-该目标在进入 Go 测试前逐项要求 API 与 Migration 的 address/database/user/password 八个变量，缺失即失败且只输出变量名。可选 TLS 变量沿用各测试前缀。
+该目标必须连接专用、可丢弃且事先授权改变结构的 schema。除了显式 opt-in 精确值，它在进入 Go 测试前还逐项要求 API 与 Migration 的 address/database/user/password 八个变量，缺失即失败且只输出变量名；测试会确认两个身份指向同一 address/database 且用户名不同。可选 TLS 变量沿用各测试前缀。不要把真实密码写入示例、shell history 或 QA。
 
 集成测试验证：
 
-- 两个身份都能连接并查询；
-- API DDL 被 MySQL 权限拒绝；
+- Migrator 应用嵌入迁移后状态为 clean latest 2；
+- 两张表使用 InnoDB 与 `utf8mb4_0900_bin`，正 ID/权重、复合主键、外键 `RESTRICT`、封闭 outcome 和名称长度/基础形态约束有效；
+- 128 个中文字符和 `uint64` 最大值可往返，组合/分解 Unicode 在二进制 collation 下保持不同；
+- API 可读取两张业务表，但业务 INSERT 和 `schema_migrations` 读写被 MySQL 权限拒绝；
 - Migrator 单连接可执行隔离多语句 DDL；
 - UTC/`utf8mb4` 会话不变量；
 - 临时迁移首次 applied、再次 no_change、最终 clean；
-- 临时表和独立版本表清理。
+- schema 探针数据在事务中回滚，通用临时表和独立版本表完成清理。
 
-测试只可以连接专用测试 schema，禁止对共享 staging/production 运行会创建/删除隔离表的测试。
+测试只可以连接专用测试 schema，禁止对共享开发 volume、staging 或 production 运行。显式 opt-in 只是防误操作的一道门，不替代目标地址、数据库归属和清理核对。
 
 ## 9. 日志与审计
 
@@ -224,7 +248,7 @@ make test-integration-mysql
 
 - service、environment、version；
 - component、operation；
-- `no_migrations/no_change/applied` 或安全 status；
+- `no_change/applied` 或安全 status；
 - migration version/latest；
 - 稳定失败 stage、开始/结束时间和外部审批号。
 

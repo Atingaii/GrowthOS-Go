@@ -1,18 +1,18 @@
 # GrowthOS 本地 Docker Compose 运维手册
 
-**适用范围：** 第 16 节单机 Docker Desktop/Engine 开发环境
+**适用范围：** 第 16～18 节单机 Docker Desktop/Engine 开发环境
 
 **默认入口：** `http://127.0.0.1:8088`
 
 **默认 Compose project：** `growthos`
 
-**数据边界：** 只有本项目 `mysql_data` named volume 持久；Redis 明确不持久；用户已有 MySQL、Redis、RabbitMQ、PostgreSQL 等资源不在本手册操作范围内
+**数据边界：** 只有本项目 `mysql_data` named volume 持久业务/迁移数据；`mysql_socket` named volume 只承载运行期 Unix socket；Redis 明确不持久；用户已有 MySQL、Redis、RabbitMQ、PostgreSQL 等资源不在本手册操作范围内
 
-架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)，HTTP/部署契约见[第 16 节 API 记录](../api/lessons/lesson-16.md)，最终环境证据见[第 16 节 QA](../qa/lessons/lesson-16.md)。
+架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)和[决策索引中的第 18 节授权决策](../decisions/README.md)，HTTP/部署契约见[第 16 节 API 记录](../api/lessons/lesson-16.md)与[第 18 节 API 记录](../api/lessons/lesson-18.md)，最终环境证据见[第 16 节 QA](../qa/lessons/lesson-16.md)和[第 18 节 QA](../qa/lessons/lesson-18.md)。
 
 ## 1. 目的
 
-本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS 第 16 节 Compose 环境。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
+本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括第 18 节新增的 Lottery Migration 与应用授权收敛门。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
 
 它不是生产发布手册，不授权操作者删除用户现有容器/volume、修改共享数据库账号、绕过 Secret guard，或把本地 HTTP/密码/TLS 配置复制到 staging/production。
 
@@ -23,7 +23,7 @@
 1. **只操作明确 Compose project。** 所有底层 Compose 命令同时带 `--project-name growthos` 和 `--file deploy/compose/compose.yaml`；使用 Make 时由 `COMPOSE_PROJECT`、`COMPOSE_FILE` 提供同一边界。
 2. **不按容器显示名称猜目标。** 用户可能已有名为 `mysql`、`redis` 的容器；GrowthOS 不设置 `container_name`，由 Compose label 标识所属 project。
 3. **不使用全局清理。** 禁止以 `docker system prune`、`docker volume prune`、`docker container prune`、通配符删除或 Docker Desktop 批量删除作为本节清理方式。
-4. **普通停止不删除数据。** `make compose-down` 不带 `--volumes`，必须保留 `growthos_mysql_data`。
+4. **普通停止不删除 named volumes。** `make compose-down` 不带 `--volumes`，必须保留 `growthos_mysql_data` 与 `growthos_mysql_socket`；后者可重建但属于当前拓扑的明确资源。
 5. **不读取/打印 Secret 内容。** 不执行 `cat deploy/compose/secrets/*`，不把内容复制到命令行、聊天、QA、截图或日志。
 6. **不补齐部分 Secret 集合。** 四个 Secret 必须来自同一批；缺一项时恢复原文件或进行经过确认的数据/凭据重置。
 7. **已有 volume 时不随机重建密码。** MySQL 初始化脚本只在空数据目录执行；新 Secret 不会自动修改 volume 内账号。
@@ -38,10 +38,11 @@
 | `web` | 唯一 published loopback 端口 | 无 | 浏览器入口连接失败；内部服务不自动停止 |
 | `api` | 不发布；仅 Web 经 edge 访问 | 无 | SPA 仍可访问；代理返回带 ID 的 502/504 |
 | `migrate` | 不发布 | 对 MySQL schema 可能有持久影响 | 正常为退出 0；失败会阻止 API 初始启动 |
+| `mysql-grants` | 不发布且 `network_mode: none` | 修改 `growthos_app` 授权；不修改业务行 | 正常为退出 0；失败会阻止 API 初始启动 |
 | `mysql` | 不发布 | `growthos_mysql_data` | API `/health` 可继续 200，`/ready` 应 503 |
 | `redis` | 不发布 | 无；`/data` tmpfs | API 和 MySQL readiness 不应变化 |
 
-网络：`edge` 只连接 Web/API；`data` 只连接 API/Migrate/MySQL；`cache` 当前只连接 Redis。不要为了临时调试把 service 永久加入不需要的网络。
+网络：`edge` 只连接 Web/API；`data` 只连接 API/Migrate/MySQL；`cache` 当前只连接 Redis。`mysql-grants` 不连接任何网络，只通过只读 `growthos_mysql_socket` 访问 MySQL。不要为了临时调试把 service 永久加入不需要的网络。
 
 ## 4. 主机前置检查
 
@@ -184,8 +185,8 @@ make compose-build
 预期本地 image：
 
 ```text
-growthos/api:lesson-16
-growthos/migrate:lesson-16
+growthos/api:lesson-18
+growthos/migrate:lesson-18
 growthos/web:lesson-16
 growthos/redis:7.4.11
 ```
@@ -201,8 +202,9 @@ make compose-up
 该目标执行 config，然后 `up --detach --build --wait --wait-timeout 180`。预期启动因果链：
 
 ```text
-MySQL healthy (authenticated SELECT 1)
-  -> Migration exits 0
+MySQL healthy (Migrator identity authenticated SELECT 1)
+  -> Migration reaches clean latest 2 and exits 0
+  -> mysql-grants reconciles exact app allowlist and exits 0
   -> API starts and /health becomes healthy
 
 Web and Redis start independently
@@ -231,8 +233,9 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 | `redis` | running, healthy |
 | `web` | running, healthy |
 | `migrate` | exited, code 0 |
+| `mysql-grants` | exited, code 0 |
 
-不要因 `migrate` 显示 exited 就认为它崩溃；one-shot 成功退出正是设计状态。
+不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。前者执行结构演进，后者只经 Unix socket 撤销旧应用授权并建立当前两表只读 allowlist；两者职责不可互换。
 
 ### 7.2 手工只读检查
 
@@ -260,13 +263,17 @@ make compose-smoke
 
 脚本只读检查：
 
-- 四个常驻服务 running + healthy；
-- Migration exited 0；
+- Web/API/MySQL/Redis 四个常驻服务 running + healthy；
+- Migration 与 mysql-grants 两个 one-shot 均 exited 0；
+- Migrator 身份读取到 `schema_migrations version=2, dirty=0`；
+- 两张表存在预期的 `*_name_basic` 约束，不残留旧约束名；
+- 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 SELECT，`@@GLOBAL.mandatory_roles` 为空；
+- 应用身份能读两张业务表，但不能读 `schema_migrations`；
 - `/health`、`/ready` 为 200 JSON；
 - SPA `/` 为 200；
 - 未知 `/api/...` 为 Go `route_not_found` 404 JSON；
 - 404 header/body request ID 一致；
-- API/MySQL/Redis/Migrate 没有 published port；
+- API/MySQL/Redis/Migrate/mysql-grants 没有 published port；
 - Web 只有配置的 `127.0.0.1:<port>`。
 
 脚本用任务专用 `mktemp` 保存响应，并在退出时删除，不会留下 body/header 文件。
@@ -350,7 +357,7 @@ API-down gateway：Nginx 返回一个自身 request ID，response header 与 Ngi
 
 允许在本地、无真实 Secret 的 query/Referer 中注入一次唯一假 marker，然后检索**本 project**日志，验证 marker 不存在。不得使用真实 token、手机号、邮箱或密码作为 marker，也不得把 marker 测试发到共享环境。
 
-最终验收的 query/referrer marker 未在 Web/API/MySQL/Redis/Migration 的 Compose 日志中出现。这个结果只覆盖当前链路；增加业务参数、新中间件或 Nginx 模块后必须重跑。
+最终验收的 query/referrer marker 未在 Web/API/MySQL/Redis/Migration/mysql-grants 的 Compose 日志中出现。这个结果只覆盖当前链路；增加业务参数、新中间件或 Nginx 模块后必须重跑。
 
 ## 10. Migration 操作
 
@@ -366,9 +373,17 @@ make compose-status
 make compose-migrate
 ```
 
-当前没有真实 `.up.sql`，两者的正确语义是 `no_migrations`。不得为了演示 applied 添加空 Migration。
+当前产品迁移 latest 为 2：`000001` 创建 `lottery_strategy`，`000002` 创建 `lottery_strategy_award`。`make compose-status` 应报告 `clean` 且 `version=latest=2`；首次执行 `make compose-migrate` 可为 `applied`，重复执行应为 `no_change`。该目标随后运行 `mysql-grants`，因此成功条件还包括应用授权被重新收敛。
 
-有真实 Migration 后，遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
+如只需在已经完成 Migration 的当前栈重新核对/收敛授权，可执行：
+
+```bash
+make compose-grants
+```
+
+授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份的旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT`，精确比较 `SHOW GRANTS`，并要求 `@@GLOBAL.mandatory_roles` 为空。任何多余权限、mandatory role 或 socket/Secret 错误都会非零退出。不要为“兼容”已有额外角色而放宽脚本；先由管理员评审有效权限来源。
+
+遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status 和授权核对。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
 
 ## 11. 故障演练
 
@@ -465,7 +480,11 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml stop w
 
 不要修改已共享 Migration 或对真实 volume 执行破坏性 SQL 制造失败。使用任务专用临时 project/schema 或单元/集成测试注入失败，验证 `migrate` 非零时 API 初始启动被阻断。真实失败现场按 `make compose-status`、Migration 日志和专门 Runbook 处理。
 
-### 11.6 演练收尾
+### 11.6 授权收敛失败
+
+不要通过给 `growthos_app` 增加 schema wildcard 权限、让 API 使用 Migrator 密码、把 `mysql-grants` 加入 data 网络或删除 mandatory-role 检查来恢复。先查看 one-shot 日志和受控管理员侧的有效授权；确认是旧权限、角色策略、socket、root Secret 还是目标表未创建。修复环境后单独执行 `make compose-grants`，再运行 smoke；只有授权作业成功退出，API 初始启动门才算满足。
+
+### 11.7 演练收尾
 
 每次演练后：
 
@@ -474,7 +493,7 @@ make compose-up
 make compose-smoke
 ```
 
-确保所有常驻服务恢复、Migration 仍退出 0、唯一端口边界不变，再决定是否执行 M0。不要让“已恢复”只基于首页一次 200。
+确保四个常驻服务恢复、Migration/mysql-grants 均退出 0、latest 2 与精确授权成立、唯一端口边界不变，再决定是否执行 M0。不要让“已恢复”只基于首页一次 200。
 
 ## 12. 常见故障排查
 
@@ -515,7 +534,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 - Secret 集合是否与该 volume 同批；
 - init 脚本是否成功创建两个账号；
 - 磁盘/内存是否足够；
-- health 使用的 app 账号是否有目标 schema 的 SELECT；
+- health 使用的 Migrator 账号是否能对目标 schema 执行认证 `SELECT 1`；
 - 是否有人只编辑 Secret 文件但未轮换 MySQL 账号。
 
 不要改成匿名 TCP ping 来让 health 变绿；这会掩盖真正的身份/权限失败。
@@ -528,9 +547,19 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 make compose-status
 ```
 
-`service_completed_successfully` 正在按设计阻断 API。检查稳定 stage、dirty/version、账号权限和 timeout；不要临时删除 `depends_on`，不要让 API 使用 Migrator 密码。
+`service_completed_successfully` 正在按设计阻断后续授权与 API。检查稳定 stage、dirty/version（当前必须 clean latest 2）、账号权限和 timeout；不要临时删除 `depends_on`，不要让 API 使用 Migrator 密码。
 
-### 12.6 API 启动失败
+### 12.6 mysql-grants 非零退出，API 未创建/未启动
+
+```bash
+docker compose --project-name growthos --file deploy/compose/compose.yaml ps --all
+docker compose --project-name growthos --file deploy/compose/compose.yaml logs --tail=200 mysql-grants
+make compose-status
+```
+
+先确认 Migration 已 clean latest 2，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。脚本要求 mandatory role 为空，并要求最终授权精确等于 USAGE + 两张 Lottery 表 SELECT；任意额外角色/权限都会故意失败。不要把脚本切换到 TCP、授予 schema wildcard、改用 Migrator 身份启动 API 或删掉校验。
+
+### 12.7 API 启动失败
 
 ```bash
 docker compose --project-name growthos --file deploy/compose/compose.yaml logs --tail=200 api
@@ -541,27 +570,27 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 
 - `_FILE` 不可读、为空、过大或与直接变量冲突；
 - app Secret 与 MySQL volume 不匹配；
-- Migration 没成功；
+- Migration 或 mysql-grants 没成功；
 - MySQL 未 healthy；
 - HTTP/MySQL timeout 配置非法。
 
 日志故意没有 driver raw cause。需要进一步诊断时使用受控 MySQL 管理工具和 `SHOW GRANTS`，不要放宽应用日志打印 DSN/密码。
 
-### 12.7 Web healthy 但 `/health` 为 502
+### 12.8 Web healthy 但 `/health` 为 502
 
 这通常表示 Nginx 正常、API 不可连接。检查 API service 状态/日志和 edge 网络，不要重启 MySQL/Redis 作为第一反应。API 恢复/recreate 后等待 Docker DNS 重新解析，Web 不应需要 restart。
 
 502 的 `X-Request-ID` 应能在 Web access log 找到；它不是 Go request ID，也不会出现在 Go 日志。
 
-### 12.8 Redis unhealthy
+### 12.9 Redis unhealthy
 
 检查 Redis Secret 格式、ACL/config 临时目录、`/data` tmpfs 所有权和 Redis 日志。不要把 Redis 加到 API network/readiness 来“验证连通”，当前无消费者是故意的。
 
-### 12.9 read-only filesystem / permission denied
+### 12.10 read-only filesystem / permission denied
 
-先判断进程是否尝试写入设计外路径。允许写入只有明确 tmpfs/volume：应用 `/tmp`，Redis `/tmp/growthos-redis` 与 `/data`，MySQL `/var/lib/mysql`。不要用 `privileged: true`、root user 或取消 read-only 做永久修复；若出现真实必要写路径，评估最小 tmpfs/volume 与容量后修改架构。
+先判断进程是否尝试写入设计外路径。允许写入只有明确 tmpfs/volume：应用 `/tmp`，Redis `/tmp/growthos-redis` 与 `/data`，MySQL `/var/lib/mysql` 和 socket 目录。`mysql-grants` 的 `/var/lib/mysql` 是仓库空目录的只读 bind，用来遮蔽官方镜像匿名 volume；它只读共享 socket，不应写数据目录。不要用 `privileged: true`、root user 或取消 read-only 做永久修复；若出现真实必要写路径，评估最小 tmpfs/volume 与容量后修改架构。
 
-### 12.10 M0 出现 dropped/error/unexpected status
+### 12.11 M0 出现 dropped/error/unexpected status
 
 1. 保存单行 JSON 和退出码；
 2. 查看 Web/API status 与安全日志；
@@ -581,6 +610,7 @@ make compose-down
 它移除当前 project 容器和网络，保留：
 
 - `growthos_mysql_data`；
+- `growthos_mysql_socket`（仅运行期 socket 载体，可随下次启动复用；不是业务备份）；
 - `deploy/compose/secrets` 下四个本机 Secret；
 - 构建镜像和可复用 dependency cache。
 
@@ -607,6 +637,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 ```bash
 docker volume ls --filter label=com.docker.compose.project=growthos
 docker volume inspect growthos_mysql_data
+docker volume inspect growthos_mysql_socket
 ```
 
 必须同时确认 label：
@@ -616,7 +647,7 @@ com.docker.compose.project=growthos
 com.docker.compose.volume=mysql_data
 ```
 
-如果名称/label 不匹配、包含需保留数据、或无法确认归属，停止。不要删除名为 `mysql`、`mysql_data` 的其他 volume，不要依赖视觉相似名称。
+socket volume 还必须匹配 `com.docker.compose.volume=mysql_socket`。如果任一名称/label 不匹配、data volume 包含需保留数据、或无法确认归属，停止。不要删除名为 `mysql`、`mysql_data`、`mysql_socket` 的其他 volume，不要依赖视觉相似名称。
 
 ### 13.3 显式 reset
 
@@ -626,7 +657,7 @@ com.docker.compose.volume=mysql_data
 make compose-reset CONFIRM=reset-growthos-data
 ```
 
-该目标对当前 Compose project 执行 down + volumes + orphans，会永久删除 GrowthOS named volume；默认不可恢复。Secret 文件不会被该命令删除，下一次 up 会用原集合重新初始化账号。
+该目标对当前 Compose project 执行 down + volumes + orphans，会永久删除 GrowthOS `mysql_data`，并删除可重建的 `mysql_socket` volume；数据库事实默认不可恢复。Secret 文件不会被该命令删除，下一次 up 会用原集合重新初始化账号。
 
 如果目标还包括生成全新身份，必须在确认 volume 已删除、无数据恢复需求后，再由操作者精确处理这四个 Secret 文件并重新运行生成器。这是独立破坏性决定，不能把删除 Secret 当作 `compose-reset` 的隐式步骤。
 
@@ -649,7 +680,8 @@ rm -rf deploy/compose/secrets
 - Git commit/branch；第 16 节实现提交为 `_FILE` `e746a6f`、driver 日志边界 `52c3add`、Compose 栈与验收工具 `7aa6c9e`；
 - Docker Engine、Compose、Go 版本和主机架构；
 - Compose project/file、Web loopback 端口；
-- 五个 service 最终状态、Migration exit code；
+- 六个 service 最终状态：四个常驻 healthy，Migration 与 mysql-grants 两个 one-shot exit code 0；
+- `schema_migrations` clean latest 2、两张 Lottery 表存在、应用精确只读授权和 mandatory role 为空；
 - smoke 输出；
 - 两段 healthload 单行 JSON、退出码；
 - 资源快照及其“瞬时非峰值”限制；
@@ -670,7 +702,8 @@ rm -rf deploy/compose/secrets
 - 用户 host `%`；
 - loopback HTTP + 本地 Nginx；
 - 宿主机 file Secret 和手工恢复；
-- 单 MySQL named volume，无备份/HA；
+- 单 MySQL 数据 volume + 单独 socket IPC volume，无备份/HA；
+- 依赖 root Secret、共享本机 Unix socket 和 `mandatory_roles` 为空的授权作业；
 - Redis 不持久且无业务容量/淘汰策略；
 - Docker bridge 内置 DNS；
 - `restart: no`、无资源 limit/调度；

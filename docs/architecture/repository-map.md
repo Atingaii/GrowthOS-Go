@@ -5,7 +5,7 @@
 
 本文件描述当前仓库，而不是第 96 节的目标仓库。目录随需求演进，改动目录职责时必须同步更新本文件。
 
-第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈；第 17 节第一次在 `internal/lottery/domain` 落地持久化无关的 Strategy/Award 聚合。当前仍没有业务表、业务 Repository、抽奖算法或业务 API，Redis 容器也只是尚未接入 API 的环境占位。
+第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈；第 17 节在 `internal/lottery/domain` 落地持久化无关的 Strategy/Award 聚合；第 18 节新增 `lottery_strategy` / `lottery_strategy_award` 两张业务表、latest 2 Migration 和精确只读应用授权。当前仍没有 Lottery Repository、业务写路径、抽奖算法或业务 API，Redis 容器也只是尚未接入 API 的环境占位。
 
 | 路径 | 当前职责 | 引入产品代码的章节 |
 | --- | --- | --- |
@@ -25,11 +25,13 @@
 | `internal/*` | Lottery 之外仍预留的私有领域与基础设施边界；占位不代表实现 | 随对应领域章节引入 |
 | `pkg` | 可被外部导入的少量稳定 Go 包 | 仅在确有跨模块公共契约时 |
 | `configs/growth-api.env.example` | 不自动加载且不给密码赋值的 API/Migration 公开环境变量示例 | 第 12～13 节 |
-| `migrations/embed.go` | 编译期嵌入 Migration 说明与 `sql/` source | 第 13 节 |
-| `migrations/sql` | 严格命名的前向 `.up.sql`；当前为空，第 18 节加入首个 `000001` | 第 13 节机制，第 18 节业务结构 |
+| `migrations/embed.go` | 编译期嵌入 Migration 说明与 `sql/` source；迁移字节通过 hash 测试防止已发布历史被静默改写 | 第 13、18 节 |
+| `migrations/sql` | 严格命名的前向 `.up.sql`；`000001` 建 `lottery_strategy`，`000002` 建 `lottery_strategy_award`，当前 latest 为 2 | 第 13 节机制，第 18 节业务结构 |
+| `migrations/lottery_schema_integration_test.go` | 只在显式授权的隔离 schema 上验证两表结构、约束、权限边界与回滚清理 | 第 18 节 |
 | `scripts/generate-compose-secrets.sh` | 完整 Secret 集合生成/验证；部分集合与“旧 MySQL volume + 缺凭据”状态 fail closed，阻止静默错配 | 第 16 节 |
-| `scripts/compose-smoke.sh` | 服务状态、迁移结果、HTTP 契约与宿主机端口隔离的只读冒烟检查 | 第 16 节 |
-| `deploy/compose` | M0 服务拓扑、精确 MySQL grants、named volume 与被忽略的本地 Secret 文件约定 | 第 16 节 |
+| `scripts/compose-smoke.sh` | 四常驻/两 one-shot 状态、latest 2、精确授权、HTTP 契约与宿主机端口隔离的只读冒烟检查 | 第 16、18 节 |
+| `deploy/compose` | Web/API/MySQL/Redis 四个常驻服务，Migrate/mysql-grants 两个 one-shot，三张隔离网络、MySQL data/socket named volume、文件秘密和仅回环 Web 端口 | 第 16、18 节 |
+| `deploy/compose/mysql/grants` | 只经 MySQL Unix socket、`network_mode: none` 运行的应用授权收敛脚本；只允许读取两张 Lottery 表，并在 mandatory role 非空时失败关闭 | 第 18 节 |
 | `deploy/docker` | API/Migrator/Web/Redis 构建边界、非 root 运行入口和脱敏 Nginx 同源网关 | 第 16 节 |
 | `web` | 统一 React 用户端、运营端、MCP 与 AI Operator 框架；系统状态真实联调，其余业务页面仍为 Mock | 第 14～15 节 |
 | `web/src/api` | 只访问同源路径的 HTTP client、六类失败语义、运行时 decoder 与系统探针 API | 第 15 节 |
@@ -55,13 +57,13 @@
 
 第 12 节保持 `request_id` 与未来 OpenTelemetry `trace_id` 分离；fault 平台层不导入 Gin/HTTP，只有 HTTP adapter 决定 status 和公开 error envelope。配置与隐私规则见[配置参考](../configuration.md)，长期边界见[ADR-0009](../decisions/ADR-0009-runtime-boundaries.md)。
 
-第 13 节保持 API 与 Migration 身份和进程分离：`growth-api` 使用受限 pool 且不执行 DDL，`growth-migrate` 使用专用单连接且只提供前向 `up/status`。当前空 source 正确返回 `no_migrations`，不会创建业务表或占用首个版本号。边界见 [ADR-0010](../decisions/ADR-0010-mysql-migration-boundaries.md)，操作步骤见 [MySQL Migration 运维手册](../runbooks/mysql-migrations.md)。
+第 13 节保持 API 与 Migration 身份和进程分离：`growth-api` 使用受限 pool 且不执行 DDL，`growth-migrate` 使用专用单连接且只提供前向 `up/status`。第 18 节产品 source 已到 latest 2；两个版本各包含一条 `CREATE TABLE`，已应用环境应 `clean` 且 `version=latest=2`，重复 `up` 为 `no_change`。应用身份只可 `SELECT` 两张业务表，既不能写表，也不能读写 `schema_migrations`。边界见 [ADR-0010](../decisions/ADR-0010-mysql-migration-boundaries.md)和[第 18 节 ADR](../decisions/README.md)，操作步骤见 [MySQL Migration 运维手册](../runbooks/mysql-migrations.md)。
 
 第 15 节的系统状态页通过 Vite dev/preview 同源代理真实消费 `GET /health` 与 `GET /ready`，统一 client 做运行时 JSON 契约检查，并由状态 hook 管理并行请求、取消和过期结果。Go 统一错误响应明确携带 `Cache-Control: no-store`。正常、数据库不可用和 API 离线场景已做真实浏览器关联验收，但这些证据不代表吞吐、长期可用性或生产 SLO 已验证。前端工具链要求 Node.js `>=22.22.2`、pnpm `10.13.1`，质量门包含 `test`、`typecheck` 和 `build`。
 
-第 16 节的 Compose 拓扑只发布 `127.0.0.1:8088` 的 Nginx Web 入口。Web/API 位于 `edge`，API/MySQL/Migrator 位于内部 `data`，Redis 单独位于内部 `cache`；Migration 成功退出后 API 才启动。API、Migrator、Web、Redis 使用非 root、只读根文件系统、去除 capabilities 与 `no-new-privileges`，MySQL 官方镜像则保留初始化阶段 root 和可写数据目录这一明确例外。Nginx 动态解析 API 容器地址，统一回写 `X-Request-ID`，并从 access/error 日志中排除 query 与 Referer。长期边界见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)，操作步骤见 [Docker Compose 运维手册](../runbooks/local-compose.md)。
+第 18 节的 Compose 拓扑仍只发布 `127.0.0.1:8088` 的 Nginx Web 入口。Web/API 位于 `edge`，API/MySQL/Migrator 位于内部 `data`，Redis 单独位于内部 `cache`；启动门为 `mysql healthy → migrate exited 0 → mysql-grants exited 0 → API`。`mysql-grants` 使用 MySQL 官方客户端镜像、非 root UID 999、只读根文件系统和共享 socket，`network_mode: none`，精确撤销旧授权后仅授予两张业务表 `SELECT`，并要求 `@@GLOBAL.mandatory_roles` 为空；它不挂入 data 网络。API、Migrator、Web、Redis 使用非 root、只读根文件系统、去除 capabilities 与 `no-new-privileges`，MySQL 官方镜像则保留初始化阶段 root 和可写数据目录这一明确例外。Nginx 动态解析 API 容器地址，统一回写 `X-Request-ID`，并从 access/error 日志中排除 query 与 Referer。长期边界见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)和[第 18 节授权 ADR](../decisions/README.md)，操作步骤见 [Docker Compose 运维手册](../runbooks/local-compose.md)。
 
-第 17 节的 `Strategy` 拥有至少一个 `Award`，在构造时检查正 ID、名称、正权重、封闭 Outcome、AwardID 唯一和总权重溢出，并对候选 slice 做防御性复制和 AwardID 规范排序。`reward` 只表示待后续 Benefit 流程处理的奖励候选，`no_reward` 是合法候选而不是 error。该包没有被 `growth-api` 装配，也没有表、Repository、算法、API、真实前端或 Redis 调用；一次 Draw 的最终结果尚不存在，INV-03 尚未满足。长期边界见 [ADR-0013](../decisions/ADR-0013-lottery-domain-model.md)。
+第 17 节的 `Strategy` 拥有至少一个 `Award`，在构造时检查正 ID、名称、正权重、封闭 Outcome、AwardID 唯一和总权重溢出，并对候选 slice 做防御性复制和 AwardID 规范排序。第 18 节的两张表保护可由单行、主外键表达的子集：正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性和基础名称形态。`*_name_basic` 只表达非空及无首尾 ASCII U+0020 空格，数据库不能替代 Go 的完整名称校验；外键也不能证明每个 Strategy 至少有一个 Award，跨行总权重溢出仍须在 Repository 水合为聚合时验证。两表各自的 `updated_at` 是行元数据，不是聚合版本，Award 更新不会自动更新 Strategy 行。当前仍无 Repository、算法、业务 API、真实前端或 Redis 调用；一次 Draw 的最终结果尚不存在，INV-03 尚未满足。长期边界见 [ADR-0013](../decisions/ADR-0013-lottery-domain-model.md)与[第 18 节 ADR](../decisions/README.md)。
 
 第一版运行时采用 [ADR-0007](../decisions/ADR-0007-modular-monolith-first.md) 确定的模块化单体：一个 Go 产品进程可以装配多个领域模块，但共享进程和数据库实例不改变事实所有权。服务拆分必须等待第 73 节后的负载、发布、故障域、合规或团队证据。
 
@@ -69,9 +71,9 @@
 
 - Gin 在第 11 节作为 Go HTTP 基线接入；gRPC + Protobuf 是后续服务间 RPC 基线，到第 75 节再按拆分需求接入。
 - 第 12 节已把监听地址、HTTP timeout、日志级别和格式纳入显式配置，并建立请求关联与统一错误。
-- MySQL 连接、`sqlx` pool 与前向 Migration 机制已在第 13 节接入；业务手写 SQL、Repository 和事务用例分别等待真实业务章节。
+- MySQL 连接、`sqlx` pool 与前向 Migration 机制已在第 13 节接入，第 18 节已有首组 Lottery 表；业务手写 SQL、Repository 和事务用例等待第 19 节。
 - React、TypeScript、Vite、Tailwind CSS、Lucide、Recharts 和 Zustand 在第 14 节接入；第 15 节只接通系统探针，业务页面继续使用 Mock，等待对应业务 API 和表真正出现。
 - 第 16 节已引入 Compose 本地开发环境，但它仍是单机开发拓扑：没有镜像 digest 固定、内部 TLS、生产资源配额、Secret Manager 或业务 Redis 接入。
-- 第 17 节只建立 Lottery 纯领域模型；SQL 表、第一个 `000001` Migration、Repository、概率算法、业务 API、真实抽奖页和 Redis 分别等待第 18～24 节的真实问题。
+- 第 18 节已建立 Lottery 最小持久化结构和只读运行权限；Repository、业务写权限、概率算法、业务 API、真实抽奖页、规则和 Redis 分别等待第 19～24 节的真实问题。
 - 服务拆分、RPC 和注册中心延迟至第 73 节以后。
 - 最终目录图和 ER 图延迟至第 96 节复盘。

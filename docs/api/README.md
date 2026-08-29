@@ -31,6 +31,7 @@
 | 第 15 节 | 系统状态页真实调用 `GET /health` 与 `GET /ready`，建立同源 Client、运行时解码和失败分类 | 已验收 | [第 15 节 API 记录](lessons/lesson-15.md) |
 | 第 16 节 | 路径与 JSON body 保持不变；Compose Nginx 成为唯一同源入口，并统一回写可关联的 `X-Request-ID` | 已验收 | [第 16 节 API 记录](lessons/lesson-16.md) |
 | 第 17 节 | 新增持久化无关的 Lottery Strategy/Award 领域对象；无 HTTP 路由、DTO 或真实前端调用 | 已验收 | [第 17 节 API 记录](lessons/lesson-17.md) |
+| 第 18 节 | 新增 Lottery 持久化表和最小只读数据库权限；无 HTTP 路由、DTO、业务 SQL 或真实前端调用 | 已验收 | [第 18 节 API 记录](lessons/lesson-18.md) |
 
 ## 阅读方式
 

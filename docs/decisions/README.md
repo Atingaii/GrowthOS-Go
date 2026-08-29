@@ -18,5 +18,7 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0011](ADR-0011-same-origin-frontend-integration.md) | 已接受 | 浏览器通过受约束的同源代理消费系统探针，并在运行时验证契约与失败语义 |
 | [ADR-0012](ADR-0012-compose-development-topology.md) | 已接受 | 本地 Compose 仅发布同源 Web 入口，以隔离网络、一次性迁移和文件秘密装配开发栈 |
 | [ADR-0013](ADR-0013-lottery-domain-model.md) | 已接受 | 以 Strategy 聚合管理持久化无关的 Lottery 候选，采用整数相对权重、显式结果语义和 AwardID 规范顺序 |
+| [ADR-0014](ADR-0014-lottery-persistence-schema.md) | 已接受 | 以两条单 DDL 前向 Migration 建立 Lottery Strategy/Award 最小持久化结构与约束边界 |
+| [ADR-0015](ADR-0015-compose-schema-grant-reconciliation.md) | 已接受 | Migration 后经无网络 Unix socket 作业精确收敛 Compose 应用身份的数据权限 |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。

@@ -1,12 +1,12 @@
 # GrowthOS-Go 配置参考
 
-**状态：** 第 16 节已完成并验收
+**状态：** 第 18 节已完成并验收
 
 **更新日期：** 2026-08-29
 
-**来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)、[第 15 节：前后端第一次联调](course/part-02/lesson-15-first-fullstack-integration.md)、[第 16 节：Docker Compose 开发环境](course/part-02/lesson-16-docker-compose-development.md)
+**来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)、[第 15 节：前后端第一次联调](course/part-02/lesson-15-first-fullstack-integration.md)、[第 16 节：Docker Compose 开发环境](course/part-02/lesson-16-docker-compose-development.md)、[第 18 节：第一次正式业务建表](course/part-03/lesson-18-lottery-schema.md)
 
-本页记录 `growth-api`、`growth-migrate`、Vite 开发/预览进程与 Compose 开发栈真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取进程环境和明确指向的密码文件；HTTP、数据库、Migration 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码；Compose 再负责把本地文件秘密和容器网络地址装配给对应进程。
+本页记录 `growth-api`、`growth-migrate`、Vite 开发/预览进程与 Compose 开发栈真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取进程环境和明确指向的密码文件；HTTP、数据库、Migration 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码；Compose 再负责把本地文件秘密、容器网络地址和第 18 节一次性 MySQL 授权收敛作业装配起来。
 
 ## 1. 加载规则
 
@@ -49,12 +49,14 @@ Compose 文件位于 `deploy/compose/compose.yaml`。仓库级 Make 目标默认
 | --- | --- | --- |
 | Make 变量 `COMPOSE_PROJECT` | `growthos` | Compose 资源命名空间；smoke 只接受字母、数字、点、下划线和连字符 |
 | `GROWTHOS_COMPOSE_WEB_PORT` | `8088` | 1～65535；仅形成 `127.0.0.1:<port>` 的 Web 发布端口 |
-| `deploy/compose/secrets/mysql_root_password` | 首次由脚本随机生成 | 只挂载给 MySQL，用于官方入口初始化和管理健康边界 |
+| `deploy/compose/secrets/mysql_root_password` | 首次由脚本随机生成 | 挂载给 MySQL 和 `mysql-grants`；前者用于官方入口初始化，后者只经 Unix socket 精确收敛应用权限 |
 | `deploy/compose/secrets/mysql_app_password` | 首次由脚本随机生成 | 挂载给 MySQL 与 API；API 通过 `GROWTHOS_MYSQL_PASSWORD_FILE` 读取 |
-| `deploy/compose/secrets/mysql_migration_password` | 首次由脚本随机生成 | 挂载给 MySQL 与一次性 Migrator；后者通过 `GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE` 读取 |
+| `deploy/compose/secrets/mysql_migration_password` | 首次由脚本随机生成 | 挂载给 MySQL 与一次性 Migrator；MySQL health 也使用该身份，Migrator 通过 `GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/redis_password` | 首次由脚本随机生成 | 只挂载给 Redis；当前 API 不读取 Redis 配置 |
 
 `make compose-up` 会先运行 Secret 生成器。四个文件必须“全部存在或全部不存在”：完整集合会复用；部分集合直接失败；如果 `growthos_mysql_data` 已存在而完整 Secret 集缺失，脚本拒绝生成新值，避免持久化数据库与凭据静默失配。本地目录权限为 `0700`，文件为 `0444`；后者兼容 Docker Desktop 文件挂载给非 root 容器，真正的容器可见范围仍由逐服务只读挂载限制。它们是被 Git 和 Docker build context 排除的本地开发文件，不是加密 Secret Manager，也不支持热轮换。
+
+Compose 另有 `growthos_mysql_socket` named volume，只传递 MySQL Unix socket，不承载数据库事实。启动顺序为 `mysql → migrate → mysql-grants → api`。`mysql-grants` 不读取 `GROWTHOS_*` 环境变量，不加入任何网络，只以 UID 999 从只读 root Secret 和只读 socket 执行固定 allowlist：先撤销 `growthos_app` 旧权限，再只授予 `growthos.lottery_strategy` 与 `growthos.lottery_strategy_award` 的 `SELECT`。作业同时要求 `SHOW GRANTS` 与精确 allowlist 完全一致，并断言 `@@GLOBAL.mandatory_roles` 为空；否则失败关闭且 API 不启动。这个开发作业不是通用 DBA 管理入口，也不能用来执行任意 SQL。
 
 ## 4. 通用进程配置
 
@@ -90,6 +92,8 @@ staging/production 必须使用 `verify_identity`。该模式验证证书链与 
 ## 6. API 数据库与连接池配置
 
 `appconfig.Load` 只要求 API 密码，不读取 Migrator 账号、密码或执行 timeout。
+
+第 18 节 Compose 运行时的 `growthos_app` 只可读取 `lottery_strategy` 和 `lottery_strategy_award`；它没有业务表写权限，也不能读写 `schema_migrations`。这是部署层当前最小权限，不是 `appconfig` 可配置的授权列表。第 19 节出现真实 Repository SQL 后，必须从实际查询和写入需求重新审核，而不能预授予 schema wildcard DML。
 
 | 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
 | --- | --- | --- | --- |
@@ -228,6 +232,7 @@ GROWTHOS_WEB_API_PROXY_TARGET / PORT
 
 - `growth-api` 不读取 Migration Secret，也不执行 DDL；
 - `growth-migrate` 不读取 HTTP 或 API Secret/池参数；
+- Compose `mysql-grants` 不读取应用/Migration Secret，不使用 TCP 或容器网络，只在 Migration 完成后经共享 Unix socket 精确收敛应用授权，并在 mandatory role 存在时失败关闭；
 - Vite 不读取 Go API/Migration Secret，浏览器也不读取代理目标；
 - `mysqlstore` 不读取环境变量，只接收类型化配置；
 - `dbmigration` 不拥有凭据，只接收已经打开且所有权明确的专用连接；
@@ -244,4 +249,4 @@ GROWTHOS_WEB_API_PROXY_TARGET / PORT
 5. 跨组件 timeout/容量关系；
 6. 若改变安全、兼容或长期运维约束，新增或替代 ADR。
 
-当前没有配置热更新、远程配置中心、加密 Secret Manager 或秘密热轮换。第 16 节的本地生成器只解决可复现开发装配；第 76 节若加入 Nacos，它也只能成为新的输入适配器，不能绕过本页类型、校验、账号隔离和秘密边界。
+当前没有配置热更新、远程配置中心、加密 Secret Manager 或秘密热轮换。第 16 节的本地生成器只解决可复现开发装配，第 18 节授权作业只解决当前两张表的 Compose 最小权限收敛；第 76 节若加入 Nacos，它也只能成为新的输入适配器，不能绕过本页类型、校验、账号隔离和秘密边界。

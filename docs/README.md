@@ -32,9 +32,9 @@
 
 ## 当前基线
 
-- 当前完成：第 1～17 节，共 17 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模，下一节是第 18 节第一次正式业务建表。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；Compose 可一键装配 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位服务，React 系统状态页从唯一回环入口真实消费两个探针；`internal/lottery/domain` 已提供持久化无关的 Strategy/Award 聚合、相对权重、显式结果候选和纯单元测试。
+- 当前完成：第 1～18 节，共 18 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模与第一组业务表，下一节是第 19 节实现 Repository。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供持久化无关的 Strategy/Award 聚合。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，应用身份只可 `SELECT` 两张业务表，不能访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：业务 API、业务数据库表、Repository、概率抽奖算法、真实 Lottery 前端、Redis 业务缓存、MQ、微服务和 Java 实现；Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调，INV-03 也尚无 Draw/Result 实现可供验证。
+- 当前明确未做：Lottery Repository、业务写路径、概率抽奖算法、业务 API、真实 Lottery 前端、Redis 业务缓存、MQ、微服务和 Java 实现；Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调，INV-03 也尚无 Draw/Result 实现可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，也不单独保证“至少一个 Award”或总权重不溢出。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

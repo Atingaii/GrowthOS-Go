@@ -35,7 +35,7 @@
 
 ## 当前进度
 
-当前已完成第 1～17 节，共 17 节；第二部分和 M0 工程里程碑均已验收，第三部分已经从最小 Lottery 领域对象开始。
+当前已完成第 1～18 节，共 18 节；第二部分和 M0 工程里程碑均已验收，第三部分已经完成最小 Lottery 领域对象与第一组业务表。
 
 - [第 1 节：为什么要做 AI 原生大营销增长平台](part-01/lesson-01-why-ai-native-growth-platform.md) 已完成。
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
@@ -53,9 +53,10 @@
 - [第 14 节：React TypeScript 前端工程初始化](part-02/lesson-14-react-frontend-framework.md) 已完成。
 - [第 15 节：前后端第一次联调](part-02/lesson-15-first-fullstack-integration.md) 已完成并验收。
 - [第 16 节：Docker Compose 开发环境](part-02/lesson-16-docker-compose-development.md) 已完成并验收。
-- [第 17 节：最简单随机抽奖需要什么对象](part-03/lesson-17-lottery-domain-objects.md) 已完成并验收；下一节是第 18 节第一次正式业务建表。
-- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令；第 15 节让 React 系统状态页真实消费两个探针；第 16 节把 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位装配为仅暴露同源 Web 入口的可复现开发栈；第 17 节第一次用纯 Go 领域对象定义 Lottery Strategy/Award、正整数相对权重、显式 reward/no_reward 和聚合集合不变量。
-- 当前没有业务 API、业务表、Repository、概率抽奖算法或真实 Lottery 前端。系统状态页使用真实探针数据，其他业务页面仍使用 Mock 数据；不能把领域对象单元测试或探针联调外推为在线抽奖已经完成，INV-03 也尚未满足。
+- [第 17 节：最简单随机抽奖需要什么对象](part-03/lesson-17-lottery-domain-objects.md) 已完成并验收。
+- [第 18 节：第一次正式业务建表](part-03/lesson-18-lottery-schema.md) 已完成并验收；下一节是第 19 节实现 Repository。
+- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令；第 15 节让 React 系统状态页真实消费两个探针；第 16 节把 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位装配为仅暴露同源 Web 入口的可复现开发栈；第 17 节用纯 Go 领域对象定义 Lottery Strategy/Award；第 18 节用 `000001` / `000002` 创建 `lottery_strategy` / `lottery_strategy_award`，并把 Compose 启动链收敛为 `mysql → migrate → mysql-grants → api`。
+- 当前没有 Lottery Repository、业务写路径、概率抽奖算法、业务 API 或真实 Lottery 前端。应用身份只对两张业务表拥有 `SELECT`，不能访问 `schema_migrations`；系统状态页使用真实探针数据，其他业务页面仍使用 Mock。不能把领域对象、表结构或探针联调外推为在线抽奖已经完成，INV-03 也尚未满足。
 - 第 16 节已经形成 M0：正式健康探针负载在本机 Docker Desktop 上以 100 RPS 持续 5 分钟完成 30,000/30,000 次请求，P99 为 4.1495 ms；该结果只证明当前工程探针和本地栈，不外推为业务 SLO。第 24、40、56、72、80、88、96 节继续形成后续里程碑。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 
@@ -71,7 +72,7 @@
 
 前端不是最终阶段补上的展示层。React + TypeScript 在第 14 节初始化，第 15 节完成首次 API 联调；抽奖页、运营后台、活动详情、积分/优惠券中心、Growth Feed、数据大盘、MCP 控制台和 AI Operator 依次在对应业务章节交付。
 
-数据库同样不是预制终态。第 13 节已经建立连接、账号隔离、readiness 与前向 Migration 机制，但产品迁移集仍为空；第 18 节才创建 `strategy`、`strategy_award` 两张业务表并使用首个 `000001`。后续每一次字段、索引、新表、冗余快照或宽表变化，必须记录新业务需求、现有设计的不足、Migration、查询/并发影响和 QA 证据。已执行的 Migration 只追加，不回写历史。
+数据库同样不是预制终态。第 13 节先建立连接、账号隔离、readiness 与前向 Migration 机制；第 18 节才以 `000001` / `000002` 分别创建 `lottery_strategy`、`lottery_strategy_award`，当前 latest 为 2。拆成两个版本使每个版本只包含一条 MySQL DDL，并让第二张表失败时能明确报告 version 2 dirty；API 只有在全部迁移和精确授权成功后才启动。后续每一次字段、索引、新表、冗余快照或宽表变化，必须记录新业务需求、现有设计的不足、Migration、查询/并发影响和 QA 证据。已执行的 Migration 只追加，不回写历史。
 
 ## 可部署里程碑
 
