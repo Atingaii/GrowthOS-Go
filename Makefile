@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
 
 COMPOSE_FILE ?= deploy/compose/compose.yaml
 COMPOSE_PROJECT ?= growthos
@@ -34,6 +34,7 @@ help:
 		'  make compose-down Stop the Compose stack while retaining named volumes' \
 		'  make compose-ps  Show Compose services and health' \
 		'  make compose-smoke Verify normal stack state, HTTP contracts, and port isolation' \
+		'  make compose-lottery-api-acceptance  Run the disposable lesson-21 Lottery API acceptance' \
 		'  make compose-m0  Run the explicit M0 smoke and load acceptance gate' \
 		'  make verify     Run all local quality gates'
 
@@ -136,6 +137,9 @@ compose-smoke:
 	GROWTHOS_COMPOSE_FILE="$(COMPOSE_FILE)" \
 	GROWTHOS_COMPOSE_WEB_PORT="$(GROWTHOS_COMPOSE_WEB_PORT)" \
 	./scripts/compose-smoke.sh
+
+compose-lottery-api-acceptance:
+	./scripts/compose-lottery-api-acceptance.sh
 
 compose-load-health:
 	go run ./cmd/healthload \
