@@ -159,17 +159,17 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-18' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-18"
+if [ "$inspected_value" != 'growthos/migrate:lesson-19' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-19"
 fi
-ok 'migrate image identifies the lesson-18 schema build'
+ok 'migrate image identifies the lesson-19 repository-compatible build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-18' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-18"
+if [ "$inspected_value" != 'growthos/api:lesson-19' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-19"
 fi
-ok 'api image identifies the lesson-18 compatible release'
+ok 'api image identifies the lesson-19 repository-compatible release'
 
 # The dollar-prefixed expressions belong to the container shell.
 # shellcheck disable=SC2016
@@ -219,7 +219,7 @@ if ! compose exec -T mysql sh -c '
     mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
         --execute="SELECT 1 FROM lottery_strategy LIMIT 0; SELECT 1 FROM lottery_strategy_award LIMIT 0"
 ' >/dev/null; then
-    fail 'growthos_app cannot read the lesson-18 business table allowlist'
+    fail 'growthos_app cannot read the lesson-19 business table allowlist'
 fi
 # shellcheck disable=SC2016
 if ! actual_app_grants=$(compose exec -T mysql sh -c '
@@ -230,13 +230,13 @@ if ! actual_app_grants=$(compose exec -T mysql sh -c '
     fail 'could not inspect growthos_app grants'
 fi
 expected_app_grants=$(LC_ALL=C sort <<'EOF'
-GRANT SELECT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
-GRANT SELECT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
+GRANT SELECT, INSERT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
+GRANT SELECT, INSERT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
 GRANT USAGE ON *.* TO `growthos_app`@`%`
 EOF
 )
 if [ "$actual_app_grants" != "$expected_app_grants" ]; then
-    fail 'growthos_app grants differ from the lesson-18 allowlist'
+    fail 'growthos_app grants differ from the lesson-19 SELECT+INSERT allowlist'
 fi
 # Mandatory roles are effective privileges even though they are not assigned
 # directly to growthos_app, so an exact per-account SHOW GRANTS check is not
@@ -260,7 +260,23 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has access to schema_migrations'
 fi
-ok 'growthos_app can read only the intended business schema surface'
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="UPDATE lottery_strategy SET name = name WHERE 1 = 0"
+' >/dev/null 2>&1; then
+    fail 'growthos_app unexpectedly has UPDATE permission'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="DELETE FROM lottery_strategy WHERE 1 = 0"
+' >/dev/null 2>&1; then
+    fail 'growthos_app unexpectedly has DELETE permission'
+fi
+ok 'growthos_app has exactly two-table SELECT+INSERT and no UPDATE, DELETE, or migration-table access'
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-compose-smoke.XXXXXX")
 cleanup() {

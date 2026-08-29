@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +19,11 @@ import (
 func TestLotterySchemaMySQLIntegration(t *testing.T) {
 	migrationConnection := schemaIntegrationConnection(t, "GROWTHOS_TEST_MYSQL_MIGRATION")
 	applicationConnection := schemaIntegrationConnection(t, "GROWTHOS_TEST_MYSQL_API")
-	if os.Getenv("GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES") != "lesson-18-isolated-schema" {
+	if os.Getenv("GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES") != "lesson-19-isolated-schema" {
 		t.Skip("schema integration requires explicit disposable-schema authorization")
+	}
+	if os.Getenv("GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES") != "lesson-19-isolated-repository" {
+		t.Skip("schema integration requires explicit repository-write authorization")
 	}
 	if migrationConnection.Address != applicationConnection.Address ||
 		migrationConnection.Database != applicationConnection.Database {
@@ -97,21 +101,63 @@ func TestLotterySchemaMySQLIntegration(t *testing.T) {
 	); err != nil {
 		t.Fatalf("application identity cannot read lottery_strategy_award: %v", err)
 	}
+	assertExactApplicationGrants(t, ctx, applicationDatabase, applicationConnection.Database)
 	applicationWriteProbe, err := applicationDatabase.BeginTxx(ctx, nil)
 	if err != nil {
 		t.Fatalf("begin application write-permission probe: %v", err)
 	}
-	_, writeProbeErr := applicationWriteProbe.ExecContext(
+	writeProbeStrategyID := uint64(time.Now().UnixNano())
+	if _, err := applicationWriteProbe.ExecContext(
 		ctx,
-		"INSERT INTO lottery_strategy (strategy_id, name) VALUES (1, 'not permitted in lesson 18')",
-	)
+		"INSERT INTO lottery_strategy (strategy_id, name) VALUES (?, 'lesson 19 write probe')",
+		writeProbeStrategyID,
+	); err != nil {
+		_ = applicationWriteProbe.Rollback()
+		t.Fatalf("application identity cannot insert lottery_strategy: %v", err)
+	}
+	if _, err := applicationWriteProbe.ExecContext(
+		ctx,
+		`INSERT INTO lottery_strategy_award
+			(strategy_id, award_id, name, weight, outcome)
+		 VALUES (?, 1, 'lesson 19 write probe', 1, 'reward')`,
+		writeProbeStrategyID,
+	); err != nil {
+		_ = applicationWriteProbe.Rollback()
+		t.Fatalf("application identity cannot insert lottery_strategy_award: %v", err)
+	}
+	var writeProbeAwards int
+	if err := applicationWriteProbe.GetContext(
+		ctx,
+		&writeProbeAwards,
+		"SELECT COUNT(*) FROM lottery_strategy_award WHERE strategy_id = ?",
+		writeProbeStrategyID,
+	); err != nil || writeProbeAwards != 1 {
+		_ = applicationWriteProbe.Rollback()
+		t.Fatalf("application write probe read = %d rows, error %v", writeProbeAwards, err)
+	}
 	if err := applicationWriteProbe.Rollback(); err != nil {
 		t.Fatalf("rollback application write-permission probe: %v", err)
 	}
-	if writeProbeErr == nil {
-		t.Fatal("application identity unexpectedly wrote a business table before the repository lesson")
-	} else {
-		expectMySQLErrorNumber(t, writeProbeErr, 1142)
+	var rolledBackRoots int
+	if err := applicationDatabase.GetContext(
+		ctx,
+		&rolledBackRoots,
+		"SELECT COUNT(*) FROM lottery_strategy WHERE strategy_id = ?",
+		writeProbeStrategyID,
+	); err != nil || rolledBackRoots != 0 {
+		t.Fatalf("application write probe rollback left %d roots, error %v", rolledBackRoots, err)
+	}
+	for _, forbiddenStatement := range []string{
+		"UPDATE lottery_strategy SET name = name WHERE 1 = 0",
+		"DELETE FROM lottery_strategy WHERE 1 = 0",
+		"UPDATE lottery_strategy_award SET name = name WHERE 1 = 0",
+		"DELETE FROM lottery_strategy_award WHERE 1 = 0",
+	} {
+		if _, err := applicationDatabase.ExecContext(ctx, forbiddenStatement); err == nil {
+			t.Fatalf("application identity unexpectedly executed %q", forbiddenStatement)
+		} else {
+			expectMySQLErrorNumber(t, err, 1142)
+		}
 	}
 	if _, err := applicationDatabase.ExecContext(
 		ctx,
@@ -121,6 +167,21 @@ func TestLotterySchemaMySQLIntegration(t *testing.T) {
 	} else {
 		expectMySQLErrorNumber(t, err, 1142)
 	}
+	schemaWriteProbe, err := applicationDatabase.BeginTxx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin schema_migrations write-permission probe: %v", err)
+	}
+	_, schemaWriteErr := schemaWriteProbe.ExecContext(
+		ctx,
+		"INSERT INTO schema_migrations (version, dirty) VALUES (2147483647, 0)",
+	)
+	if err := schemaWriteProbe.Rollback(); err != nil {
+		t.Fatalf("rollback schema_migrations write-permission probe: %v", err)
+	}
+	if schemaWriteErr == nil {
+		t.Fatal("application identity unexpectedly inserted schema_migrations")
+	}
+	expectMySQLErrorNumber(t, schemaWriteErr, 1142)
 	if _, err := applicationDatabase.ExecContext(
 		ctx,
 		"UPDATE schema_migrations SET dirty = dirty",
@@ -346,6 +407,53 @@ func expectMySQLErrorNumber(t *testing.T, err error, number uint16) {
 	}
 	if mysqlError.Number != number {
 		t.Fatalf("MySQL error number = %d, want %d", mysqlError.Number, number)
+	}
+}
+
+func assertExactApplicationGrants(
+	t *testing.T,
+	ctx context.Context,
+	database interface {
+		GetContext(context.Context, any, string, ...any) error
+		SelectContext(context.Context, any, string, ...any) error
+	},
+	databaseName string,
+) {
+	t.Helper()
+
+	var currentAccount string
+	if err := database.GetContext(ctx, &currentAccount, "SELECT CURRENT_USER()"); err != nil {
+		t.Fatalf("read application account identity: %v", err)
+	}
+	separator := strings.LastIndexByte(currentAccount, '@')
+	if separator <= 0 || separator == len(currentAccount)-1 {
+		t.Fatalf("application CURRENT_USER() = %q, want user@host", currentAccount)
+	}
+	quoteIdentifier := func(value string) string {
+		return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+	}
+	account := quoteIdentifier(currentAccount[:separator]) + "@" + quoteIdentifier(currentAccount[separator+1:])
+	quotedDatabase := quoteIdentifier(databaseName)
+	expected := []string{
+		"GRANT SELECT, INSERT ON " + quotedDatabase + ".`lottery_strategy` TO " + account,
+		"GRANT SELECT, INSERT ON " + quotedDatabase + ".`lottery_strategy_award` TO " + account,
+		"GRANT USAGE ON *.* TO " + account,
+	}
+	var actual []string
+	if err := database.SelectContext(ctx, &actual, "SHOW GRANTS FOR CURRENT_USER"); err != nil {
+		t.Fatalf("read application grants: %v", err)
+	}
+	sort.Strings(actual)
+	sort.Strings(expected)
+	if strings.Join(actual, "\n") != strings.Join(expected, "\n") {
+		t.Fatalf("application grants = %q, want exact allowlist %q", actual, expected)
+	}
+	var mandatoryRoles string
+	if err := database.GetContext(ctx, &mandatoryRoles, "SELECT @@GLOBAL.mandatory_roles"); err != nil {
+		t.Fatalf("read MySQL mandatory roles: %v", err)
+	}
+	if mandatoryRoles != "" {
+		t.Fatalf("MySQL mandatory roles expand application privileges: %q", mandatoryRoles)
 	}
 }
 

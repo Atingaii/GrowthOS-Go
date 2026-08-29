@@ -44,7 +44,13 @@ func NewAward(id AwardID, name string, weight Weight, outcome AwardOutcome) (Awa
 	if err != nil {
 		return Award{}, err
 	}
+	return RestoreAward(id, name, weight, outcome)
+}
 
+// RestoreAward reconstructs an Award from an already canonical persistence
+// snapshot. Unlike NewAward it never trims or otherwise repairs stored data:
+// an adapter must fail closed when the snapshot violates the domain contract.
+func RestoreAward(id AwardID, name string, weight Weight, outcome AwardOutcome) (Award, error) {
 	award := Award{
 		id:      id,
 		name:    name,

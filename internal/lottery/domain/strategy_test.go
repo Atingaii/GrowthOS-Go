@@ -245,6 +245,30 @@ func TestStrategyAwardLookup(t *testing.T) {
 	}
 }
 
+func TestRestoreStrategyRejectsNonCanonicalStoredName(t *testing.T) {
+	t.Parallel()
+
+	award := mustAward(t, 1, "Reward", 1, AwardOutcomeReward)
+	for _, storedName := range []string{
+		" wheel",
+		"wheel ",
+		"\u00a0wheel",
+		"wheel\u00a0",
+		"\u3000wheel",
+		"wheel\u3000",
+	} {
+		storedName := storedName
+		t.Run(storedName, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := RestoreStrategy(1, storedName, []Award{award})
+			if !errors.Is(err, ErrStrategyNameInvalid) {
+				t.Fatalf("RestoreStrategy() error = %v, want errors.Is(_, %v)", err, ErrStrategyNameInvalid)
+			}
+		})
+	}
+}
+
 func mustAward(t *testing.T, id AwardID, name string, weight Weight, outcome AwardOutcome) Award {
 	t.Helper()
 

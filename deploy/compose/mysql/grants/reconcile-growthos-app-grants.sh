@@ -43,26 +43,26 @@ mysql_root() {
 mysql_root --execute="
 REVOKE IF EXISTS ALL PRIVILEGES, GRANT OPTION
     FROM 'growthos_app'@'%';
-GRANT SELECT
+GRANT SELECT, INSERT
     ON \`growthos\`.\`lottery_strategy\` TO 'growthos_app'@'%';
-GRANT SELECT
+GRANT SELECT, INSERT
     ON \`growthos\`.\`lottery_strategy_award\` TO 'growthos_app'@'%';
 "
 
 actual_grants=$(mysql_root --execute="SHOW GRANTS FOR 'growthos_app'@'%'" | LC_ALL=C sort)
 expected_grants=$(LC_ALL=C sort <<'EOF'
-GRANT SELECT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
-GRANT SELECT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
+GRANT SELECT, INSERT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
+GRANT SELECT, INSERT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
 GRANT USAGE ON *.* TO `growthos_app`@`%`
 EOF
 )
 mandatory_roles=$(mysql_root --execute='SELECT @@GLOBAL.mandatory_roles')
 
 if [ "$actual_grants" != "$expected_grants" ] || [ -n "$mandatory_roles" ]; then
-    printf '%s\n' 'growthos_app effective grants differ from the lesson-18 allowlist' >&2
+    printf '%s\n' 'growthos_app effective grants differ from the lesson-19 SELECT+INSERT allowlist' >&2
     unset root_password actual_grants expected_grants mandatory_roles
     exit 1
 fi
 
 unset root_password actual_grants expected_grants mandatory_roles
-printf '%s\n' 'growthos_app grants match the lesson-18 allowlist'
+printf '%s\n' 'growthos_app grants match the lesson-19 SELECT+INSERT allowlist'

@@ -126,3 +126,40 @@ func TestNewAward(t *testing.T) {
 		})
 	}
 }
+
+func TestRestoreAwardRejectsNonCanonicalStoredName(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{
+		" reward",
+		"reward ",
+		"\u00a0reward",
+		"reward\u00a0",
+		"\u3000reward",
+		"reward\u3000",
+	}
+	for _, storedName := range tests {
+		storedName := storedName
+		t.Run(storedName, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := RestoreAward(1, storedName, 1, AwardOutcomeReward)
+			if !errors.Is(err, ErrAwardNameInvalid) {
+				t.Fatalf("RestoreAward() error = %v, want errors.Is(_, %v)", err, ErrAwardNameInvalid)
+			}
+		})
+	}
+}
+
+func TestRestoreAwardPreservesCanonicalUnicode(t *testing.T) {
+	t.Parallel()
+
+	storedName := "Cafe e\u0301"
+	award, err := RestoreAward(1, storedName, 1, AwardOutcomeReward)
+	if err != nil {
+		t.Fatalf("RestoreAward() unexpected error: %v", err)
+	}
+	if award.Name() != storedName {
+		t.Fatalf("RestoreAward() name = %q, want byte-preserved %q", award.Name(), storedName)
+	}
+}

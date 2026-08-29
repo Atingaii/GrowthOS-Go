@@ -37,6 +37,25 @@ func NewStrategy(id StrategyID, name string, awards []Award) (Strategy, error) {
 	if err != nil {
 		return Strategy{}, err
 	}
+	return RestoreStrategy(id, name, awards)
+}
+
+// RestoreStrategy reconstructs a Strategy from an already canonical
+// persistence snapshot. It deliberately rejects names that would require
+// trimming, so loading cannot silently change stored facts.
+func RestoreStrategy(id StrategyID, name string, awards []Award) (Strategy, error) {
+	if id == 0 {
+		return Strategy{}, ErrStrategyIDRequired
+	}
+	if err := validateCanonicalName(
+		name,
+		MaxStrategyNameRunes,
+		ErrStrategyNameRequired,
+		ErrStrategyNameInvalid,
+		ErrStrategyNameTooLong,
+	); err != nil {
+		return Strategy{}, err
+	}
 	if len(awards) == 0 {
 		return Strategy{}, ErrStrategyAwardsRequired
 	}
