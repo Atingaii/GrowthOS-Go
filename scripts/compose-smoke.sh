@@ -429,7 +429,36 @@ if [ -z "$header_request_id" ] || [ "$header_request_id" != "$body_request_id" ]
 fi
 ok 'an unknown API route returned the correlated 404 JSON contract'
 
-lottery_route=/api/v1/lottery/strategies/18446744073709551615/ephemeral-selections
+# Derive a missing canonical uint64 without mutating or assuming that a
+# particular ID remains unused in a developer's retained database. Candidate
+# 1 plus each stored successor guarantees a gap unless every uint64 is stored,
+# which is not a representable MySQL deployment state.
+# shellcheck disable=SC2016
+missing_strategy_id=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos \
+        --batch --silent --skip-column-names --execute="
+            SELECT CAST(candidate AS CHAR)
+            FROM (
+                SELECT CAST(1 AS UNSIGNED) AS candidate
+                UNION ALL
+                SELECT strategy_id + 1
+                FROM lottery_strategy
+                WHERE strategy_id < 18446744073709551615
+            ) AS candidates
+            LEFT JOIN lottery_strategy AS existing
+                ON existing.strategy_id = candidates.candidate
+            WHERE existing.strategy_id IS NULL
+            ORDER BY candidate
+            LIMIT 1
+        "
+') || fail 'could not derive a missing Lottery strategy ID through growthos_app'
+case "$missing_strategy_id" in
+    ''|0|*[!0-9]*)
+        fail 'the derived missing Lottery strategy ID is not a canonical positive decimal integer'
+        ;;
+esac
+lottery_route="/api/v1/lottery/strategies/$missing_strategy_id/ephemeral-selections"
 perform_request \
     POST \
     "$lottery_route" \
