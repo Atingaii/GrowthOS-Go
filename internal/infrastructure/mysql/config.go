@@ -257,6 +257,11 @@ func driverConfig(in ConnectionConfig, migration bool) (*drivermysql.Config, err
 	}
 
 	driverCfg := drivermysql.NewConfig()
+	// The driver's default logger writes unstructured connection errors directly
+	// to stderr. That bypasses GrowthOS's JSON logging and may render raw driver
+	// causes. Readiness and lifecycle logs already expose the safe operational
+	// signal, so keep driver-internal logging silent at this boundary.
+	driverCfg.Logger = &drivermysql.NopLogger{}
 	driverCfg.User = cfg.User
 	driverCfg.Passwd = cfg.Password
 	driverCfg.Net = "tcp"

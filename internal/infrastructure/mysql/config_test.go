@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	drivermysql "github.com/go-sql-driver/mysql"
 )
 
 func TestDriverConfigAppliesSafeAPIDefaults(t *testing.T) {
@@ -41,6 +43,9 @@ func TestDriverConfigAppliesSafeAPIDefaults(t *testing.T) {
 	}
 	if cfg.AllowAllFiles || cfg.AllowCleartextPasswords || cfg.AllowFallbackToPlaintext || cfg.AllowNativePasswords || cfg.AllowOldPasswords || cfg.InterpolateParams {
 		t.Fatal("a dangerous driver option was enabled")
+	}
+	if _, ok := cfg.Logger.(*drivermysql.NopLogger); !ok {
+		t.Fatalf("driver logger = %T, want a per-connection NopLogger", cfg.Logger)
 	}
 	if cfg.TLS != nil {
 		t.Fatal("disabled TLS mode unexpectedly installed TLS configuration")
