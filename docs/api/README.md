@@ -33,6 +33,7 @@
 | 第 17 节 | 新增持久化无关的 Lottery Strategy/Award 领域对象；无 HTTP 路由、DTO 或真实前端调用 | 已验收 | [第 17 节 API 记录](lessons/lesson-17.md) |
 | 第 18 节 | 新增 Lottery 持久化表和最小只读数据库权限；无 HTTP 路由、DTO、业务 SQL 或真实前端调用 | 已验收 | [第 18 节 API 记录](lessons/lesson-18.md) |
 | 第 19 节 | 新增 Strategy Create/FindByID 仓储与最小写权限；尚未装配 HTTP 路由、DTO 或真实前端调用 | 已验收 | [第 19 节 API 记录](lessons/lesson-19.md) |
+| 第 20 节 | 新增持久化无关的加权 Award 选择与 crypto random adapter；没有新增 HTTP 路由、DTO 或真实前端调用 | 已验收 | [第 20 节 API 记录](lessons/lesson-20.md) |
 
 ## 阅读方式
 

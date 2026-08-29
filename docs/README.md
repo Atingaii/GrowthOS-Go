@@ -32,9 +32,9 @@
 
 ## 当前基线
 
-- 当前完成：第 1～19 节，共 19 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、第一组业务表与 Strategy Create/FindByID 仓储，下一节是第 20 节实现最简单概率抽奖。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供持久化无关的 Strategy/Award 聚合，`internal/lottery/application` 提供两个窄仓储端口，`internal/lottery/adapter/mysqlrepo` 用父子写事务和只读 RR 快照实现它们。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，应用身份只可对两张业务表 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
+- 当前完成：第 1～20 节，共 20 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、第一组业务表、Strategy Create/FindByID 仓储与无偏加权 Award 选择，下一节是第 21 节开放第一个 Lottery API。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供 Strategy/Award 聚合、consumer-owned bounded random port 与零分配线性加权 Selector，`internal/lottery/application` 提供两个窄仓储端口，`internal/lottery/adapter/mysqlrepo` 用父子写事务和只读 RR 快照实现它们，`internal/lottery/adapter/randomsource` 使用 `crypto/rand.Int` 提供完整 uint64 bounded source。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，应用身份只可对两张业务表 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：概率抽奖算法、Lottery 业务 API、真实 Lottery 前端、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现；Repository 也尚未装配进产品 HTTP 进程。Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调，INV-03 也尚无 Draw/Result 实现可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验。
+- 当前明确未做：Lottery 业务 API、Draw/Result 持久化、真实 Lottery 前端、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现；Repository 与 Selector 也尚未装配进产品 HTTP 进程。Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调，INV-03 仍无最终结果事实可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验；CSPRNG 选择也不能替代幂等、库存、运营治理或公平合规。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

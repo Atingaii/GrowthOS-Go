@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-19%20lessons%20completed-2563EB?style=flat-square" alt="已完成 19 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-20%20lessons%20completed-2563EB?style=flat-square" alt="已完成 20 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～19 节，共 19 节：M0 Compose 开发环境已验收，第 17～18 节建立 Lottery `Strategy` / `Award` 纯领域模型与两张 MySQL 业务表，第 19 节实现只包含 `Create` / `FindByID` 的窄仓储边界，并用父子事务、只读 RR 快照、存量数据失败关闭和真实 MySQL 8.4.11 验证闭合聚合。当前仍没有概率算法、Lottery HTTP API、真实 Lottery 前端、更新/删除或 Redis 业务缓存。仓储可读写不等于已经能在线抽奖，工程探针压测、环境占位和前端 Mock 也不能被视为业务闭环。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～20 节，共 20 节：M0 Compose 开发环境已验收，第 17～18 节建立 Lottery `Strategy` / `Award` 纯领域模型与两张 MySQL 业务表，第 19 节闭合 `Create` / `FindByID` 仓储边界，第 20 节再实现完整 `uint64` 范围的无偏加权 Award 选择与 `crypto/rand` 生产随机源。当前仍没有 Lottery HTTP API、Draw/Result 持久化、真实 Lottery 前端、更新/删除或 Redis 业务缓存。仓储与内存选择器存在不等于已经能在线抽奖，工程探针压测、微基准、环境占位和前端 Mock 也不能被视为业务闭环。
 
 ## 项目简介
 
@@ -122,7 +122,7 @@ make db-migrate
 
 当前产品迁移 latest 为 `2`：`000001_create_lottery_strategy.up.sql` 与 `000002_create_lottery_strategy_award.up.sql` 分别创建聚合根表和候选表；已应用环境的 `status` 应为 `clean` 且 `version=latest=2`，重复执行 `up` 应为 `no_change`。完整变量见[配置参考](docs/configuration.md)，探针后端契约见[第 13 节 API 记录](docs/api/lessons/lesson-13.md)，第 19 节“仓储已实现但仍无 HTTP 业务接口”的边界见[章节 API 台账](docs/api/lessons/README.md)，发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
 
-### Lottery 领域模型、业务表与 Strategy 仓储
+### Lottery 领域模型、业务表、Strategy 仓储与加权选择
 
 第 17 节在 `internal/lottery/domain` 建立第一组业务对象：`Strategy` 聚合拥有至少一个 `Award`，拒绝零 ID、非法名称、零权重、未知 Outcome、重复 AwardID 与总权重溢出；候选使用正整数相对权重，合法未中奖由显式 `no_reward` Award 表达，slice 所有权与 AwardID 规范顺序由聚合维护。
 
@@ -135,7 +135,9 @@ go test -race ./internal/lottery/domain
 
 第 19 节在 `internal/lottery/application` 定义调用方拥有的 `StrategyCreator` / `StrategyReader` 窄端口，在 `internal/lottery/adapter/mysqlrepo` 实现手写 SQL：Create 在一个事务中先写根再按 AwardID 稳定顺序写全体 Award；FindByID 在同一个只读 `REPEATABLE READ` 快照内执行根/子两次查询，事务结束后通过 `RestoreAward` / `RestoreStrategy` 恢复并重新验证聚合。不存在、重复、坏快照、暂态 1205/1213、普通仓储故障和写提交结果未知都有独立语义；adapter 不自行重试，也不关闭调用方拥有的连接池。
 
-`growthos_app` 因真实 SQL 增加而精确扩为两张业务表的 `SELECT, INSERT`，仍不能 UPDATE、DELETE、执行 DDL 或访问 `schema_migrations`。领域包仍不包含 SQL/JSON tag，也不依赖 Gin、sqlx 或 Redis；Repository 尚未装配到 HTTP handler，两张表和仓储仍不会执行一次抽奖。第 20～24 节再依次加入概率算法、API、真实页面、规则与缓存。设计与边界见[第 19 节课程](docs/course/part-03/lesson-19-lottery-repository.md)、[第 19 节 QA](docs/qa/lessons/lesson-19.md)和 [ADR 索引](docs/decisions/README.md)。
+第 20 节在 `internal/lottery/domain` 增加 consumer-owned `BoundedRandomSource` 与 `WeightedSelector`：多候选 Strategy 从 `[0,totalWeight)` 获取均匀整数位置，再用无加法溢出的减法桶线性扫描选择 Award；单候选确定性短路，`no_reward` 仍是成功结果。`internal/lottery/adapter/randomsource` 使用标准库 `crypto/rand.Int`，支持 `math.MaxUint64`、拒绝取模偏差，并区分未配置、熵失败、越界 source 与内部不变量错误。纯 mapper 的本机 benchmark 为 0 alloc，但不能外推为产品吞吐。
+
+`growthos_app` 仍精确拥有两张业务表的 `SELECT, INSERT`，不能 UPDATE、DELETE、执行 DDL 或访问 `schema_migrations`。领域包不包含 SQL/JSON tag，也不依赖 Gin、sqlx 或 Redis；Repository 与 Selector 都尚未装配到 HTTP handler，也没有 DrawID、结果持久化、库存或发奖。第 21～24 节再依次加入 API、真实页面、规则与缓存。设计与边界见[第 20 节课程](docs/course/part-03/lesson-20-lottery-weighted-selection.md)、[第 20 节 QA](docs/qa/lessons/lesson-20.md)和 [ADR 索引](docs/decisions/README.md)。
 
 ### React 前端框架
 
@@ -154,7 +156,7 @@ cd web && pnpm run dev
 
 ### Docker Compose M0 开发环境
 
-第 19 节延续不会占用宿主机 MySQL/Redis 端口的本地路径。需要 Docker Desktop 与 Compose 插件；仓库只发布 Web 的回环端口 `127.0.0.1:8088`，API、MySQL、Redis、Migration 与授权作业不发布宿主机端口。首次启动会在被 Git 忽略的目录生成本地 Secret 文件：
+第 20 节继续沿用不会占用宿主机 MySQL/Redis 端口的本地路径。需要 Docker Desktop 与 Compose 插件；仓库只发布 Web 的回环端口 `127.0.0.1:8088`，API、MySQL、Redis、Migration 与授权作业不发布宿主机端口。首次启动会在被 Git 忽略的目录生成本地 Secret 文件：
 
 ```bash
 make compose-up
@@ -191,7 +193,7 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award 领域模型与 Create/FindByID 仓储（尚未装配业务 API） | 业务 API、gRPC + Protobuf、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award、Create/FindByID 仓储、无偏加权 Selector 与 crypto random adapter（尚未装配业务 API） | 业务 API、gRPC + Protobuf、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、同源 Fetch Client、运行时契约解码、真实系统状态页；业务页仍为 Mock | 用户端、运营端、MCP 与 AI Operator 逐域真实联调 |
 | 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、latest 2 嵌入式前向 Migration；`lottery_strategy` / `lottery_strategy_award` 两张业务表；手写 SQL 以事务创建和 RR 快照读取聚合；应用仅有两表 `SELECT, INSERT` 且无 `schema_migrations` 权限；Compose 含隔离且易失的 Redis 环境占位 | 更新/版本化、Redis 缓存、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
@@ -208,7 +210,7 @@ make verify
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
-| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 19 节 Strategy 仓储已验收，第 20 节下一步实现最简单概率抽奖 |
+| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 20 节加权 Award 选择已验收，第 21 节下一步开放首个 Lottery API |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |
 | 6 | 41～48 | MQ、最终一致性与补偿 | 计划中 |
@@ -233,7 +235,7 @@ M0 工程联调 → M1 抽奖 MVP → M2 营销活动 MVP → M3 权益中心
 ```text
 GrowthOS-Go/
 ├── cmd/             # Go 可执行程序与项目工具
-├── internal/        # 私有领域与基础设施模块；已含 Lottery Strategy/Award 纯领域模型
+├── internal/        # 私有领域与基础设施模块；已含 Lottery 聚合、仓储与加权选择器
 ├── pkg/             # 少量稳定的公共 Go 包
 ├── configs/         # 可版本化且不包含秘密的配置示例
 ├── migrations/      # 嵌入式前向 SQL Migration；000001/000002 创建首组 Lottery 业务表
