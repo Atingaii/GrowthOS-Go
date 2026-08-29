@@ -31,9 +31,9 @@
 
 ## 当前基线
 
-- 当前完成：第 1～14 节，共 14 节。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`web/` 页面仍使用 Mock 数据。
+- 当前完成：第 1～15 节，共 15 节；下一节是第 16 节 Docker Compose 开发环境。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；React 系统状态页通过 Vite 同源代理真实消费两个探针，其他业务页面仍使用 Mock 数据。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：业务 API、业务数据库表、Redis、MQ、微服务和 Java 实现；`/health` 不检查外部依赖，`/ready` 只检查 MySQL 连接，前端真实 API 联调留给第 15 节。
+- 当前明确未做：业务 API、业务数据库表、Redis、MQ、微服务和 Java 实现；`/health` 不检查外部依赖，`/ready` 只检查 MySQL 连接，系统状态之外的业务域尚未真实联调。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

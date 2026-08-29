@@ -59,6 +59,34 @@ func TestCompletedLessonsHaveAPIRecords(t *testing.T) {
 	}
 }
 
+func TestCompletedLessonsHaveLearningRecords(t *testing.T) {
+	repositoryRoot, err := findRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems := checkCompletedLessonLearningRecords(repositoryRoot); len(problems) > 0 {
+		for _, problem := range problems {
+			t.Error(problem)
+		}
+	}
+}
+
+func TestRequiresLearningRecords(t *testing.T) {
+	for lesson := 1; lesson <= 12; lesson++ {
+		if requiresLearningRecords(lesson) {
+			t.Fatalf("lesson %d unexpectedly requires pre-rule learning records", lesson)
+		}
+	}
+	if requiresLearningRecords(14) {
+		t.Fatal("lesson 14 is an explicitly tracked historical backfill")
+	}
+	for _, lesson := range []int{13, 15, 16, 96} {
+		if !requiresLearningRecords(lesson) {
+			t.Fatalf("lesson %d must require learning records", lesson)
+		}
+	}
+}
+
 func TestCheckMarkdownLinksSkipsCcb(t *testing.T) {
 	root := t.TempDir()
 

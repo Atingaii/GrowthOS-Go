@@ -13,7 +13,7 @@
 12,2,配置日志与错误码体系,已完成,docs/course/part-02/lesson-12-config-logging-errors.md,docs/qa/lessons/lesson-12.md
 13,2,接入 MySQL 与 Migration,已完成,docs/course/part-02/lesson-13-mysql-migrations.md,docs/qa/lessons/lesson-13.md
 14,2,React TypeScript 前端工程初始化,已完成,docs/course/part-02/lesson-14-react-frontend-framework.md,docs/qa/lessons/lesson-14.md
-15,2,前后端第一次联调,计划中,,
+15,2,前后端第一次联调,已完成,docs/course/part-02/lesson-15-first-fullstack-integration.md,docs/qa/lessons/lesson-15.md
 16,2,Docker Compose 开发环境,计划中,,
 17,3,最简单随机抽奖需要什么对象,计划中,,
 18,3,第一次正式业务建表,计划中,,

@@ -7,12 +7,35 @@
 ```text
 页面/组件
   ↓
-领域 API 模块（按 campaign、lottery、points 等划分）
+领域 API 模块（当前为 system，后续按 campaign、lottery、points 等划分）
   ↓
 统一 HTTP Client
   ↓
-Go Gin API（或当前阶段 Mock 适配器）
+浏览器同源路径
+  ↓
+Vite 开发/预览代理
+  ↓
+Go Gin API
 ```
+
+第 15 节已实现的真实链路只覆盖系统状态页：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 再代理到 Go API。页面组件不直接拼接请求，不读取代理目标，也不把 TypeScript 类型断言当成运行时校验。其他业务页面仍由集中 Mock 数据驱动；“探针已联调”不等于业务 API 已经存在。
+
+统一 Client 只接受以单个 `/` 开头、且不含反斜杠的同源绝对路径，请求使用 `same-origin` credentials/mode、`redirect: "error"` 与 `cache: "no-store"`。响应必须是可解析 JSON，并通过对应 API 模块的运行时 decoder；成功响应保留浏览器侧耗时和可用的 `X-Request-ID`，错误输出只使用公开 envelope 或前端稳定文案。
+
+## 失败分类
+
+前端必须把失败保持为六类，页面可以据此给出不同恢复提示，日志与 QA 也不能把它们合并成笼统的“接口报错”：
+
+| `kind` | 判定边界 | 典型含义 |
+| --- | --- | --- |
+| `timeout` | Client 自己的 100ms～30s 有界计时触发并取消请求 | 上游未在本次等待预算内完成 |
+| `cancelled` | 调用方 signal 取消，或组件刷新/卸载使旧请求失效 | 结果不应再覆盖当前页面状态，不等于服务故障 |
+| `network` | Fetch 在没有 HTTP 响应的情况下失败 | 浏览器网络、DNS、TLS 或直接连接失败 |
+| `gateway` | 开发/预览代理返回非 JSON 的 502、503 或 504 | 代理无法获得符合 API 契约的上游响应 |
+| `http` | 后端返回非 2xx，并提供合法统一 JSON error envelope | 已到达应用；例如 Go `/ready` 返回的合法 JSON 503 仍是 `http`，不是 `gateway` |
+| `contract` | 路径/timeout 输入非法，响应不是 JSON、JSON 无法解析、body 不符合运行时 schema，或 header/body 请求 ID 冲突 | 调用方配置错误、代理返回异常格式或前后端契约漂移 |
+
+`gateway` 的判断刻意同时依赖状态码和非 JSON 媒体类型，避免把后端主动表达的 JSON 503 readiness 失败误判成代理故障。`timeout` 与 `cancelled` 也必须保持独立：前者意味着预算耗尽，后者通常是用户刷新、路由切换或组件生命周期产生的正常控制流。
 
 ## 记录规则
 

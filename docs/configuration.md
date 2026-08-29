@@ -1,12 +1,12 @@
 # GrowthOS-Go 配置参考
 
-**状态：** 第 13 节已完成并验收
+**状态：** 第 15 节已完成并验收
 
 **更新日期：** 2026-08-29
 
-**来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)
+**来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)、[第 15 节：前后端第一次联调](course/part-02/lesson-15-first-fullstack-integration.md)
 
-本页记录 `growth-api` 与 `growth-migrate` 真正读取的配置边界。只有 `internal/platform/appconfig` 读取进程环境；HTTP、数据库、Migration 和业务包只接收已经校验的类型化值。
+本页记录 `growth-api`、`growth-migrate` 与 Vite 开发/预览进程真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取进程环境；HTTP、数据库、Migration 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码。
 
 ## 1. 加载规则
 
@@ -26,7 +26,22 @@
 
 `appconfig.Default()` 和 `DefaultMigration()` 只表示公开默认值，不是可直接启动的完整配置；其中 Password 有意为空。生产入口必须调用 `Load` 或 `LoadMigration`。
 
-## 2. 通用进程配置
+## 2. Vite 开发与预览代理配置
+
+第 15 节的系统状态页只请求浏览器当前 origin 下的 `/health` 与 `/ready`；Vite 的 Node.js 进程负责把这些路径代理到 Go API。运行前端工具链需要 Node.js `>=22.22.2` 与 pnpm `10.13.1`。
+
+| 进程环境变量 | 默认值 | 允许值 / 校验 | 读取者 |
+| --- | --- | --- | --- |
+| `GROWTHOS_WEB_API_PROXY_TARGET` | `http://127.0.0.1:8080` | 仅 `http` / `https` origin；禁止 username、password、非根路径、query 与 fragment | Vite Node.js 进程 |
+| `PORT` | dev `5173`；preview `4173` | 十进制安全整数，范围 1～65535 | Vite Node.js 进程 |
+
+`GROWTHOS_WEB_API_PROXY_TARGET` 刻意不使用 `VITE_` 前缀：它由 `vite.config.ts` 通过带 `GROWTHOS_WEB_` 前缀过滤的 `loadEnv` 读取，只供服务端代理使用，不应进入浏览器 `import.meta.env`。Go 的 `internal/platform/appconfig` 也不读取该变量。有效值必须只表达一个 origin，例如 `https://api.example.com`；`https://user:pass@example.com`、`https://api.example.com/base`、`https://api.example.com?x=1` 与带 fragment 的值都会在 Vite 启动前失败。代理目标中禁止凭据，但这也不代表可以把任何 API Secret 放入其他前端环境变量。
+
+开发服务器默认监听 `127.0.0.1:5173`，生产构建预览默认监听 `127.0.0.1:4173`；两者都可由合法的进程变量 `PORT` 覆盖，并启用 `strictPort`，端口占用时直接失败而不是静默换端口。两种模式使用同一代理边界，只代理精确的 `/health`、`/ready`，以及 `/api` 或 `/api/...`；相似前缀不会被代理。浏览器因此只看到同源路径，不拥有上游 origin 的配置权。
+
+这套 Vite 配置是本地开发与构建预览适配器，不是生产反向代理方案。第 16 节引入 Compose 时需要明确正式入口和容器网络地址，但仍应保持“浏览器同源、代理目标仅由服务端进程持有、启动前严格校验”的边界。
+
+## 3. 通用进程配置
 
 API 与 Migration 都读取 environment/log；只有 API 读取 HTTP 配置。
 
@@ -44,7 +59,7 @@ API 与 Migration 都读取 environment/log；只有 API 读取 HTTP 配置。
 
 `LoadMigration` 有意忽略所有 HTTP 变量。即使宿主环境存在非法 HTTP 地址或 timeout，也不能阻止独立迁移命令运行。
 
-## 3. MySQL 共享连接配置
+## 4. MySQL 共享连接配置
 
 | 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
 | --- | --- | --- | --- |
@@ -57,7 +72,7 @@ API 与 Migration 都读取 environment/log；只有 API 读取 HTTP 配置。
 
 staging/production 必须使用 `verify_identity`。该模式验证证书链与 `ADDRESS` 中的主机名，TLS 最低 1.2；可选 CA 是扩展系统根，不是关闭验证。CA 路径或解析失败只报告稳定阶段，不回显路径或证书内容。development/test 允许显式 disabled。
 
-## 4. API 数据库与连接池配置
+## 5. API 数据库与连接池配置
 
 `appconfig.Load` 只要求 API 密码，不读取 Migrator 账号、密码或执行 timeout。
 
@@ -81,7 +96,7 @@ GROWTHOS_MYSQL_PING_TIMEOUT + 1s
 
 1 秒是 readiness 失败写入 503 envelope 的固定响应预算。连接池设置在首次 Ping 前完成；首次 Ping 失败时池被关闭，API 不监听。
 
-## 5. Migration 专属配置
+## 6. Migration 专属配置
 
 `appconfig.LoadMigration` 只要求 Migration 密码。它复用 environment/log、endpoint、database、TLS、connect/write timeout，但不读取 API user/password/read/ping/pool 或 HTTP 配置。
 
@@ -102,7 +117,7 @@ migration read + 5s <= lock
 
 默认分成两条关系：SQL 执行阶段满足 `statement 30s + 5s <= read 35s`，获取锁阶段满足 `read 35s + 5s <= lock-acquire 40s`。Migration read 不能复用 API 的 `GROWTHOS_MYSQL_READ_TIMEOUT=5s`。lock 至少 11 秒，是为了覆盖上游 MySQL adapter 固定 10 秒的 `GET_LOCK` 服务端等待，避免外层获取锁等待先返回。它不承诺限制 `RELEASE_LOCK`、整个 Migration 或全部清理时间。
 
-## 6. 无秘密示例
+## 7. 无秘密示例
 
 以下与 `configs/growth-api.env.example` 同口径，只展示公开值：
 
@@ -146,10 +161,11 @@ make db-migrate
 
 不要把 DSN 作为替代变量提交，也不要在 shell 命令、截图或 QA 文档中展开密码。
 
-## 7. 失败与秘密语义
+## 8. 失败与秘密语义
 
 以下情况在连接/监听前失败：
 
+- Vite 代理目标不是无凭据、无非根路径、无 query/fragment 的 HTTP(S) origin，或 `PORT` 非法；
 - 必填密码缺失、为空或超过 1024 bytes；
 - MySQL 地址缺少 host/port，数据库名或用户名不合法；
 - TLS 枚举、环境 TLS 组合或 CA 组合不合法；
@@ -161,7 +177,19 @@ make db-migrate
 
 整体脱敏是最后防线，不是记录配置对象的许可。日志仍应只选择 environment、component、operation、版本号等非秘密字段。驱动错误可能包含账号、主机、SQL 或拓扑，API/Migration 入口不能直接格式化它。
 
-## 8. 配置所有权
+## 9. 配置所有权
+
+Vite 与 Go 使用两个互不越权的配置入口：
+
+```text
+GROWTHOS_WEB_API_PROXY_TARGET / PORT
+                 │
+          Vite Node.js 进程
+                 │
+       dev / preview 同源代理
+                 │
+       浏览器只请求同源路径
+```
 
 ```text
                     os.LookupEnv
@@ -183,11 +211,12 @@ make db-migrate
 
 - `growth-api` 不读取 Migration Secret，也不执行 DDL；
 - `growth-migrate` 不读取 HTTP 或 API Secret/池参数；
+- Vite 不读取 Go API/Migration Secret，浏览器也不读取代理目标；
 - `mysqlstore` 不读取环境变量，只接收类型化配置；
 - `dbmigration` 不拥有凭据，只接收已经打开且所有权明确的专用连接；
 - `/ready` 只接收最小 `PingContext` 接口，不解析数据库配置。
 
-## 9. 变更规则
+## 10. 变更规则
 
 新增或修改配置必须同步：
 

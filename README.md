@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-14%20lessons%20completed-2563EB?style=flat-square" alt="已完成 14 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-15%20lessons%20completed-2563EB?style=flat-square" alt="已完成 15 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～14 节，共 14 节；Go 进程已有 liveness/readiness、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池和独立前向 Migration 命令。当前没有业务 API、业务表或业务持久化事实；Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～15 节，共 15 节；Go 进程已有 liveness/readiness、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池和独立前向 Migration 命令，React 系统状态页已通过同源代理真实消费 `GET /health` 与 `GET /ready`。当前没有业务 API、业务表或业务持久化事实，其他业务页面仍使用 Mock 数据；Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
 
 ## 项目简介
 
@@ -120,11 +120,11 @@ make db-status
 make db-migrate
 ```
 
-当前产品迁移集为空，两个命令正确结果为 `no_migrations`，不会占用首个版本号或创建业务表。完整变量见[配置参考](docs/configuration.md)，探针契约见[第 13 节 API 记录](docs/api/lessons/lesson-13.md)，发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。React 真实联调仍留在第 15 节。
+当前产品迁移集为空，两个命令正确结果为 `no_migrations`，不会占用首个版本号或创建业务表。完整变量见[配置参考](docs/configuration.md)，探针后端契约见[第 13 节 API 记录](docs/api/lessons/lesson-13.md)，前端调用与失败语义见[第 15 节 API 记录](docs/api/lessons/lesson-15.md)，发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
 
 ### React 前端框架
 
-`web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架，包含响应式布局、明暗主题、路由、集中 Mock 数据与基础可视化。当前主要用于确认产品信息架构与 UI 基线。
+`web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架，包含响应式布局、明暗主题、路由、集中 Mock 数据与基础可视化。第 15 节新增统一 HTTP Client、运行时契约解码、系统探针 API 与系统状态页：该页面真实消费 Go 的 `GET /health` 和 `GET /ready`，其他业务页面仍使用 Mock 数据。
 
 ```bash
 git clone git@github.com:Atingaii/GrowthOS-Go.git
@@ -135,11 +135,11 @@ make web-install
 cd web && pnpm run dev
 ```
 
-默认访问 `http://localhost:5173`。第 11～13 节已建立 Go liveness/readiness 与 MySQL 基础设施；React 页面仍使用 Mock 数据，第 15 节才完成首次真实前后端联调。
+开发服务器默认访问 `http://127.0.0.1:5173`，生产构建预览默认访问 `http://127.0.0.1:4173`。Vite 将精确匹配的 `/health`、`/ready` 与 `/api` 路径代理到默认的 `http://127.0.0.1:8080`；系统状态页因此保持浏览器同源请求。代理目标与校验规则见[配置参考](docs/configuration.md)。
 
 ### 工程质量门禁
 
-本地需要 Go 1.26.6+、Node.js 22+ 和 pnpm。Go 工具链基线及维护策略见 [ADR-0008](docs/decisions/ADR-0008-supported-go-toolchain-baseline.md)。运行统一检查：
+本地需要 Go 1.26.6+、Node.js 22.22.2+ 和 pnpm 10.13.1。Go 工具链基线及维护策略见 [ADR-0008](docs/decisions/ADR-0008-supported-go-toolchain-baseline.md)。运行统一检查：
 
 ```bash
 make verify
@@ -149,6 +149,7 @@ make verify
 
 - Go 格式检查与 `go test ./...`；
 - 课程状态、章节 QA、API 台账、ADR 索引和 Markdown 链接检查；
+- Vitest 前端单元/组件测试；
 - React/TypeScript 类型检查；
 - Vite 生产构建。
 
@@ -159,7 +160,7 @@ make verify
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
 | 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池 | 业务 API、gRPC + Protobuf、OpenTelemetry |
-| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts | 用户端、运营端、MCP 与 AI Operator 真实联调 |
+| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、同源 Fetch Client、运行时契约解码、真实系统状态页；业务页仍为 Mock | 用户端、运营端、MCP 与 AI Operator 逐域真实联调 |
 | 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、嵌入式前向 Migration；尚无业务表 | 业务 SQL、Redis、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
@@ -174,7 +175,7 @@ make verify
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
-| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9～14 节完成 |
+| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9～15 节完成，第 16 节 Compose 待实施 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |

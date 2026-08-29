@@ -18,6 +18,6 @@
 | 第 12 节 | [请求关联与统一错误契约](lesson-12.md) | 已完成 |
 | 第 13 节 | [MySQL readiness](lesson-13.md) | 已完成 |
 | 第 14 节 | [前端框架与 Mock 边界](lesson-14.md) | 已完成 |
-| 第 15 节 | 待前端调用 Go 健康接口并完成首次联调 | 计划中 |
+| 第 15 节 | [系统探针首次真实联调](lesson-15.md) | 已验收 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。

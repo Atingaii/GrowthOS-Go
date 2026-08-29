@@ -10,7 +10,7 @@
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、使用 Mock 数据的 React 前端框架，以及第 11～13 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池和独立 Migration 命令。业务 API、业务表、Redis、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
+V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架，以及第 11～15 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令和系统状态页同源联调。除系统探针外的前端业务页面仍使用 Mock；业务 API、业务表、Redis、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
 
 ## 2. 图例与状态
 
@@ -189,15 +189,17 @@ flowchart LR
 ```mermaid
 flowchart LR
     BROWSER[浏览器]
-    WEB[React Web\n当前为 Mock 框架]
-    API[Go Gin API\n第 11～13 节运行时]
+    WEB[React Web\n系统状态与业务页面]
+    MOCK[前端 Mock 数据\n当前业务演示]
+    API[Go Gin API\n第 11～15 节当前运行时]
     MIGRATE[growth-migrate\n独立 up / status]
     MODULES[模块化单体\n按业务上下文组织]
     MYSQL[(MySQL 8.4\n连接/Migration 已接入\n无业务表)]
     REDIS[(Redis\n按业务需求接入)]
 
     BROWSER --> WEB
-    WEB -.第 15 节首次联调.-> API
+    WEB -->|同源 GET /health、/ready\nVite 精确代理，已实现| API
+    WEB -->|业务页面，当前| MOCK
     API --> MODULES
     API -->|启动 Ping 与 /ready| MYSQL
     MIGRATE -->|前向结构演进| MYSQL
@@ -205,12 +207,14 @@ flowchart LR
     MODULES -.后续派生缓存.-> REDIS
 ```
 
+Vite 的开发与预览服务器都只精确代理 `/health`、`/ready` 和预留的 `/api` 路径边界，目标由 `GROWTHOS_WEB_API_PROXY_TARGET` 提供，默认 `http://127.0.0.1:8080`。当前实线只代表两个系统探针已经真实接通；`/api` 尚无业务接口，Mock 节点也不属于服务端事实源。
+
 ### 7.1 当前、近期和远期边界
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与 Mock 数据；第 11～13 节 Gin、配置、错误、MySQL 连接、readiness 与 Migration 已验收 | 已存在的能力按台账和 QA 核查 |
-| 第 9～16 节 | 第 13 节数据库基础设施已完成；继续构建前后端联调和 Compose 开发环境 | 继续构建 |
+| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与业务 Mock；第 11～15 节 Gin、配置、错误、MySQL、Migration 和系统探针同源联调已验收 | 已存在的能力按台账和 QA 核查 |
+| 第 16 节 | 在既有本地进程联调基础上建立可复现的 Compose 开发环境 | 下一节 |
 | 第 17～72 节 | 抽奖、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
 | 第 73～96 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 
@@ -268,4 +272,4 @@ flowchart LR
 
 ## 12. 下一阶段输入
 
-第 9 节开始建立仓库工程基线。它必须保持 V0 的真实状态表达：目录只为当前职责服务，空目录不等于能力已实现，未来服务和基础设施不能提前伪装成交付物。
+第 11～15 节已经形成当前 Go 运行时、数据库基础设施、React 框架与首个系统探针联调切片。第 16 节开始建设 Compose 开发环境，并继续遵守 V0 的真实状态表达：目录只为当前职责服务，空目录不等于能力已实现，未来服务和基础设施不能提前伪装成交付物。

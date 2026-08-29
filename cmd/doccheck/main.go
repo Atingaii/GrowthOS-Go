@@ -29,6 +29,7 @@ func main() {
 	problems = append(problems, checkADRIndex(root)...)
 	problems = append(problems, checkCourseStatus(root)...)
 	problems = append(problems, checkCompletedLessonAPIRecords(root)...)
+	problems = append(problems, checkCompletedLessonLearningRecords(root)...)
 	if len(problems) > 0 {
 		fail(problems)
 	}
@@ -243,6 +244,77 @@ func checkCompletedLessonAPIRecords(root string) []error {
 		}
 	}
 	return problems
+}
+
+func checkCompletedLessonLearningRecords(root string) []error {
+	path := filepath.Join(root, "docs", "course", "status.csv")
+	file, err := os.Open(path)
+	if err != nil {
+		return []error{err}
+	}
+	defer file.Close()
+
+	records, err := csv.NewReader(bufio.NewReader(file)).ReadAll()
+	if err != nil {
+		return []error{fmt.Errorf("parse docs/course/status.csv for learning records: %w", err)}
+	}
+
+	var problems []error
+	indexes := make(map[string]string, 2)
+	for _, directory := range []string{"design-thinking", "interview"} {
+		indexPath := filepath.Join(root, "docs", directory, "README.md")
+		index, err := os.ReadFile(indexPath)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("read learning record index %s: %w", filepath.ToSlash(indexPath), err))
+			continue
+		}
+		indexes[directory] = string(index)
+	}
+
+	for _, record := range records[1:] {
+		if len(record) < 4 || record[3] != "已完成" {
+			continue
+		}
+		lesson, err := strconv.Atoi(record[0])
+		if err != nil || !requiresLearningRecords(lesson) {
+			continue
+		}
+
+		for _, directory := range []string{"design-thinking", "interview"} {
+			fileName := fmt.Sprintf("lesson-%02d.md", lesson)
+			relativePath := filepath.ToSlash(filepath.Join(
+				"docs",
+				directory,
+				"lessons",
+				fileName,
+			))
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relativePath))); err != nil {
+				problems = append(problems, fmt.Errorf(
+					"completed lesson %d requires learning record %s",
+					lesson,
+					relativePath,
+				))
+				continue
+			}
+			index, ok := indexes[directory]
+			if ok && !strings.Contains(index, "(lessons/"+fileName+")") {
+				problems = append(problems, fmt.Errorf(
+					"completed lesson %d learning record %s is not registered in docs/%s/README.md",
+					lesson,
+					relativePath,
+					directory,
+				))
+			}
+		}
+	}
+	return problems
+}
+
+func requiresLearningRecords(lesson int) bool {
+	// Lesson 13 established the rule. Lesson 14 had already been completed at
+	// that point and remains an explicitly tracked historical backfill; every
+	// newly completed lesson from 15 onward must satisfy the rule immediately.
+	return lesson == 13 || lesson >= 15
 }
 
 func fail(problems []error) {
