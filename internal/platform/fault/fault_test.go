@@ -15,6 +15,7 @@ func TestKindValidationCoversStableKinds(t *testing.T) {
 		KindNotFound,
 		KindConflict,
 		KindRateLimited,
+		KindUnavailable,
 		KindInternal,
 	}
 	for _, kind := range validKinds {

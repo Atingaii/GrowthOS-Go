@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run doc-check web-install web-typecheck web-build web-verify docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-typecheck web-build web-verify docs-sync docs-sync-watch verify
 
 help:
 	@printf '%s\n' \
@@ -9,6 +9,9 @@ help:
 		'  make test       Run Go tests' \
 		'  make test-race  Run Go tests with the race detector' \
 		'  make api-run    Run the GrowthOS API locally' \
+		'  make db-migrate Apply all pending forward MySQL migrations' \
+		'  make db-status  Inspect the current MySQL migration status' \
+		'  make test-integration-mysql  Verify MySQL identity separation and migrations' \
 		'  make doc-check  Check documentation integrity and course evidence' \
 		'  make web-verify Run frontend typecheck and production build' \
 		'  make verify     Run all local quality gates'
@@ -31,6 +34,23 @@ test-race:
 
 api-run:
 	go run ./cmd/growth-api
+
+db-migrate:
+	go run ./cmd/growth-migrate up
+
+db-status:
+	go run ./cmd/growth-migrate status
+
+test-integration-mysql:
+	@test -n "$${GROWTHOS_TEST_MYSQL_API_ADDRESS:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_ADDRESS' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_API_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_DATABASE' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_API_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_USER' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_API_PASSWORD:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_PASSWORD' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_ADDRESS:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_ADDRESS' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_DATABASE' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_USER' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_PASSWORD:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_PASSWORD' && exit 1)
+	go test -count=1 -run 'Integration$$' ./internal/infrastructure/mysql ./internal/infrastructure/migration
 
 doc-check:
 	go run ./cmd/doccheck

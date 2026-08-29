@@ -33,6 +33,15 @@ func main() {
 }
 
 func run(ctx context.Context, lookup appconfig.LookupFunc, output io.Writer) int {
+	return runWithDependencies(ctx, lookup, output, productionDependencies())
+}
+
+func runWithDependencies(
+	ctx context.Context,
+	lookup appconfig.LookupFunc,
+	output io.Writer,
+	dependencies runtimeDependencies,
+) int {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -65,15 +74,41 @@ func run(ctx context.Context, lookup appconfig.LookupFunc, output io.Writer) int
 		bootstrapLogger.ErrorContext(ctx, "logger configuration rejected", slog.Any("error", err))
 		return 1
 	}
+	if dependencies.OpenDatabase == nil {
+		logger.ErrorContext(ctx, "database dependency is unavailable", slog.String("component", "mysql"))
+		return 1
+	}
+
+	database, err := dependencies.OpenDatabase(ctx, config.MySQL)
+	if err != nil || nilDatabaseRuntime(database) {
+		if !nilDatabaseRuntime(database) {
+			// Defend the dependency boundary even when an injected or future
+			// opener violates the conventional nil-on-error contract.
+			_ = database.Close()
+		}
+		// Database errors can originate in a driver and may contain topology,
+		// account, or query details. Keep the process log to a stable phase and
+		// retain the underlying error only in the adapter's error chain.
+		logger.ErrorContext(ctx, "database startup failed", slog.String("component", "mysql"))
+		return 1
+	}
+	databaseClosed := false
+	defer func() {
+		if !databaseClosed {
+			_ = database.Close()
+		}
+	}()
 
 	// Gin's debug mode writes its own unstructured route table to stdout. The
 	// product process owns logging through slog, so keep framework diagnostics
 	// quiet in every deployment environment.
 	gin.SetMode(gin.ReleaseMode)
 	router := httpapi.NewRouter(httpapi.RouterOptions{
-		Version: version,
-		Clock:   httpapi.ClockFunc(time.Now),
-		Logger:  logger,
+		Version:          version,
+		Clock:            httpapi.ClockFunc(time.Now),
+		Logger:           logger,
+		ReadinessChecker: database,
+		ReadinessTimeout: config.MySQL.PingTimeout,
 	})
 	server := httpserver.New(router, httpServerConfig(config.HTTP, logger))
 
@@ -83,8 +118,16 @@ func run(ctx context.Context, lookup appconfig.LookupFunc, output io.Writer) int
 		slog.String("http_address", config.HTTP.Address),
 		slog.Int64("shutdown_timeout_ms", config.HTTP.ShutdownTimeout.Milliseconds()),
 	)
-	if err := server.Run(ctx); err != nil {
-		logger.ErrorContext(ctx, "service stopped with an error", slog.Any("error", err))
+	serverErr := server.Run(ctx)
+	databaseCloseErr := database.Close()
+	databaseClosed = true
+	if serverErr != nil {
+		logger.ErrorContext(ctx, "service stopped with an error", slog.Any("error", serverErr))
+	}
+	if databaseCloseErr != nil {
+		logger.ErrorContext(ctx, "database shutdown failed", slog.String("component", "mysql"))
+	}
+	if serverErr != nil || databaseCloseErr != nil {
 		return 1
 	}
 	logger.InfoContext(ctx, "service stopped")

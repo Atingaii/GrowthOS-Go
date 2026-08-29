@@ -24,6 +24,7 @@ const (
 	KindNotFound        Kind = "not_found"
 	KindConflict        Kind = "conflict"
 	KindRateLimited     Kind = "rate_limited"
+	KindUnavailable     Kind = "unavailable"
 	KindInternal        Kind = "internal"
 )
 
@@ -36,6 +37,7 @@ func (kind Kind) Valid() bool {
 		KindNotFound,
 		KindConflict,
 		KindRateLimited,
+		KindUnavailable,
 		KindInternal:
 		return true
 	default:

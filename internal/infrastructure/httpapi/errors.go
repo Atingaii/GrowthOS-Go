@@ -26,6 +26,12 @@ var (
 		"internal server error",
 		nil,
 	)
+	dependencyUnavailableFault = fault.MustNew(
+		fault.KindUnavailable,
+		"dependency_unavailable",
+		"service unavailable",
+		nil,
+	)
 )
 
 type errorEnvelope struct {
@@ -68,6 +74,8 @@ func statusForKind(kind fault.Kind) int {
 		return http.StatusConflict
 	case fault.KindRateLimited:
 		return http.StatusTooManyRequests
+	case fault.KindUnavailable:
+		return http.StatusServiceUnavailable
 	case fault.KindInternal:
 		return http.StatusInternalServerError
 	default:

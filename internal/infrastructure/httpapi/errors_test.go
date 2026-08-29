@@ -28,6 +28,7 @@ func TestAbortWithErrorMapsEveryFaultKind(t *testing.T) {
 		{kind: fault.KindNotFound, status: http.StatusNotFound},
 		{kind: fault.KindConflict, status: http.StatusConflict},
 		{kind: fault.KindRateLimited, status: http.StatusTooManyRequests},
+		{kind: fault.KindUnavailable, status: http.StatusServiceUnavailable},
 		{kind: fault.KindInternal, status: http.StatusInternalServerError},
 	}
 

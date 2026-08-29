@@ -7,13 +7,19 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// HealthPath is intentionally unversioned because it describes the process,
-// not a versioned business resource.
-const HealthPath = "/health"
+const (
+	// HealthPath is intentionally unversioned because it describes the process,
+	// not a versioned business resource.
+	HealthPath = "/health"
+	// ReadyPath is intentionally unversioned because it describes whether the
+	// process can currently serve traffic, not a versioned business resource.
+	ReadyPath = "/ready"
+)
 
 // RouterOptions contains process metadata dependencies used by HTTP handlers.
 type RouterOptions struct {
@@ -21,6 +27,8 @@ type RouterOptions struct {
 	Clock              Clock
 	Logger             *slog.Logger
 	RequestIDGenerator RequestIDGenerator
+	ReadinessChecker   ReadinessChecker
+	ReadinessTimeout   time.Duration
 }
 
 // NewRouter builds the product process's Gin router.
@@ -58,6 +66,12 @@ func NewRouter(options RouterOptions) *gin.Engine {
 		abortWithFaultStatus(ginContext, http.StatusMethodNotAllowed, methodNotAllowedFault)
 	})
 	router.GET(HealthPath, newHealthHandler(version, clock))
+	router.GET(ReadyPath, newReadinessHandler(
+		version,
+		clock,
+		options.ReadinessChecker,
+		options.ReadinessTimeout,
+	))
 
 	return router
 }
