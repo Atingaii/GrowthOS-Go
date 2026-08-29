@@ -20,7 +20,7 @@
 | 第 16 节：Docker Compose 开发环境 | `codex/lesson-16-docker-compose-development` | 第 15 节验收 tip `03ebe56` | 文件凭据 `e746a6f`；日志边界 `52c3add`；Compose 栈 `7aa6c9e`；文档内容 `ad8078c`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 唯一同源入口、网络与身份隔离、一次性迁移、秘密文件、故障演练和 M0 负载门禁 |
 | 第 17 节：Lottery 最小领域对象 | `codex/lesson-17-lottery-domain-objects` | 第 16 节最终检查点 `f9cdd3c` | 实现 `0b59217`；文档内容 `792f04e`；完整章节以最终分支 tip 为准 | 本地与 `origin` | Strategy 聚合、Award 候选、整数相对权重、显式 reward/no_reward、领域不变量与适配器边界 |
 | 第 18 节：Lottery 首组业务表 | `codex/lesson-18-lottery-schema` | 第 17 节最终检查点 `24e606a` | 实现 `7593aaa`；策略内身份加固 `f74fdf2`；文档内容 `215abd1`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 两表最小 schema、复合身份、迁移故障语义、最小权限授权与真实 MySQL/Compose 验收 |
-| 第 19 节：Lottery Strategy 仓储 | `codex/lesson-19-lottery-repository` | 第 18 节最终检查点 `4c06e25` | 实现 `50ac811`；证据加固 `2c420c9`；文档内容与最终验收以最终分支 tip 为准 | 本地与 `origin` | 窄 application 端口、聚合写事务、只读 RR 快照、恢复校验、语义错误与精确 SELECT/INSERT 权限 |
+| 第 19 节：Lottery Strategy 仓储 | `codex/lesson-19-lottery-repository` | 第 18 节最终检查点 `4c06e25` | 实现 `50ac811`；证据加固 `2c420c9`；文档内容 `09556d8`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 窄 application 端口、聚合写事务、只读 RR 快照、恢复校验、语义错误与精确 SELECT/INSERT 权限 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -34,7 +34,7 @@
 
 第 18 节从第 17 节最终检查点 `24e606a` 开始。`7593aaa` 增加 Strategy/Award 两个前向 Migration、数据库约束、授权 reconciliation、Compose 编排与真实 MySQL 集成验收；`f74fdf2` 用可执行测试明确 AwardID 只在 Strategy 内唯一；`215abd1` 再固化课程、API、QA、第一性原理设计手记、24 道面试问答、两份 ADR 与全局当前态。最后的检查点提交只登记已复跑事实，因此完整学习版本以 `origin/codex/lesson-18-lottery-schema` 的最终 tip 为准。
 
-第 19 节从第 18 节最终检查点 `4c06e25` 开始。`50ac811` 增加 consumer-owned Create/FindByID 窄端口、MySQL adapter、父子原子写事务、只读 RR 聚合快照、存量数据恢复校验、稳定错误分类、真实 MySQL 并发/取消/执行计划测试，以及两表精确 `SELECT, INSERT` 授权；`2c420c9` 再以生产 `TxOptions` 的真实只读事务探针、真实 1205 和逆序多 Award SQL 控制流收紧证据。课程、QA、设计手记、面试问答和 ADR 随后独立提交，便于先读实现、再读证据加固、最后重放取舍；完整学习版本以同名远端分支最终 tip 为准。
+第 19 节从第 18 节最终检查点 `4c06e25` 开始。`50ac811` 增加 consumer-owned Create/FindByID 窄端口、MySQL adapter、父子原子写事务、只读 RR 聚合快照、存量数据恢复校验、稳定错误分类、真实 MySQL 并发/取消/执行计划测试，以及两表精确 `SELECT, INSERT` 授权；`2c420c9` 再以生产 `TxOptions` 的真实只读事务探针、真实 1205 和逆序多 Award SQL 控制流收紧证据；`09556d8` 固化课程、API、QA、1098 行第一性原理设计手记、28 道面试问答、ADR 与全局当前态。依次阅读这三个提交，可以分别理解实现、证据加固和设计复盘；完整学习版本以同名远端分支最终 tip 为准。
 
 ## 稳定章节分支与累计快照
 
@@ -122,7 +122,7 @@ git diff 4c06e25..codex/lesson-19-lottery-repository
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`。第 18 节直接基于 `24e606a`，实现提交为 `7593aaa`，策略内身份加固为 `f74fdf2`，文档内容提交为 `215abd1`。第 19 节直接基于 `4c06e25`，实现提交为 `50ac811`，证据加固为 `2c420c9`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`。第 18 节直接基于 `24e606a`，实现提交为 `7593aaa`，策略内身份加固为 `f74fdf2`，文档内容提交为 `215abd1`。第 19 节直接基于 `4c06e25`，实现提交为 `50ac811`，证据加固为 `2c420c9`，文档内容为 `09556d8`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 

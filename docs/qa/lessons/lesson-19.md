@@ -8,6 +8,7 @@
 - **分支：** `codex/lesson-19-lottery-repository`
 - **实现提交：** `50ac811`（`feat: add lottery strategy repository`）
 - **证据加固提交：** `2c420c9`（`test: strengthen repository transaction evidence`）
+- **文档内容提交：** `09556d8`（`docs: complete lesson nineteen learning evidence`）
 - **日期：** 2026-08-29
 
 > 本记录区分“测试源码覆盖了什么”“哪条命令真的在本机执行过”和“这些证据仍然不能证明什么”。第 19 节没有 Lottery HTTP API、抽奖算法、更新/删除、Redis 缓存或生产部署，不能把仓储可读写外推为在线抽奖闭环。
@@ -280,6 +281,6 @@ Repository 当前尚未装配进 `growth-api` handler，所以 smoke 不会也�
 
 ## 15. 验收结论
 
-第 19 节实现提交 `50ac811` 与证据加固提交 `2c420c9` 已推送到 `origin/codex/lesson-19-lottery-repository`。实现层、真实 MySQL 8.4.11、最小权限和默认 Compose 证据通过；文档链接、全仓普通/race/vet、前端既有门禁与最终分支 tip 由本节收尾提交再次核验并登记在[课程分支检查点](../../course/branch-checkpoints.md)。
+第 19 节实现提交 `50ac811`、证据加固提交 `2c420c9` 与文档内容提交 `09556d8` 已推送到 `origin/codex/lesson-19-lottery-repository`。实现层、真实 MySQL 8.4.11、最小权限和默认 Compose 证据通过；文档链接、全仓普通/race/vet、前端既有门禁与最终分支 tip 由本节收尾提交再次核验并登记在[课程分支检查点](../../course/branch-checkpoints.md)。
 
 结论限定为：**GrowthOS 已拥有一个可验证的 Lottery Strategy Create/FindByID 仓储边界；还没有一次可在线调用的抽奖。**
