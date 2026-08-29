@@ -54,3 +54,4 @@
 
 - [第 13 节：MySQL 连接与 Migration 边界](lessons/lesson-13.md)
 - [第 15 节：第一条可诚实解释的全栈链路](lessons/lesson-15.md)
+- [第 16 节：从可运行代码推导可恢复的本地系统](lessons/lesson-16.md)

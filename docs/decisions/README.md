@@ -16,5 +16,6 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0009](ADR-0009-runtime-boundaries.md) | 已接受 | 显式配置、slog、请求关联和 fault 到 HTTP 的运行时边界 |
 | [ADR-0010](ADR-0010-mysql-migration-boundaries.md) | 已接受 | MySQL 连接、账号隔离、readiness 与前向 Migration 边界 |
 | [ADR-0011](ADR-0011-same-origin-frontend-integration.md) | 已接受 | 浏览器通过受约束的同源代理消费系统探针，并在运行时验证契约与失败语义 |
+| [ADR-0012](ADR-0012-compose-development-topology.md) | 已接受 | 本地 Compose 仅发布同源 Web 入口，以隔离网络、一次性迁移和文件秘密装配开发栈 |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。

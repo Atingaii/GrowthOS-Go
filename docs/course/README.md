@@ -35,7 +35,7 @@
 
 ## 当前进度
 
-当前已完成第 1～15 节，共 15 节。
+当前已完成第 1～16 节，共 16 节；第二部分和 M0 工程里程碑均已验收。
 
 - [第 1 节：为什么要做 AI 原生大营销增长平台](part-01/lesson-01-why-ai-native-growth-platform.md) 已完成。
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
@@ -51,10 +51,11 @@
 - [第 12 节：配置、日志与错误码体系](part-02/lesson-12-config-logging-errors.md) 已完成并验收。
 - [第 13 节：接入 MySQL 与 Migration](part-02/lesson-13-mysql-migrations.md) 已完成并验收。
 - [第 14 节：React TypeScript 前端工程初始化](part-02/lesson-14-react-frontend-framework.md) 已完成。
-- [第 15 节：前后端第一次联调](part-02/lesson-15-first-fullstack-integration.md) 已完成并验收；下一节是第 16 节 Docker Compose 开发环境。
-- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令；第 15 节让 React 系统状态页通过 Vite 同源代理真实消费两个探针，并建立统一 HTTP Client 与运行时契约校验。
+- [第 15 节：前后端第一次联调](part-02/lesson-15-first-fullstack-integration.md) 已完成并验收。
+- [第 16 节：Docker Compose 开发环境](part-02/lesson-16-docker-compose-development.md) 已完成并验收；下一节是第 17 节最简单随机抽奖需要什么对象。
+- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令；第 15 节让 React 系统状态页真实消费两个探针；第 16 节把 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位装配为仅暴露同源 Web 入口的可复现开发栈。
 - 当前没有业务 API 或业务表。系统状态页使用真实探针数据，其他业务页面仍使用 Mock 数据；不能把探针联调外推为业务域已经完成联调。
-- 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。
+- 第 16 节已经形成 M0：正式健康探针负载在本机 Docker Desktop 上以 100 RPS 持续 5 分钟完成 30,000/30,000 次请求，P99 为 4.1495 ms；该结果只证明当前工程探针和本地栈，不外推为业务 SLO。第 24、40、56、72、80、88、96 节继续形成后续里程碑。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 
 ## 课程演进规则

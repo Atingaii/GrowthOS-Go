@@ -13,12 +13,12 @@
   ↓
 浏览器同源路径
   ↓
-Vite 开发/预览代理
+Vite 开发/预览代理，或 Compose Nginx 入口
   ↓
 Go Gin API
 ```
 
-第 15 节已实现的真实链路只覆盖系统状态页：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 再代理到 Go API。页面组件不直接拼接请求，不读取代理目标，也不把 TypeScript 类型断言当成运行时校验。其他业务页面仍由集中 Mock 数据驱动；“探针已联调”不等于业务 API 已经存在。
+第 15 节已实现的真实链路只覆盖系统状态页：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 在宿主开发模式下代理到 Go API。第 16 节没有改变浏览器路径或 JSON 契约，只增加 Compose Nginx 入口：它动态解析 API 容器、隐藏上游同名请求 ID 后统一回写最终 `X-Request-ID`，因此正常响应和网关自身 502 都只有一个可关联 ID。页面组件不直接拼接请求，不读取代理目标，也不把 TypeScript 类型断言当成运行时校验。其他业务页面仍由集中 Mock 数据驱动；“探针已联调”不等于业务 API 已经存在。
 
 统一 Client 只接受以单个 `/` 开头、且不含反斜杠的同源绝对路径，请求使用 `same-origin` credentials/mode、`redirect: "error"` 与 `cache: "no-store"`。响应必须是可解析 JSON，并通过对应 API 模块的运行时 decoder；成功响应保留浏览器侧耗时和可用的 `X-Request-ID`，错误输出只使用公开 envelope 或前端稳定文案。
 

@@ -18,6 +18,7 @@
 | 学习分支 | [课程分支检查点](course/branch-checkpoints.md) | 按章节切换、比较和核查实现分支 |
 | 运行配置 | [配置参考](configuration.md) | `GROWTHOS_` 环境变量、默认值、校验与秘密边界 |
 | 数据库运维 | [MySQL Migration 运维手册](runbooks/mysql-migrations.md) | 身份隔离、前向发布、故障停止条件与清理 |
+| 本地开发栈 | [Docker Compose 运维手册](runbooks/local-compose.md) | Secret 生成、启停、M0 验收、故障定位与数据重置边界 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
 | API 契约 | [API 文档](api/README.md) | 按章节查看前端 API 新增、调整和联调状态 |
@@ -31,9 +32,9 @@
 
 ## 当前基线
 
-- 当前完成：第 1～15 节，共 15 节；下一节是第 16 节 Docker Compose 开发环境。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；React 系统状态页通过 Vite 同源代理真实消费两个探针，其他业务页面仍使用 Mock 数据。
+- 当前完成：第 1～16 节，共 16 节；第二阶段 M0 已验收，下一节是第 17 节最简单随机抽奖需要什么对象。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；Compose 可一键装配 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位服务，React 系统状态页从唯一回环入口真实消费两个探针。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：业务 API、业务数据库表、Redis、MQ、微服务和 Java 实现；`/health` 不检查外部依赖，`/ready` 只检查 MySQL 连接，系统状态之外的业务域尚未真实联调。
+- 当前明确未做：业务 API、业务数据库表、Redis 业务缓存、MQ、微服务和 Java 实现；Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

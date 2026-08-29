@@ -21,6 +21,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 13 节验收](lessons/lesson-13.md) | MySQL 身份隔离、连接池、readiness、前向 Migration 与真实容器联调 | 通过 |
 | [第 14 节验收](lessons/lesson-14.md) | React 前端整体框架与 UI 基线 | 通过 |
 | [第 15 节验收](lessons/lesson-15.md) | 同源探针联调、运行时契约、失败分类、组件状态与真实浏览器故障场景 | 通过 |
+| [第 16 节验收](lessons/lesson-16.md) | Compose 拓扑、秘密边界、最小权限、故障恢复、浏览器场景与 M0 负载基线 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |

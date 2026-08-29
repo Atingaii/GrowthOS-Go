@@ -17,6 +17,7 @@
 | 第 12 节：配置、日志与错误 | `codex/lesson-12-config-logging-errors` | 第 11 节已验收 tip | 实现 `60a6116`；验收 tip `ac9ad0e` | 本地与 `origin` | `GROWTHOS_` 配置、`slog`、请求关联、fault 与 HTTP 错误 |
 | 第 13 节：MySQL 与 Migration | `codex/lesson-13-mysql-migrations` | 第 12 节验收 tip `ac9ad0e` | 实现 `b3f5aa7`；加固 `b734463`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 身份隔离、`sqlx` pool、readiness、前向 Migration 与真实 MySQL 验收 |
 | 第 15 节：前后端第一次联调 | `codex/lesson-15-first-fullstack-integration` | 累计检查点 `f0cd8e1` | 实现 `7e499cc`；浏览器契约加固 `2283a70`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 同源代理、统一 Fetch、运行时解码、独立探针状态、竞态与真实浏览器故障验收 |
+| 第 16 节：Docker Compose 开发环境 | `codex/lesson-16-docker-compose-development` | 第 15 节验收 tip `03ebe56` | 文件凭据 `e746a6f`；日志边界 `52c3add`；Compose 栈 `7aa6c9e`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 唯一同源入口、网络与身份隔离、一次性迁移、秘密文件、故障演练和 M0 负载门禁 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -24,14 +25,16 @@
 
 第 15 节从包含第 14 节前端框架与第 13 节完整后端证据的累计检查点 `f0cd8e1` 开始。`7e499cc` 建立真实系统状态纵向切片；浏览器离线演练随后发现 Vite 会返回非 JSON 502，`2283a70` 因而把 `gateway` 与 Go 的合法 JSON 503 分开并补齐回归测试。完整课程、API、QA、设计手记与面试问答以 `origin/codex/lesson-15-first-fullstack-integration` 的最终 tip 为准。
 
+第 16 节从第 15 节最终验收 tip `03ebe56` 开始。`e746a6f` 建立直接密码与 `_FILE` 二选一的秘密输入边界，`52c3add` 阻止 MySQL driver 绕过 JSON 日志，`7aa6c9e` 再交付隔离的 Compose 栈、脱敏同源网关、Secret 生成器、smoke 与定速负载工具。按这三个提交依次阅读，可以分别理解“配置边界—可观测边界—运行拓扑”，完整课程、QA、设计手记、面试问答、ADR 与 Runbook 以同名远端分支最终 tip 为准。
+
 ## 稳定章节分支与累计快照
 
 课程同时保留两类用途不同的分支：
 
 | 类型 | 分支规则 | 是否移动 | 当前事实 |
 | --- | --- | --- | --- |
-| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 15 节实现、浏览器加固与最终文档均推送后，冻结同名远端 tip |
-| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 15 节最终文档提交和门禁通过后快进至该节稳定分支 tip |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 16 节实现、运行验收与最终文档均推送后，冻结同名远端 tip |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 16 节最终文档提交和门禁通过后快进至该节稳定分支 tip |
 
 学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
@@ -67,6 +70,7 @@ git switch codex/lesson-12-config-logging-errors
 git switch codex/lesson-13-mysql-migrations
 git switch codex/lesson-14-react-frontend-framework
 git switch codex/lesson-15-first-fullstack-integration
+git switch codex/lesson-16-docker-compose-development
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
@@ -76,6 +80,7 @@ git switch --track origin/codex/lesson-11-gin-http-service
 git switch --track origin/codex/lesson-12-config-logging-errors
 git switch --track origin/codex/lesson-13-mysql-migrations
 git switch --track origin/codex/lesson-15-first-fullstack-integration
+git switch --track origin/codex/lesson-16-docker-compose-development
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -90,11 +95,13 @@ git diff --stat codex/lesson-12-config-logging-errors..codex/lesson-13-mysql-mig
 git diff codex/lesson-12-config-logging-errors..codex/lesson-13-mysql-migrations
 git diff --stat f0cd8e1..codex/lesson-15-first-fullstack-integration
 git diff f0cd8e1..codex/lesson-15-first-fullstack-integration
+git diff --stat 03ebe56..codex/lesson-16-docker-compose-development
+git diff 03ebe56..codex/lesson-16-docker-compose-development
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送，最终以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 
