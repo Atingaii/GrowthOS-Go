@@ -21,13 +21,13 @@
   <img src="https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.24" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-8%20lessons%20completed-2563EB?style=flat-square" alt="已完成 8 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-10%20lessons%20completed-2563EB?style=flat-square" alt="已完成 10 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～8 节产品分析和第 14 节 React 前端框架；业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO 或前端 Mock 页面视为这些能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～9 节和第 14 节 React 前端框架；业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
 
 ## 项目简介
 
@@ -143,7 +143,7 @@ make verify
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
-| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 14 节前端框架完成 |
+| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9、14 节完成 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |

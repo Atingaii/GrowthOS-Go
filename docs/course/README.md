@@ -43,6 +43,7 @@
 - [第 6 节：第一次划分限界上下文](part-01/lesson-06-first-bounded-contexts.md) 已完成。
 - [第 7 节：确定非功能需求](part-01/lesson-07-non-functional-requirements.md) 已完成。
 - [第 8 节：画 V0 系统设计](part-01/lesson-08-v0-system-design.md) 已完成。
+- [第 9 节：创建 GrowthOS-Go 仓库](part-02/lesson-09-create-growthos-go-repository.md) 已完成。
 - 第 14 节前端整体框架已完成；其他章节仍处于规划状态。
 - 产品运行时代码将在第 11 节首次提供 HTTP 服务，前后端在第 15 节完成首次真实 API 联调。
 - 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。
