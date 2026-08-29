@@ -159,17 +159,17 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-19' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-19"
+if [ "$inspected_value" != 'growthos/migrate:lesson-21' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-21"
 fi
-ok 'migrate image identifies the lesson-19 repository-compatible build'
+ok 'migrate image identifies the lesson-21 Lottery API-compatible build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-19' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-19"
+if [ "$inspected_value" != 'growthos/api:lesson-21' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-21"
 fi
-ok 'api image identifies the lesson-19 repository-compatible release'
+ok 'api image identifies the lesson-21 Lottery API release'
 
 # The dollar-prefixed expressions belong to the container shell.
 # shellcheck disable=SC2016
@@ -219,7 +219,7 @@ if ! compose exec -T mysql sh -c '
     mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
         --execute="SELECT 1 FROM lottery_strategy LIMIT 0; SELECT 1 FROM lottery_strategy_award LIMIT 0"
 ' >/dev/null; then
-    fail 'growthos_app cannot read the lesson-19 business table allowlist'
+    fail 'growthos_app cannot read the current business table allowlist'
 fi
 # shellcheck disable=SC2016
 if ! actual_app_grants=$(compose exec -T mysql sh -c '
@@ -236,7 +236,7 @@ GRANT USAGE ON *.* TO `growthos_app`@`%`
 EOF
 )
 if [ "$actual_app_grants" != "$expected_app_grants" ]; then
-    fail 'growthos_app grants differ from the lesson-19 SELECT+INSERT allowlist'
+    fail 'growthos_app grants differ from the current SELECT+INSERT allowlist'
 fi
 # Mandatory roles are effective privileges even though they are not assigned
 # directly to growthos_app, so an exact per-account SHOW GRANTS check is not
@@ -349,7 +349,10 @@ assert_json_response() {
 
 request /health 200 application/json
 assert_json_response /health
-ok '/health returned HTTP 200 and JSON through the web proxy'
+if ! jq -e '.status == "ok" and .version == "lesson-21"' "$response_body" >/dev/null 2>&1; then
+    fail '/health did not identify the lesson-21 API build'
+fi
+ok '/health returned HTTP 200, JSON, and the lesson-21 build through the web proxy'
 
 request /ready 200 application/json
 assert_json_response /ready

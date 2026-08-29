@@ -25,6 +25,9 @@ func TestDefaultUsesOnlyPublicNonSecretValues(t *testing.T) {
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		},
+		Lottery: LotteryConfig{
+			SelectionTimeout: 3 * time.Second,
+		},
 		Log: LogConfig{
 			Level:  LogLevelInfo,
 			Format: LogFormatJSON,
@@ -69,29 +72,30 @@ func TestLoadRequiresAPIPassword(t *testing.T) {
 
 func TestLoadAppliesCompleteOverride(t *testing.T) {
 	variables := map[string]string{
-		environmentVariable:           "production",
-		httpAddressVariable:           "127.0.0.1:9090",
-		httpShutdownTimeoutVariable:   "10s",
-		httpReadHeaderTimeoutVariable: "3s",
-		httpReadTimeoutVariable:       "20s",
-		httpWriteTimeoutVariable:      "45s",
-		httpIdleTimeoutVariable:       "2m",
-		logLevelVariable:              "warn",
-		logFormatVariable:             "text",
-		mysqlAddressVariable:          "db.internal.example:4406",
-		mysqlDatabaseVariable:         "growthos_prod",
-		mysqlTLSModeVariable:          "verify_identity",
-		mysqlTLSCAFileVariable:        "/run/secrets/mysql-ca.pem",
-		mysqlConnectTimeoutVariable:   "7s",
-		mysqlReadTimeoutVariable:      "25s",
-		mysqlWriteTimeoutVariable:     "35s",
-		mysqlUserVariable:             "api-user@private",
-		mysqlPasswordVariable:         " arbitrary API password \x00 ",
-		mysqlPingTimeoutVariable:      "8s",
-		mysqlMaxOpenConnsVariable:     "42",
-		mysqlMaxIdleConnsVariable:     "17",
-		mysqlConnMaxLifetimeVariable:  "12m",
-		mysqlConnMaxIdleTimeVariable:  "7m",
+		environmentVariable:             "production",
+		httpAddressVariable:             "127.0.0.1:9090",
+		httpShutdownTimeoutVariable:     "10s",
+		httpReadHeaderTimeoutVariable:   "3s",
+		httpReadTimeoutVariable:         "20s",
+		httpWriteTimeoutVariable:        "45s",
+		httpIdleTimeoutVariable:         "2m",
+		lotterySelectionTimeoutVariable: "11s",
+		logLevelVariable:                "warn",
+		logFormatVariable:               "text",
+		mysqlAddressVariable:            "db.internal.example:4406",
+		mysqlDatabaseVariable:           "growthos_prod",
+		mysqlTLSModeVariable:            "verify_identity",
+		mysqlTLSCAFileVariable:          "/run/secrets/mysql-ca.pem",
+		mysqlConnectTimeoutVariable:     "7s",
+		mysqlReadTimeoutVariable:        "25s",
+		mysqlWriteTimeoutVariable:       "35s",
+		mysqlUserVariable:               "api-user@private",
+		mysqlPasswordVariable:           " arbitrary API password \x00 ",
+		mysqlPingTimeoutVariable:        "8s",
+		mysqlMaxOpenConnsVariable:       "42",
+		mysqlMaxIdleConnsVariable:       "17",
+		mysqlConnMaxLifetimeVariable:    "12m",
+		mysqlConnMaxIdleTimeVariable:    "7m",
 	}
 
 	config, err := Load(mapLookup(variables))
@@ -107,6 +111,9 @@ func TestLoadAppliesCompleteOverride(t *testing.T) {
 			ReadTimeout:       20 * time.Second,
 			WriteTimeout:      45 * time.Second,
 			IdleTimeout:       2 * time.Minute,
+		},
+		Lottery: LotteryConfig{
+			SelectionTimeout: 11 * time.Second,
 		},
 		Log: LogConfig{
 			Level:  LogLevelWarn,
@@ -192,6 +199,7 @@ func TestLoadRejectsPresentEmptyVariables(t *testing.T) {
 		httpReadTimeoutVariable,
 		httpWriteTimeoutVariable,
 		httpIdleTimeoutVariable,
+		lotterySelectionTimeoutVariable,
 		logLevelVariable,
 		logFormatVariable,
 		mysqlAddressVariable,
@@ -236,6 +244,7 @@ func TestLoadRejectsInvalidValuesWithoutEchoingThem(t *testing.T) {
 		{name: "read negative", variable: httpReadTimeoutVariable, value: "-1s"},
 		{name: "write over maximum", variable: httpWriteTimeoutVariable, value: "11m"},
 		{name: "idle over maximum", variable: httpIdleTimeoutVariable, value: "11m"},
+		{name: "Lottery selection over maximum", variable: lotterySelectionTimeoutVariable, value: "31s"},
 		{name: "log level", variable: logLevelVariable, value: "TOP_SECRET_LEVEL"},
 		{name: "log format", variable: logFormatVariable, value: "TOP_SECRET_FORMAT"},
 	}
@@ -506,14 +515,47 @@ func TestLoadRequiresReadinessBudgetBeforeHTTPWriteDeadline(t *testing.T) {
 	}
 
 	config, err := Load(mapLookup(apiVariables(map[string]string{
-		httpWriteTimeoutVariable: "3s",
-		mysqlPingTimeoutVariable: "2s",
+		httpWriteTimeoutVariable:        "3s",
+		mysqlPingTimeoutVariable:        "2s",
+		lotterySelectionTimeoutVariable: "2s",
 	})))
 	if err != nil {
 		t.Fatalf("Load() ordered timeout error = %v", err)
 	}
 	if config.MySQL.PingTimeout != 2*time.Second {
 		t.Fatalf("ping timeout = %s, want 2s", config.MySQL.PingTimeout)
+	}
+}
+
+func TestLoadRequiresLotterySelectionBudgetBeforeHTTPWriteDeadline(t *testing.T) {
+	for _, selectionTimeout := range []string{"3s", "2.000000001s"} {
+		config, err := Load(mapLookup(apiVariables(map[string]string{
+			httpWriteTimeoutVariable:        "3s",
+			lotterySelectionTimeoutVariable: selectionTimeout,
+		})))
+		if err == nil {
+			t.Fatal("Load() error = nil, want Lottery selection/write timeout relationship failure")
+		}
+		if config != (Config{}) {
+			t.Fatal("Load() returned a nonzero config on failure")
+		}
+		for _, variable := range []string{lotterySelectionTimeoutVariable, httpWriteTimeoutVariable} {
+			if !strings.Contains(err.Error(), variable) {
+				t.Fatalf("Load() error = %q, want %s", err, variable)
+			}
+		}
+	}
+
+	config, err := Load(mapLookup(apiVariables(map[string]string{
+		httpWriteTimeoutVariable:        "3s",
+		lotterySelectionTimeoutVariable: "2s",
+		mysqlPingTimeoutVariable:        "2s",
+	})))
+	if err != nil {
+		t.Fatalf("Load() ordered Lottery timeout error = %v", err)
+	}
+	if config.Lottery.SelectionTimeout != 2*time.Second {
+		t.Fatalf("selection timeout = %s, want 2s", config.Lottery.SelectionTimeout)
 	}
 }
 

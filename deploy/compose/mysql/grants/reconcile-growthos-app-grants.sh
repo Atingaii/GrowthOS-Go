@@ -59,10 +59,10 @@ EOF
 mandatory_roles=$(mysql_root --execute='SELECT @@GLOBAL.mandatory_roles')
 
 if [ "$actual_grants" != "$expected_grants" ] || [ -n "$mandatory_roles" ]; then
-    printf '%s\n' 'growthos_app effective grants differ from the lesson-19 SELECT+INSERT allowlist' >&2
+    printf '%s\n' 'growthos_app effective grants differ from the current SELECT+INSERT allowlist' >&2
     unset root_password actual_grants expected_grants mandatory_roles
     exit 1
 fi
 
 unset root_password actual_grants expected_grants mandatory_roles
-printf '%s\n' 'growthos_app grants match the lesson-19 SELECT+INSERT allowlist'
+printf '%s\n' 'growthos_app grants match the current SELECT+INSERT allowlist'

@@ -47,6 +47,9 @@ func NewRouter(options RouterOptions) *gin.Engine {
 	}
 
 	router := gin.New()
+	// Canonical APIs never redirect a trailing slash. Redirecting a POST can
+	// cause a client or intermediary to replay a non-idempotent operation.
+	router.RedirectTrailingSlash = false
 	router.Use(
 		requestIDMiddleware(options.RequestIDGenerator),
 		accessLogMiddleware(logger, clock),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Atingaii/GrowthOS-Go/internal/infrastructure/httpapi"
 	"github.com/Atingaii/GrowthOS-Go/internal/infrastructure/httpserver"
+	lotteryhttp "github.com/Atingaii/GrowthOS-Go/internal/lottery/adapter/httpapi"
 	"github.com/Atingaii/GrowthOS-Go/internal/platform/appconfig"
 	"github.com/Atingaii/GrowthOS-Go/internal/platform/logging"
 	"github.com/gin-gonic/gin"
@@ -74,24 +75,24 @@ func runWithDependencies(
 		bootstrapLogger.ErrorContext(ctx, "logger configuration rejected", slog.Any("error", err))
 		return 1
 	}
-	if dependencies.OpenDatabase == nil {
-		logger.ErrorContext(ctx, "database dependency is unavailable", slog.String("component", "mysql"))
+	if dependencies.OpenRuntime == nil {
+		logger.ErrorContext(ctx, "runtime dependency is unavailable", slog.String("component", "application"))
 		return 1
 	}
 
-	database, err := dependencies.OpenDatabase(ctx, config.MySQL)
-	if err != nil || nilDatabaseRuntime(database) {
-		if !nilDatabaseRuntime(database) {
+	components, err := dependencies.OpenRuntime(ctx, config.MySQL)
+	if err != nil || nilDatabaseRuntime(components.database) || components.selection == nil {
+		if !nilDatabaseRuntime(components.database) {
 			// Defend the dependency boundary even when an injected or future
 			// opener violates the conventional nil-on-error contract.
-			_ = database.Close()
+			_ = components.database.Close()
 		}
-		// Database errors can originate in a driver and may contain topology,
-		// account, or query details. Keep the process log to a stable phase and
-		// retain the underlying error only in the adapter's error chain.
-		logger.ErrorContext(ctx, "database startup failed", slog.String("component", "mysql"))
+		// Runtime errors can contain driver topology, SQL, entropy adapter, or
+		// composition details. Keep the process log to a stable phase.
+		logger.ErrorContext(ctx, "runtime startup failed", slog.String("component", "application"))
 		return 1
 	}
+	database := components.database
 	databaseClosed := false
 	defer func() {
 		if !databaseClosed {
@@ -110,6 +111,13 @@ func runWithDependencies(
 		ReadinessChecker: database,
 		ReadinessTimeout: config.MySQL.PingTimeout,
 	})
+	if err := lotteryhttp.RegisterRoutes(router, components.selection, lotteryhttp.Options{
+		Logger:  logger,
+		Timeout: config.Lottery.SelectionTimeout,
+	}); err != nil {
+		logger.ErrorContext(ctx, "lottery HTTP adapter startup failed", slog.String("component", "lottery"))
+		return 1
+	}
 	server := httpserver.New(router, httpServerConfig(config.HTTP, logger))
 
 	logger.InfoContext(

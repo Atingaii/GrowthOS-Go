@@ -5,7 +5,12 @@ import (
 	"reflect"
 
 	mysqlstore "github.com/Atingaii/GrowthOS-Go/internal/infrastructure/mysql"
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/adapter/mysqlrepo"
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/adapter/randomsource"
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/application"
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/domain"
 	"github.com/Atingaii/GrowthOS-Go/internal/platform/appconfig"
+	"github.com/jmoiron/sqlx"
 )
 
 func nilDatabaseRuntime(database databaseRuntime) bool {
@@ -26,16 +31,59 @@ type databaseRuntime interface {
 	Close() error
 }
 
+// runtimeComponents is the fully composed product runtime. The concrete sqlx
+// pool is retained while constructing the Repository, then exposed only through
+// its readiness/ownership boundary. Repository and readiness therefore share
+// exactly one pool without a type assertion or a second connection opener.
+type runtimeComponents struct {
+	database  databaseRuntime
+	selection *application.EphemeralSelectionService
+}
+
 type runtimeDependencies struct {
-	OpenDatabase func(context.Context, appconfig.MySQLConfig) (databaseRuntime, error)
+	OpenRuntime func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error)
 }
 
 func productionDependencies() runtimeDependencies {
-	return runtimeDependencies{OpenDatabase: openDatabase}
+	return runtimeDependencies{OpenRuntime: openRuntime}
 }
 
-func openDatabase(ctx context.Context, config appconfig.MySQLConfig) (databaseRuntime, error) {
-	return mysqlstore.Open(ctx, mysqlRuntimeConfig(config))
+func openRuntime(ctx context.Context, config appconfig.MySQLConfig) (runtimeComponents, error) {
+	database, err := mysqlstore.Open(ctx, mysqlRuntimeConfig(config))
+	if err != nil {
+		return runtimeComponents{}, err
+	}
+	keepDatabase := false
+	defer func() {
+		if !keepDatabase {
+			_ = database.Close()
+		}
+	}()
+
+	components, err := composeRuntime(database)
+	if err != nil {
+		return runtimeComponents{}, err
+	}
+
+	keepDatabase = true
+	return components, nil
+}
+
+func composeRuntime(database *sqlx.DB) (runtimeComponents, error) {
+	repository, err := mysqlrepo.New(database)
+	if err != nil {
+		return runtimeComponents{}, err
+	}
+	selector, err := domain.NewWeightedSelector(randomsource.NewCryptoSource())
+	if err != nil {
+		return runtimeComponents{}, err
+	}
+	selection, err := application.NewEphemeralSelectionService(repository, selector)
+	if err != nil {
+		return runtimeComponents{}, err
+	}
+
+	return runtimeComponents{database: database, selection: selection}, nil
 }
 
 func mysqlRuntimeConfig(config appconfig.MySQLConfig) mysqlstore.Config {

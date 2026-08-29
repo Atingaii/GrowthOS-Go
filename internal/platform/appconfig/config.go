@@ -18,76 +18,80 @@ import (
 )
 
 const (
-	environmentVariable           = "GROWTHOS_ENVIRONMENT"
-	httpAddressVariable           = "GROWTHOS_HTTP_ADDRESS"
-	httpShutdownTimeoutVariable   = "GROWTHOS_HTTP_SHUTDOWN_TIMEOUT"
-	httpReadHeaderTimeoutVariable = "GROWTHOS_HTTP_READ_HEADER_TIMEOUT"
-	httpReadTimeoutVariable       = "GROWTHOS_HTTP_READ_TIMEOUT"
-	httpWriteTimeoutVariable      = "GROWTHOS_HTTP_WRITE_TIMEOUT"
-	httpIdleTimeoutVariable       = "GROWTHOS_HTTP_IDLE_TIMEOUT"
-	logLevelVariable              = "GROWTHOS_LOG_LEVEL"
-	logFormatVariable             = "GROWTHOS_LOG_FORMAT"
-	mysqlAddressVariable          = "GROWTHOS_MYSQL_ADDRESS"
-	mysqlDatabaseVariable         = "GROWTHOS_MYSQL_DATABASE"
-	mysqlTLSModeVariable          = "GROWTHOS_MYSQL_TLS_MODE"
-	mysqlTLSCAFileVariable        = "GROWTHOS_MYSQL_TLS_CA_FILE"
-	mysqlConnectTimeoutVariable   = "GROWTHOS_MYSQL_CONNECT_TIMEOUT"
-	mysqlReadTimeoutVariable      = "GROWTHOS_MYSQL_READ_TIMEOUT"
-	mysqlWriteTimeoutVariable     = "GROWTHOS_MYSQL_WRITE_TIMEOUT"
-	mysqlUserVariable             = "GROWTHOS_MYSQL_USER"
-	mysqlPasswordVariable         = "GROWTHOS_MYSQL_PASSWORD"
-	mysqlPasswordFileVariable     = "GROWTHOS_MYSQL_PASSWORD_FILE"
-	mysqlPingTimeoutVariable      = "GROWTHOS_MYSQL_PING_TIMEOUT"
-	mysqlMaxOpenConnsVariable     = "GROWTHOS_MYSQL_MAX_OPEN_CONNS"
-	mysqlMaxIdleConnsVariable     = "GROWTHOS_MYSQL_MAX_IDLE_CONNS"
-	mysqlConnMaxLifetimeVariable  = "GROWTHOS_MYSQL_CONN_MAX_LIFETIME"
-	mysqlConnMaxIdleTimeVariable  = "GROWTHOS_MYSQL_CONN_MAX_IDLE_TIME"
-	migrationUserVariable         = "GROWTHOS_MYSQL_MIGRATION_USER"
-	migrationPasswordVariable     = "GROWTHOS_MYSQL_MIGRATION_PASSWORD"
-	migrationPasswordFileVariable = "GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE"
-	migrationReadTimeoutVariable  = "GROWTHOS_MYSQL_MIGRATION_READ_TIMEOUT"
-	migrationLockTimeoutVariable  = "GROWTHOS_MYSQL_MIGRATION_LOCK_TIMEOUT"
-	migrationStatementVariable    = "GROWTHOS_MYSQL_MIGRATION_STATEMENT_TIMEOUT"
-	defaultHTTPAddress            = ":8080"
-	defaultHTTPShutdownTimeout    = 5 * time.Second
-	defaultHTTPReadHeaderTimeout  = 5 * time.Second
-	defaultHTTPReadTimeout        = 15 * time.Second
-	defaultHTTPWriteTimeout       = 30 * time.Second
-	defaultHTTPIdleTimeout        = 60 * time.Second
-	maximumHTTPShutdownTimeout    = 2 * time.Minute
-	maximumHTTPReadHeaderTimeout  = 30 * time.Second
-	maximumHTTPReadTimeout        = 5 * time.Minute
-	maximumHTTPWriteTimeout       = 10 * time.Minute
-	maximumHTTPIdleTimeout        = 10 * time.Minute
-	defaultMySQLAddress           = "127.0.0.1:3306"
-	defaultMySQLDatabase          = "growthos"
-	defaultMySQLUser              = "growthos_app"
-	defaultMigrationUser          = "growthos_migrator"
-	defaultMigrationReadTimeout   = 35 * time.Second
-	defaultMySQLConnectTimeout    = 3 * time.Second
-	defaultMySQLReadTimeout       = 5 * time.Second
-	defaultMySQLWriteTimeout      = 5 * time.Second
-	defaultMySQLPingTimeout       = 3 * time.Second
-	defaultMySQLMaxOpenConns      = 10
-	defaultMySQLMaxIdleConns      = 10
-	defaultMySQLConnMaxLifetime   = 3 * time.Minute
-	defaultMySQLConnMaxIdleTime   = time.Minute
-	defaultMigrationLockTimeout   = 40 * time.Second
-	defaultMigrationStatement     = 30 * time.Second
-	maximumMySQLConnectTimeout    = 30 * time.Second
-	maximumMySQLReadTimeout       = 5 * time.Minute
-	maximumMySQLWriteTimeout      = 5 * time.Minute
-	maximumMySQLPingTimeout       = 30 * time.Second
-	maximumMySQLConnections       = 100
-	maximumMySQLConnMaxLifetime   = time.Hour
-	maximumMySQLConnMaxIdleTime   = 30 * time.Minute
-	maximumMigrationLockTimeout   = 11 * time.Minute
-	maximumMigrationStatement     = 10 * time.Minute
-	maximumMigrationReadTimeout   = 10*time.Minute + 30*time.Second
-	readinessResponseBudget       = time.Second
-	migrationTimeoutBudget        = 5 * time.Second
-	maximumPasswordBytes          = 1024
-	maximumPasswordFileBytes      = maximumPasswordBytes + 3
+	environmentVariable             = "GROWTHOS_ENVIRONMENT"
+	httpAddressVariable             = "GROWTHOS_HTTP_ADDRESS"
+	httpShutdownTimeoutVariable     = "GROWTHOS_HTTP_SHUTDOWN_TIMEOUT"
+	httpReadHeaderTimeoutVariable   = "GROWTHOS_HTTP_READ_HEADER_TIMEOUT"
+	httpReadTimeoutVariable         = "GROWTHOS_HTTP_READ_TIMEOUT"
+	httpWriteTimeoutVariable        = "GROWTHOS_HTTP_WRITE_TIMEOUT"
+	httpIdleTimeoutVariable         = "GROWTHOS_HTTP_IDLE_TIMEOUT"
+	lotterySelectionTimeoutVariable = "GROWTHOS_LOTTERY_SELECTION_TIMEOUT"
+	logLevelVariable                = "GROWTHOS_LOG_LEVEL"
+	logFormatVariable               = "GROWTHOS_LOG_FORMAT"
+	mysqlAddressVariable            = "GROWTHOS_MYSQL_ADDRESS"
+	mysqlDatabaseVariable           = "GROWTHOS_MYSQL_DATABASE"
+	mysqlTLSModeVariable            = "GROWTHOS_MYSQL_TLS_MODE"
+	mysqlTLSCAFileVariable          = "GROWTHOS_MYSQL_TLS_CA_FILE"
+	mysqlConnectTimeoutVariable     = "GROWTHOS_MYSQL_CONNECT_TIMEOUT"
+	mysqlReadTimeoutVariable        = "GROWTHOS_MYSQL_READ_TIMEOUT"
+	mysqlWriteTimeoutVariable       = "GROWTHOS_MYSQL_WRITE_TIMEOUT"
+	mysqlUserVariable               = "GROWTHOS_MYSQL_USER"
+	mysqlPasswordVariable           = "GROWTHOS_MYSQL_PASSWORD"
+	mysqlPasswordFileVariable       = "GROWTHOS_MYSQL_PASSWORD_FILE"
+	mysqlPingTimeoutVariable        = "GROWTHOS_MYSQL_PING_TIMEOUT"
+	mysqlMaxOpenConnsVariable       = "GROWTHOS_MYSQL_MAX_OPEN_CONNS"
+	mysqlMaxIdleConnsVariable       = "GROWTHOS_MYSQL_MAX_IDLE_CONNS"
+	mysqlConnMaxLifetimeVariable    = "GROWTHOS_MYSQL_CONN_MAX_LIFETIME"
+	mysqlConnMaxIdleTimeVariable    = "GROWTHOS_MYSQL_CONN_MAX_IDLE_TIME"
+	migrationUserVariable           = "GROWTHOS_MYSQL_MIGRATION_USER"
+	migrationPasswordVariable       = "GROWTHOS_MYSQL_MIGRATION_PASSWORD"
+	migrationPasswordFileVariable   = "GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE"
+	migrationReadTimeoutVariable    = "GROWTHOS_MYSQL_MIGRATION_READ_TIMEOUT"
+	migrationLockTimeoutVariable    = "GROWTHOS_MYSQL_MIGRATION_LOCK_TIMEOUT"
+	migrationStatementVariable      = "GROWTHOS_MYSQL_MIGRATION_STATEMENT_TIMEOUT"
+	defaultHTTPAddress              = ":8080"
+	defaultHTTPShutdownTimeout      = 5 * time.Second
+	defaultHTTPReadHeaderTimeout    = 5 * time.Second
+	defaultHTTPReadTimeout          = 15 * time.Second
+	defaultHTTPWriteTimeout         = 30 * time.Second
+	defaultHTTPIdleTimeout          = 60 * time.Second
+	defaultLotterySelectionTimeout  = 3 * time.Second
+	maximumHTTPShutdownTimeout      = 2 * time.Minute
+	maximumHTTPReadHeaderTimeout    = 30 * time.Second
+	maximumHTTPReadTimeout          = 5 * time.Minute
+	maximumHTTPWriteTimeout         = 10 * time.Minute
+	maximumHTTPIdleTimeout          = 10 * time.Minute
+	maximumLotterySelectionTimeout  = 30 * time.Second
+	defaultMySQLAddress             = "127.0.0.1:3306"
+	defaultMySQLDatabase            = "growthos"
+	defaultMySQLUser                = "growthos_app"
+	defaultMigrationUser            = "growthos_migrator"
+	defaultMigrationReadTimeout     = 35 * time.Second
+	defaultMySQLConnectTimeout      = 3 * time.Second
+	defaultMySQLReadTimeout         = 5 * time.Second
+	defaultMySQLWriteTimeout        = 5 * time.Second
+	defaultMySQLPingTimeout         = 3 * time.Second
+	defaultMySQLMaxOpenConns        = 10
+	defaultMySQLMaxIdleConns        = 10
+	defaultMySQLConnMaxLifetime     = 3 * time.Minute
+	defaultMySQLConnMaxIdleTime     = time.Minute
+	defaultMigrationLockTimeout     = 40 * time.Second
+	defaultMigrationStatement       = 30 * time.Second
+	maximumMySQLConnectTimeout      = 30 * time.Second
+	maximumMySQLReadTimeout         = 5 * time.Minute
+	maximumMySQLWriteTimeout        = 5 * time.Minute
+	maximumMySQLPingTimeout         = 30 * time.Second
+	maximumMySQLConnections         = 100
+	maximumMySQLConnMaxLifetime     = time.Hour
+	maximumMySQLConnMaxIdleTime     = 30 * time.Minute
+	maximumMigrationLockTimeout     = 11 * time.Minute
+	maximumMigrationStatement       = 10 * time.Minute
+	maximumMigrationReadTimeout     = 10*time.Minute + 30*time.Second
+	readinessResponseBudget         = time.Second
+	selectionResponseBudget         = time.Second
+	migrationTimeoutBudget          = 5 * time.Second
+	maximumPasswordBytes            = 1024
+	maximumPasswordFileBytes        = maximumPasswordBytes + 3
 )
 
 const (
@@ -136,6 +140,7 @@ const (
 type Config struct {
 	Environment Environment
 	HTTP        HTTPConfig
+	Lottery     LotteryConfig
 	Log         LogConfig
 	MySQL       MySQLConfig
 }
@@ -156,6 +161,13 @@ type HTTPConfig struct {
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
+}
+
+// LotteryConfig controls bounded runtime policy for Lottery use cases. It is
+// separate from HTTP server lifecycle and MySQL driver timeouts because the
+// operation budget spans both transport and application dependencies.
+type LotteryConfig struct {
+	SelectionTimeout time.Duration
 }
 
 // LogConfig controls structured logging output.
@@ -250,6 +262,9 @@ func Default() Config {
 			WriteTimeout:      defaultHTTPWriteTimeout,
 			IdleTimeout:       defaultHTTPIdleTimeout,
 		},
+		Lottery: LotteryConfig{
+			SelectionTimeout: defaultLotterySelectionTimeout,
+		},
 		Log: LogConfig{
 			Level:  LogLevelInfo,
 			Format: LogFormatJSON,
@@ -319,6 +334,13 @@ func Load(lookup LookupFunc) (Config, error) {
 	loadDuration(lookup, httpReadTimeoutVariable, maximumHTTPReadTimeout, &config.HTTP.ReadTimeout, &problems)
 	httpWriteTimeoutValid := loadDuration(lookup, httpWriteTimeoutVariable, maximumHTTPWriteTimeout, &config.HTTP.WriteTimeout, &problems)
 	loadDuration(lookup, httpIdleTimeoutVariable, maximumHTTPIdleTimeout, &config.HTTP.IdleTimeout, &problems)
+	lotterySelectionTimeoutValid := loadDuration(
+		lookup,
+		lotterySelectionTimeoutVariable,
+		maximumLotterySelectionTimeout,
+		&config.Lottery.SelectionTimeout,
+		&problems,
+	)
 
 	loadLog(lookup, &config.Log, &problems)
 	tlsModeValid, _ := loadMySQLConnection(
@@ -342,6 +364,11 @@ func Load(lookup LookupFunc) (Config, error) {
 		(config.HTTP.WriteTimeout <= readinessResponseBudget ||
 			config.MySQL.PingTimeout > config.HTTP.WriteTimeout-readinessResponseBudget) {
 		problems = append(problems, fmt.Errorf("%s plus a %s response budget must be no greater than %s", mysqlPingTimeoutVariable, readinessResponseBudget, httpWriteTimeoutVariable))
+	}
+	if httpWriteTimeoutValid && lotterySelectionTimeoutValid &&
+		(config.HTTP.WriteTimeout <= selectionResponseBudget ||
+			config.Lottery.SelectionTimeout > config.HTTP.WriteTimeout-selectionResponseBudget) {
+		problems = append(problems, fmt.Errorf("%s plus a %s response budget must be no greater than %s", lotterySelectionTimeoutVariable, selectionResponseBudget, httpWriteTimeoutVariable))
 	}
 	validateDeploymentTLS(config.Environment, config.MySQL.MySQLConnectionConfig, environmentValid, tlsModeValid, &problems)
 

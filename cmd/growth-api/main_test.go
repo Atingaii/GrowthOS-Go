@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/application"
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/domain"
 	"github.com/Atingaii/GrowthOS-Go/internal/platform/appconfig"
 	"github.com/gin-gonic/gin"
 )
@@ -60,7 +62,7 @@ func TestRunLogsLifecycleWithValidatedConfiguration(t *testing.T) {
 		ctx,
 		mapLookup(variables),
 		&output,
-		runtimeDependencies{OpenDatabase: stubDatabaseOpener(database, nil)},
+		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	); exitCode != 0 {
 		t.Fatalf("run() exit code = %d, want 0", exitCode)
 	}
@@ -102,7 +104,7 @@ func TestRunHonorsErrorLogLevel(t *testing.T) {
 		ctx,
 		mapLookup(variables),
 		&output,
-		runtimeDependencies{OpenDatabase: stubDatabaseOpener(&stubDatabase{}, nil)},
+		runtimeDependencies{OpenRuntime: stubRuntimeOpener(&stubDatabase{}, nil)},
 	); exitCode != 0 {
 		t.Fatalf("run() exit code = %d, want 0", exitCode)
 	}
@@ -115,9 +117,9 @@ func TestRunRejectsMissingDatabaseSecretBeforeOpening(t *testing.T) {
 	var output bytes.Buffer
 	openCalls := 0
 	dependencies := runtimeDependencies{
-		OpenDatabase: func(context.Context, appconfig.MySQLConfig) (databaseRuntime, error) {
+		OpenRuntime: func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
 			openCalls++
-			return &stubDatabase{}, nil
+			return stubRuntime(&stubDatabase{}), nil
 		},
 	}
 
@@ -142,7 +144,7 @@ func TestRunRedactsDatabaseStartupFailure(t *testing.T) {
 		context.Background(),
 		mapLookup(variables),
 		&output,
-		runtimeDependencies{OpenDatabase: stubDatabaseOpener(nil, errors.New(secret))},
+		runtimeDependencies{OpenRuntime: stubRuntimeOpener(nil, errors.New(secret))},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
@@ -152,8 +154,8 @@ func TestRunRedactsDatabaseStartupFailure(t *testing.T) {
 	}
 
 	entry := decodeJSONLog(t, output.String())
-	if entry["level"] != "ERROR" || entry["msg"] != "database startup failed" || entry["component"] != "mysql" {
-		t.Fatalf("unexpected database startup log: %#v", entry)
+	if entry["level"] != "ERROR" || entry["msg"] != "runtime startup failed" || entry["component"] != "application" {
+		t.Fatalf("unexpected runtime startup log: %#v", entry)
 	}
 }
 
@@ -166,7 +168,7 @@ func TestRunClosesUnexpectedDatabaseReturnedWithStartupError(t *testing.T) {
 		context.Background(),
 		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
 		&output,
-		runtimeDependencies{OpenDatabase: stubDatabaseOpener(database, errors.New(secret))},
+		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, errors.New(secret))},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
@@ -186,13 +188,51 @@ func TestRunRejectsTypedNilDatabase(t *testing.T) {
 		context.Background(),
 		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
 		&output,
-		runtimeDependencies{OpenDatabase: stubDatabaseOpener(database, nil)},
+		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
 	}
-	if !strings.Contains(output.String(), `"msg":"database startup failed"`) {
+	if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
 		t.Fatalf("typed-nil database rejection was not logged safely: %s", output.String())
+	}
+}
+
+func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
+	database := &stubDatabase{}
+	var output bytes.Buffer
+	exitCode := runWithDependencies(
+		context.Background(),
+		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		&output,
+		runtimeDependencies{OpenRuntime: func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+			return runtimeComponents{database: database}, nil
+		}},
+	)
+	if exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if database.closeCalls != 1 {
+		t.Fatalf("database close calls = %d, want exactly 1 after partial composition", database.closeCalls)
+	}
+	if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
+		t.Fatalf("missing selection service was not logged safely: %s", output.String())
+	}
+}
+
+func TestRunRejectsMissingRuntimeOpener(t *testing.T) {
+	var output bytes.Buffer
+	exitCode := runWithDependencies(
+		context.Background(),
+		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		&output,
+		runtimeDependencies{},
+	)
+	if exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if !strings.Contains(output.String(), `"msg":"runtime dependency is unavailable"`) {
+		t.Fatalf("missing runtime opener was not logged safely: %s", output.String())
 	}
 }
 
@@ -207,7 +247,7 @@ func TestRunClosesDatabaseAfterHTTPServerAndRedactsCloseFailure(t *testing.T) {
 		ctx,
 		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
 		&output,
-		runtimeDependencies{OpenDatabase: stubDatabaseOpener(database, nil)},
+		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
@@ -311,10 +351,30 @@ func (database *stubDatabase) Close() error {
 	return database.closeErr
 }
 
-func stubDatabaseOpener(database databaseRuntime, err error) func(context.Context, appconfig.MySQLConfig) (databaseRuntime, error) {
-	return func(context.Context, appconfig.MySQLConfig) (databaseRuntime, error) {
-		return database, err
+func stubRuntimeOpener(database databaseRuntime, err error) func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+	return func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+		return stubRuntime(database), err
 	}
+}
+
+func stubRuntime(database databaseRuntime) runtimeComponents {
+	selection, err := application.NewEphemeralSelectionService(stubStrategyReader{}, stubAwardSelector{})
+	if err != nil {
+		panic(err)
+	}
+	return runtimeComponents{database: database, selection: selection}
+}
+
+type stubStrategyReader struct{}
+
+func (stubStrategyReader) FindByID(context.Context, domain.StrategyID) (domain.Strategy, error) {
+	return domain.Strategy{}, application.ErrStrategyNotFound
+}
+
+type stubAwardSelector struct{}
+
+func (stubAwardSelector) Select(domain.Strategy) (domain.Award, error) {
+	return domain.Award{}, domain.ErrSelectionStrategyInvalid
 }
 
 func mapLookup(values map[string]string) func(string) (string, bool) {
