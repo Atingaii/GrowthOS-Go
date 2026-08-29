@@ -216,6 +216,19 @@ func TestLotterySchemaMySQLIntegration(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert distinct Unicode names: %v", err)
 	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO lottery_strategy_award
+			(strategy_id, award_id, name, weight, outcome)
+		 VALUES (?, ?, ?, ?, ?)`,
+		strategyID,
+		uint64(1),
+		"same award id in another strategy",
+		uint64(1),
+		"no_reward",
+	); err != nil {
+		t.Fatalf("reuse strategy-scoped award id: %v", err)
+	}
 
 	var storedAwardID uint64
 	var storedName string
