@@ -10,7 +10,7 @@
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架，以及第 11～16 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈。除系统探针外的前端业务页面仍使用 Mock；业务 API、业务表、Redis 业务调用、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
+V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架、第 11～16 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈，以及第 17 节持久化无关的 Lottery Strategy/Award 纯领域对象。除系统探针外的前端业务页面仍使用 Mock；业务 API、业务表、Repository、抽奖算法、Redis 业务调用、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
 
 ## 2. 图例与状态
 
@@ -184,40 +184,40 @@ flowchart LR
 
 ## 7. 第一版运行形态
 
-第 9～16 节的目标是一个模块化单体，而不是上图中每个方框一个服务：
+第 9～17 节的当前形态是一个模块化单体，而不是上图中每个方框一个服务；第 17 节领域对象尚未装配进 HTTP 运行链路：
 
 ```mermaid
 flowchart LR
     BROWSER[浏览器]
     WEB[React Web\n系统状态与业务页面]
     MOCK[前端 Mock 数据\n当前业务演示]
-    API[Go Gin API\n第 11～16 节当前运行时]
+    API[Go Gin API\n工程探针运行时]
     MIGRATE[growth-migrate\n独立 up / status]
-    MODULES[模块化单体\n按业务上下文组织]
+    MODULES[Lottery domain\n第 17 节配置对象]
     MYSQL[(MySQL 8.4\n连接/Migration 已接入\n无业务表)]
     REDIS[(Redis\n环境占位已存在\n业务尚未接入)]
 
     BROWSER --> WEB
     WEB -->|同源 GET /health、/ready\nVite（宿主）/Nginx（Compose）代理| API
     WEB -->|业务页面，当前| MOCK
-    API --> MODULES
+    API -.尚未装配业务用例.-> MODULES
     API -->|启动 Ping 与 /ready| MYSQL
     MIGRATE -->|前向结构演进| MYSQL
-    MODULES -.后续事实数据.-> MYSQL
+    MODULES -.第 18 节后持久化.-> MYSQL
     MODULES -.后续派生缓存.-> REDIS
 ```
 
-宿主开发模式由 Vite 精确代理 `/health`、`/ready` 和预留的 `/api` 路径边界；Compose 模式则由只发布 `127.0.0.1:8088` 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。当前实线只代表两个系统探针已经真实接通；`/api` 尚无业务接口，Redis 也没有 API client 或业务数据，Mock 节点不属于服务端事实源。
+宿主开发模式由 Vite 精确代理 `/health`、`/ready` 和预留的 `/api` 路径边界；Compose 模式则由只发布 `127.0.0.1:8088` 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。当前浏览器到 API 的实线只代表两个系统探针已经真实接通；Lottery domain 可以独立构造和单测，但没有被 handler 调用，`/api` 尚无业务接口，Redis 也没有 API client 或业务数据，Mock 节点不属于服务端事实源。
 
 ### 7.1 当前、近期和远期边界
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收 | 已存在的能力按台账和 QA 核查 |
-| 第 17～72 节 | 抽奖、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
+| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收；第 17 节 Strategy/Award 纯领域模型已验收 | 已存在的能力按台账和 QA 核查 |
+| 第 18～72 节 | 抽奖持久化/算法/API、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
 | 第 73～96 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 
-这里不承诺 Redis 已经承载业务缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；Compose 的隔离 Redis 占位不等于业务接入，更不会成为预建空业务表的理由。
+这里不承诺 Redis 已经承载业务缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；Compose 的隔离 Redis 占位不等于业务接入，第 17 节的内存领域对象也不等于已经建表、可在线抽奖或拥有最终结果事实。
 
 ## 8. 数据与信任边界
 
@@ -271,4 +271,4 @@ flowchart LR
 
 ## 12. 下一阶段输入
 
-第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境。下一阶段从第 17 节开始建立抽奖领域对象，并继续遵守 V0 的真实状态表达：环境中的 Redis 占位不等于业务缓存，目录只为当前职责服务，未来服务和基础设施不能提前伪装成交付物。
+第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境；第 17 节已经建立 Lottery Strategy/Award、相对权重、显式 reward/no_reward 和聚合集合不变量。下一步第 18 节只为这组已经存在的领域事实建立第一组业务表，并继续遵守 V0 的真实状态表达：纯领域对象不等于在线业务，环境中的 Redis 占位不等于业务缓存，未来服务和基础设施不能提前伪装成交付物。

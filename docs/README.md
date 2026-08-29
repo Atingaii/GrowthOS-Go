@@ -32,9 +32,9 @@
 
 ## 当前基线
 
-- 当前完成：第 1～16 节，共 16 节；第二阶段 M0 已验收，下一节是第 17 节最简单随机抽奖需要什么对象。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；Compose 可一键装配 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位服务，React 系统状态页从唯一回环入口真实消费两个探针。
+- 当前完成：第 1～17 节，共 17 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模，下一节是第 18 节第一次正式业务建表。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；Compose 可一键装配 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位服务，React 系统状态页从唯一回环入口真实消费两个探针；`internal/lottery/domain` 已提供持久化无关的 Strategy/Award 聚合、相对权重、显式结果候选和纯单元测试。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：业务 API、业务数据库表、Redis 业务缓存、MQ、微服务和 Java 实现；Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调。
+- 当前明确未做：业务 API、业务数据库表、Repository、概率抽奖算法、真实 Lottery 前端、Redis 业务缓存、MQ、微服务和 Java 实现；Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调，INV-03 也尚无 Draw/Result 实现可供验证。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

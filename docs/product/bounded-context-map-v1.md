@@ -2,15 +2,15 @@
 
 **状态：** v1 分析基线
 
-**更新日期：** 2026-08-09
+**更新日期：** 2026-08-29
 
-**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)
+**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17 节以[最小 Lottery 领域对象](../course/part-03/lesson-17-lottery-domain-objects.md)校准实现状态
 
 ## 1. 地图用途
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论独立服务和数据库。
+当前实现策略仍是 Modular Monolith。第 17 节的 `internal/lottery/domain` 只是单仓库内第一个真实业务领域包，不是独立微服务或数据库。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论独立服务和数据库。
 
 ## 2. 划分依据
 
@@ -78,7 +78,8 @@ flowchart LR
 | 活动版本与运行状态 | Marketing | Feed 使用可投放摘要；Analytics 使用活动标识和快照 |
 | 审批结果与审计轨迹 | Governance | Marketing 将审批结果作为发布条件；AI 展示状态 |
 | 用户资格、参与次数与参与订单 | Participation | Lottery 接收已验证请求；Analytics 接收参与事件 |
-| 抽奖策略与抽奖结果 | Lottery | Marketing 引用 Strategy；Benefit 接收奖励结果 |
+| 抽奖策略配置 | Lottery | Marketing 未来引用 Strategy；当前第 17 节只实现 Strategy/Award 纯领域对象 |
+| 一次抽奖的最终结果 | Lottery | Benefit 接收奖励结果；当前尚无 Draw/Result、持久化或 API，INV-03 未满足 |
 | 积分、优惠券等权益事实 | Benefit | Feed/Marketing 读取必要摘要；Analytics 接收领取和使用事件 |
 | 活动参与次数事实 | Participation | Benefit 可因奖励请求增加次数，但由 Participation 确认结果 |
 | Feed 候选、顺序、游标与频控 | Feed | Behavior 接收曝光采集数据；Marketing 查询触达摘要 |
@@ -104,6 +105,7 @@ flowchart LR
 | --- | --- | --- |
 | Activity / 活动 | 带目标、时间窗和生命周期的营销活动 | Strategy、AI Task |
 | Strategy / 策略 | Lottery 内可复用的抽奖决策配置 | Activity、通用“方案” |
+| Award / 奖项候选 | Strategy 内可被选择的身份、名称、相对权重与 reward/no_reward 结果描述 | 已到账权益、库存、一次抽奖结果 |
 | Participation / 参与 | 用户对活动的一次受控参与事实 | 点击、曝光 |
 | Quota / 参与次数 | 用户可使用的活动参与额度 | 积分、会员余额 |
 | Reward / 奖励 | 业务承诺交付给用户的奖励描述 | 已到账权益 |
@@ -114,6 +116,20 @@ flowchart LR
 | Account / 账户 | 必须带语境的状态与流水模型 | 无限定词的通用实体 |
 
 `Campaign` 与 `Activity` 当前在中文产品文档中统一称“活动”。后续编码阶段再结合现有生态和团队语言选择代码名，不能同时制造两个同义聚合。
+
+### 7.1 第 17 节 Lottery 语言落地
+
+第 17 节把本地图中的一小段分析语言落成 `internal/lottery/domain`：
+
+- `Strategy` 是聚合根，拥有至少一个 `Award`；
+- `StrategyID` 与 `AwardID` 是正身份，AwardID 在 Strategy 内唯一；
+- `Weight` 是正 `uint64` 相对权重，不是百分比或固定万分比；
+- `reward` 表示后续存在奖励处理，`no_reward` 表示合法未中奖；两者都只是候选语义；
+- Award 名称可重复，身份不能依赖文案；
+- Strategy 按 AwardID 建立规范迭代顺序，但该顺序不是运营展示顺序或中奖优先级；
+- Lottery 对象不包含 Activity 时间窗、Participation 次数或 Benefit 到账状态。
+
+当前只有配置对象及其单元测试。第 18～24 节才依次加入表、Repository、算法、API、真实页面、规则和缓存；在此之前，不能把前端 Mock 抽奖解释为 Lottery 上下文已经形成结果事实。
 
 ## 8. 外部系统和防腐边界
 

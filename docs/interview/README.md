@@ -87,3 +87,4 @@
 - [第 13 节：MySQL、sqlx、Migration、连接池与健康检查](lessons/lesson-13.md)
 - [第 15 节：第一次前后端真实联调](lessons/lesson-15.md)
 - [第 16 节：Docker Compose 开发环境与 M0 工程验收](lessons/lesson-16.md)
+- [第 17 节：最小抽奖领域对象与真实能力边界](lessons/lesson-17.md)

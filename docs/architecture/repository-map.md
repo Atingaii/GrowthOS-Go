@@ -5,7 +5,7 @@
 
 本文件描述当前仓库，而不是第 96 节的目标仓库。目录随需求演进，改动目录职责时必须同步更新本文件。
 
-第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈。当前仍没有业务表、业务 Repository 或业务 API，Redis 容器也只是尚未接入 API 的环境占位。
+第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈；第 17 节第一次在 `internal/lottery/domain` 落地持久化无关的 Strategy/Award 聚合。当前仍没有业务表、业务 Repository、抽奖算法或业务 API，Redis 容器也只是尚未接入 API 的环境占位。
 
 | 路径 | 当前职责 | 引入产品代码的章节 |
 | --- | --- | --- |
@@ -21,7 +21,8 @@
 | `internal/infrastructure/httpserver` | 标准库 HTTP Server 运行、配置化 timeout、context 取消、优雅关闭与脱敏 ErrorLog 桥接 | 第 11～12 节 |
 | `internal/infrastructure/mysql` | 安全 driver Config、TLS、API `sqlx` pool、Migration 单连接、首次 Ping、稳定错误 stage 与不绕过 JSON 边界的 driver logger | 第 13、16 节 |
 | `internal/infrastructure/migration` | 嵌入 source 校验、前向 `up/status`、dirty/version/cancelled 状态机与资源所有权 | 第 13 节 |
-| `internal/*` | 预留私有领域与基础设施边界 | 随对应领域章节引入 |
+| `internal/lottery/domain` | 持久化/传输无关的 Strategy 聚合、Award 候选、正整数相对权重、显式 reward/no_reward、名称契约与聚合单元测试 | 第 17 节 |
+| `internal/*` | Lottery 之外仍预留的私有领域与基础设施边界；占位不代表实现 | 随对应领域章节引入 |
 | `pkg` | 可被外部导入的少量稳定 Go 包 | 仅在确有跨模块公共契约时 |
 | `configs/growth-api.env.example` | 不自动加载且不给密码赋值的 API/Migration 公开环境变量示例 | 第 12～13 节 |
 | `migrations/embed.go` | 编译期嵌入 Migration 说明与 `sql/` source | 第 13 节 |
@@ -48,6 +49,7 @@
 5. `pkg` 不是杂物目录；不稳定或仅仓库内部使用的代码留在 `internal`。
 6. 当前 `.gitkeep` 只表示计划边界，不代表能力已经实现。
 7. 浏览器 API 适配只接受同源路径；开发代理目标由仅 Vite 进程读取的 `GROWTHOS_WEB_API_PROXY_TARGET` 配置，默认 `http://127.0.0.1:8080`，不向浏览器暴露后端 origin。
+8. `internal/lottery/domain` 不导入 Gin、SQL/sqlx、Redis 或 JSON/DB tag；未来 adapter 只能通过构造器重建合法聚合。
 
 第 11 节的 `/health` 仍是无外部依赖的进程 liveness，只证明 Gin 路由和 handler 能响应。第 13 节的 API 在监听前必须打开并 Ping MySQL，运行中 `/ready` 每次用有界 Ping 表示数据库 readiness；依赖故障时 `/ready` 为 503 而 `/health` 仍可为 200。两者都不证明业务数据正确、Migration 最新或 SLO 达标。
 
@@ -59,6 +61,8 @@
 
 第 16 节的 Compose 拓扑只发布 `127.0.0.1:8088` 的 Nginx Web 入口。Web/API 位于 `edge`，API/MySQL/Migrator 位于内部 `data`，Redis 单独位于内部 `cache`；Migration 成功退出后 API 才启动。API、Migrator、Web、Redis 使用非 root、只读根文件系统、去除 capabilities 与 `no-new-privileges`，MySQL 官方镜像则保留初始化阶段 root 和可写数据目录这一明确例外。Nginx 动态解析 API 容器地址，统一回写 `X-Request-ID`，并从 access/error 日志中排除 query 与 Referer。长期边界见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)，操作步骤见 [Docker Compose 运维手册](../runbooks/local-compose.md)。
 
+第 17 节的 `Strategy` 拥有至少一个 `Award`，在构造时检查正 ID、名称、正权重、封闭 Outcome、AwardID 唯一和总权重溢出，并对候选 slice 做防御性复制和 AwardID 规范排序。`reward` 只表示待后续 Benefit 流程处理的奖励候选，`no_reward` 是合法候选而不是 error。该包没有被 `growth-api` 装配，也没有表、Repository、算法、API、真实前端或 Redis 调用；一次 Draw 的最终结果尚不存在，INV-03 尚未满足。长期边界见 [ADR-0013](../decisions/ADR-0013-lottery-domain-model.md)。
+
 第一版运行时采用 [ADR-0007](../decisions/ADR-0007-modular-monolith-first.md) 确定的模块化单体：一个 Go 产品进程可以装配多个领域模块，但共享进程和数据库实例不改变事实所有权。服务拆分必须等待第 73 节后的负载、发布、故障域、合规或团队证据。
 
 ## 有意延迟的决定
@@ -68,5 +72,6 @@
 - MySQL 连接、`sqlx` pool 与前向 Migration 机制已在第 13 节接入；业务手写 SQL、Repository 和事务用例分别等待真实业务章节。
 - React、TypeScript、Vite、Tailwind CSS、Lucide、Recharts 和 Zustand 在第 14 节接入；第 15 节只接通系统探针，业务页面继续使用 Mock，等待对应业务 API 和表真正出现。
 - 第 16 节已引入 Compose 本地开发环境，但它仍是单机开发拓扑：没有镜像 digest 固定、内部 TLS、生产资源配额、Secret Manager 或业务 Redis 接入。
+- 第 17 节只建立 Lottery 纯领域模型；SQL 表、第一个 `000001` Migration、Repository、概率算法、业务 API、真实抽奖页和 Redis 分别等待第 18～24 节的真实问题。
 - 服务拆分、RPC 和注册中心延迟至第 73 节以后。
 - 最终目录图和 ER 图延迟至第 96 节复盘。

@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v5 基线
-**更新日期：** 2026-08-09
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)
+**状态：** v6 基线
+**更新日期：** 2026-08-29
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)
 
 ## 一句话定位
 
@@ -44,6 +44,12 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 不把 AI 直接连接数据库，也不允许 Agent 绕过业务权限执行写操作。
 - 不在 Go 第一阶段维护 Java 镜像实现。
 
+## 当前产品实现切片
+
+第 17 节已经把 Lottery 最小业务语言落成纯 Go 领域对象：`Strategy` 管理至少一个 `Award`，候选使用正整数相对权重，并显式区分 `reward` 与 `no_reward`。这证明“抽奖配置至少需要哪些合法对象”已有可执行答案，但还没有业务表、Repository、抽奖算法、API、真实 React 抽奖页或 Redis 缓存。
+
+尤其，Award 是可被选择的配置候选，不是一次用户抽奖的最终结果；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。当前没有 Draw/Result 实现，因此“一次抽奖只能有一个最终结果”仍是待后续章节验证的业务不变量。
+
 ## 成功信号
 
 最终成功不是“技术栈全部用到”，而是以下能力可以被证据验证：
@@ -54,7 +60,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前没有 Go 业务后端，全部实测值仍保持“未测量”，不能将目标值当作项目成绩。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象，但没有业务运行链路；抽奖、参与、权益等业务 SLO 仍全部“未测量”，不能把纯单元测试或 M0 工程探针成绩外推为产品能力或业务性能。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 

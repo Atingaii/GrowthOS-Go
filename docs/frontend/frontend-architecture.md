@@ -2,13 +2,13 @@
 
 ## 定位
 
-`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。其余业务能力仍按后续章节逐步接入。
+`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。第 17 节虽已加入 Lottery Strategy/Award 纯 Go 领域对象，但没有业务 API 或前端适配，因此其余业务能力仍按后续章节逐步接入。
 
 ## 工作台
 
 | 工作台 | 路由 | 当前内容 |
 | --- | --- | --- |
-| 用户端 | `/`、`/feed`、`/campaigns`、`/lottery`、`/points`、`/coupons` | 使用 Mock 数据呈现增长触达与用户权益 |
+| 用户端 | `/`、`/feed`、`/campaigns`、`/lottery`、`/points`、`/coupons` | 使用 Mock 数据呈现增长触达与用户权益；`/lottery` 未调用第 17 节 Go 领域模型 |
 | 运营端 | `/admin/*` | 活动、策略、奖品、账户、实验、分析、任务和审计入口 |
 | MCP Gateway | `/mcp/*` | 服务、Tools、权限和审计控制台入口 |
 | AI Operator | `/agent/*` | 工作区、任务、审批和历史入口 |
@@ -49,7 +49,9 @@ pnpm preview
 
 ## 当前事实与后续演进
 
-当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取是真实联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`；仓库尚无对应业务 API 或业务表，页面展示不代表业务闭环已经完成。
+当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取是真实联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`。仓库已经有第 17 节 `internal/lottery/domain` 的 Strategy/Award 配置对象，但尚无业务表、Repository、概率算法和业务 API；`/lottery` 的客户端随机演示与文案不构成这组对象的运行调用链，也不代表一次抽奖结果、Redis 锁或发奖已经实现。
+
+第 22 节接入第一个真实 React 抽奖页时，必须显式替换或隔离对应 Mock，通过同源 API 获取服务端决定的结果，并保留 `reward`、`no_reward` 与系统错误的不同语义。在此之前，不把前端 `LotteryPrize` 展示类型反向用作 Go 领域或数据库契约。
 
 第 15 节已做正常、MySQL 不可用和 API 离线三种状态的真实浏览器关联验收，并核对刷新、请求关联与可访问性。该验收只证明当前环境中的联调和展示契约，不构成性能、持续可用性或生产就绪声明。
 

@@ -20,5 +20,6 @@
 | 第 14 节 | [前端框架与 Mock 边界](lesson-14.md) | 已完成 |
 | 第 15 节 | [系统探针首次真实联调](lesson-15.md) | 已验收 |
 | 第 16 节 | [Compose 同源入口与系统探针契约](lesson-16.md) | 已验收 |
+| 第 17 节 | [Lottery 领域对象但无业务接口](lesson-17.md) | 已验收 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。

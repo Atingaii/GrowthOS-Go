@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-16%20lessons%20completed-2563EB?style=flat-square" alt="已完成 16 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-17%20lessons%20completed-2563EB?style=flat-square" alt="已完成 17 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～16 节，共 16 节，并交付 M0 Compose 开发环境：Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位服务可以从唯一同源入口启动和验收。当前仍没有业务 API、业务表或业务持久化事实，其他业务页面仍使用 Mock 数据；Redis 尚未承载业务缓存，RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把工程探针压测、环境占位或前端 Mock 页面视为业务能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～17 节，共 17 节：M0 Compose 开发环境已验收，第 17 节又交付了持久化无关的 Lottery `Strategy` / `Award` 纯领域模型、相对权重与显式 `reward` / `no_reward` 语义。当前仍没有业务 API、业务表、Repository、抽奖算法或业务持久化事实，业务页面仍使用 Mock 数据；Redis 尚未承载业务缓存，RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划。领域对象可单测不等于已经能在线抽奖，工程探针压测、环境占位和前端 Mock 也不能被视为业务闭环。
 
 ## 项目简介
 
@@ -122,6 +122,17 @@ make db-migrate
 
 当前产品迁移集为空，两个命令正确结果为 `no_migrations`，不会占用首个版本号或创建业务表。完整变量见[配置参考](docs/configuration.md)，探针后端契约见[第 13 节 API 记录](docs/api/lessons/lesson-13.md)，前端调用与失败语义见[第 15 节 API 记录](docs/api/lessons/lesson-15.md)，发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
 
+### Lottery 纯领域模型
+
+第 17 节在 `internal/lottery/domain` 建立第一组业务对象：`Strategy` 聚合拥有至少一个 `Award`，拒绝零 ID、非法名称、零权重、未知 Outcome、重复 AwardID 与总权重溢出；候选使用正整数相对权重，合法未中奖由显式 `no_reward` Award 表达，slice 所有权与 AwardID 规范顺序由聚合维护。
+
+```bash
+go test ./internal/lottery/domain
+go test -race ./internal/lottery/domain
+```
+
+该包不包含 SQL/JSON tag，也不依赖 Gin、sqlx 或 Redis。它只定义合法配置，不会执行一次抽奖；第 18 节才创建 `strategy` / `strategy_award` 表，第 19～24 节再依次加入 Repository、概率算法、API、真实页面、规则与缓存。设计与边界见[第 17 节课程](docs/course/part-03/lesson-17-lottery-domain-objects.md)和 [ADR-0013](docs/decisions/ADR-0013-lottery-domain-model.md)。
+
 ### React 前端框架
 
 `web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架，包含响应式布局、明暗主题、路由、集中 Mock 数据与基础可视化。第 15 节新增统一 HTTP Client、运行时契约解码、系统探针 API 与系统状态页：该页面真实消费 Go 的 `GET /health` 和 `GET /ready`，其他业务页面仍使用 Mock 数据。
@@ -176,7 +187,7 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池 | 业务 API、gRPC + Protobuf、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award 纯领域模型（尚未装配业务 API） | 业务 API、gRPC + Protobuf、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、同源 Fetch Client、运行时契约解码、真实系统状态页；业务页仍为 Mock | 用户端、运营端、MCP 与 AI Operator 逐域真实联调 |
 | 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、嵌入式前向 Migration；Compose 含隔离且易失的 Redis 环境占位；尚无业务表或 Redis 业务调用 | 业务 SQL、Redis 缓存、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
@@ -193,7 +204,7 @@ make verify
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
-| 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
+| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 17 节领域对象已验收，第 18 节下一步建表 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |
 | 6 | 41～48 | MQ、最终一致性与补偿 | 计划中 |
@@ -218,7 +229,7 @@ M0 工程联调 → M1 抽奖 MVP → M2 营销活动 MVP → M3 权益中心
 ```text
 GrowthOS-Go/
 ├── cmd/             # Go 可执行程序与项目工具
-├── internal/        # 私有领域与基础设施模块，按章节逐步加入
+├── internal/        # 私有领域与基础设施模块；已含 Lottery Strategy/Award 纯领域模型
 ├── pkg/             # 少量稳定的公共 Go 包
 ├── configs/         # 可版本化且不包含秘密的配置示例
 ├── migrations/      # 已启用的嵌入式前向 SQL Migration；第 18 节加入首个业务版本
