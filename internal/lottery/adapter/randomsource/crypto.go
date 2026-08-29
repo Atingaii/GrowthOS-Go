@@ -14,7 +14,10 @@ var (
 	ErrSourceNotConfigured = errors.New("lottery random source: not configured")
 	// ErrUpperBoundRequired means a caller requested the empty interval [0,0).
 	ErrUpperBoundRequired = errors.New("lottery random source: upper bound must be positive")
-	// ErrEntropyUnavailable means the operating-system entropy boundary failed.
+	// ErrEntropyUnavailable means the configured reader or bounded sampling call
+	// returned an error. With Go 1.26's default crypto/rand.Reader, an underlying
+	// random-source failure is unrecoverable instead of being returned here; this
+	// class remains observable for injected readers and future adapters.
 	ErrEntropyUnavailable = errors.New("lottery random source: entropy unavailable")
 )
 
@@ -27,8 +30,9 @@ type CryptoSource struct {
 	reader io.Reader
 }
 
-// NewCryptoSource uses the process-wide cryptographic Reader. The standard
-// Reader is safe for concurrent use.
+// NewCryptoSource captures the process-wide cryptographic Reader. The standard
+// Reader is safe for concurrent use. Callers must not replace crypto/rand.Reader
+// with a weaker process-global implementation before composition.
 func NewCryptoSource() *CryptoSource {
 	return &CryptoSource{reader: cryptorand.Reader}
 }
