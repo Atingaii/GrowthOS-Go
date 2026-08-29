@@ -13,6 +13,7 @@
   <a href="docs/README.md">文档中心</a> ·
   <a href="docs/course/README.md">96 节路线</a> ·
   <a href="docs/product/product-brief.md">产品定义</a> ·
+  <a href="docs/configuration.md">配置参考</a> ·
   <a href="docs/frontend/frontend-architecture.md">前端架构</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
 </p>
@@ -21,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-12%20lessons%20completed-2563EB?style=flat-square" alt="已完成 12 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-13%20lessons%20completed-2563EB?style=flat-square" alt="已完成 13 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～11 节和第 14 节 React 前端框架；第 11 节只交付无外部依赖的 Gin 健康接口与进程生命周期。业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～12 节和第 14 节 React 前端框架，共 13 节；Go 进程已有无外部依赖的健康接口、类型化配置、结构化日志、请求关联和统一错误，但尚无业务 API 或持久化。业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
 
 ## 项目简介
 
@@ -83,9 +84,9 @@ AI 不直接修改数据库，也不拥有超级权限。自然语言负责表�
 
 - **需求驱动演进：** 新组件必须对应已经出现或被证明的问题，技术清单不是验收清单。
 - **模块化单体优先：** 第一版保持低运维复杂度，只有部署和组织边界被真实证明后才拆服务。
-- **数据库也是课程主线：** 使用 SQL Migration、`sqlx` 和手写核心 SQL，保留每次结构演进的原因。
+- **数据库也是课程主线：** 数据库接入后使用 SQL Migration、`sqlx` 和手写核心 SQL，保留每次结构演进的原因。
 - **范式不是教条：** 核心事实重视一致性和流水，配置允许版本与 JSON，分析数据按查询模式设计宽表。
-- **事实与派生数据分离：** MySQL 承载业务事实，缓存、搜索和分析模型可以重建。
+- **事实与派生数据分离：** 目标形态中由 MySQL 承载业务事实，缓存、搜索和分析模型可以重建。
 - **文档与代码同批交付：** 产品、ADR、API、QA 和运维文档必须跟随实现更新，并通过漂移检查。
 - **只先完成 Go 版本：** Java 版在 Go 版形成稳定业务 Specification 后单独规划，不维护两套半成品。
 
@@ -93,14 +94,30 @@ AI 不直接修改数据库，也不拥有超级权限。自然语言负责表�
 
 ### Go HTTP 运行时
 
-第 11 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的最小产品进程，提供不带业务依赖的 `GET /health`，并支持信号驱动的优雅关闭：
+第 11～12 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的产品进程：提供不带业务依赖的 `GET /health`、信号驱动的优雅关闭、`GROWTHOS_` 类型化配置、`slog` 日志、`X-Request-ID` 与统一错误 envelope。
 
 ```bash
-go run ./cmd/growth-api
-curl -i http://127.0.0.1:8080/health
+make api-run
 ```
 
-健康响应只证明当前进程和 HTTP handler 可用，不检查 MySQL、Redis、消息队列或业务模块，也不代表前端已经完成真实联调。
+在另一个终端核查健康与统一错误契约：
+
+```bash
+curl -i -H 'X-Request-ID: readme-health' http://127.0.0.1:8080/health
+curl -i http://127.0.0.1:8080/missing
+curl -i -X POST http://127.0.0.1:8080/health
+```
+
+默认配置安全内置，也可以通过环境变量显式覆盖：
+
+```bash
+GROWTHOS_HTTP_ADDRESS=127.0.0.1:18080 \
+GROWTHOS_LOG_LEVEL=debug \
+GROWTHOS_LOG_FORMAT=text \
+make api-run
+```
+
+完整变量、默认值和校验规则见[配置参考](docs/configuration.md)。`configs/growth-api.env.example` 不会被程序自动加载，也不包含秘密。健康成功响应仍只有 `status`、`version`、`timestamp` 三个 JSON 字段；请求 ID 位于响应 header，404、405 和 500 使用包含 `error.code`、`error.message`、`error.request_id` 的统一 envelope，405 还返回 `Allow: GET`。精确契约见[第 12 节 API 记录](docs/api/lessons/lesson-12.md)。健康响应只证明当前进程和 HTTP handler 可用，不检查 MySQL、Redis、消息队列或业务模块，也不代表前端已经完成真实联调。
 
 ### React 前端框架
 
@@ -138,7 +155,7 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、`GET /health`、工程与文档检查工具 | 业务 API、gRPC + Protobuf、`sqlx`、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health` | 业务 API、gRPC + Protobuf、`sqlx`、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts | 用户端、运营端、MCP 与 AI Operator 真实联调 |
 | 数据 | 尚未建立业务表 | MySQL、Redis、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
@@ -154,7 +171,7 @@ make verify
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
-| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9、10、11、14 节完成 |
+| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9～12、14 节完成 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |
@@ -205,6 +222,7 @@ GrowthOS-Go/
 | [限界上下文地图](docs/product/bounded-context-map-v1.md) | 业务语言、事实所有权和上下文协作 |
 | [非功能需求基线](docs/product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复与降级目标 |
 | [前端架构](docs/frontend/frontend-architecture.md) | 页面边界、路由、Mock 和运行方式 |
+| [运行配置](docs/configuration.md) | `GROWTHOS_` 变量、默认值、校验和秘密边界 |
 | [章节 API 台账](docs/api/lessons/README.md) | 每节新增或调整的前端调用契约 |
 | [ADR 索引](docs/decisions/README.md) | 长期架构决策及其取舍 |
 | [QA 索引](docs/qa/README.md) | 验收证据、已知风险与未覆盖项 |

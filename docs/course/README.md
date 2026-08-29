@@ -46,8 +46,10 @@
 - [第 9 节：创建 GrowthOS-Go 仓库](part-02/lesson-09-create-growthos-go-repository.md) 已完成。
 - [第 10 节：为什么第一版不直接微服务](part-02/lesson-10-modular-monolith-first.md) 已完成。
 - [第 11 节：使用 Gin 初始化 Go Web 服务](part-02/lesson-11-gin-http-service.md) 已完成。
-- 第 14 节前端整体框架已完成；第 12、13、15 节及后续章节仍按台账规划。
+- [第 12 节：配置、日志与错误码体系](part-02/lesson-12-config-logging-errors.md) 已完成并验收。
+- 第 14 节前端整体框架已完成；第 13、15 节及后续章节仍按台账规划。
 - 第 11 节已建立最小 Go HTTP 进程和 `GET /health`；它尚无业务或数据库依赖，前后端在第 15 节完成首次真实 API 联调。
+- 第 12 节已集中 `GROWTHOS_` 配置、`slog`、`request_id` 和统一错误 envelope；它没有引入数据库或 OpenTelemetry。
 - 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 

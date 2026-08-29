@@ -16,7 +16,7 @@
 
 ## 当前边界
 
-页面和交互框架已经搭好，但 Go 业务 API、MySQL、Redis 和真实权限尚未实现。当前数据来自 `web/src/mocks/growthOsMockData.ts`，第 15 节开始进行首次真实 API 联调。
+页面和交互框架已经搭好，但 Go 业务 API、MySQL、Redis 和真实权限尚未实现。当前数据来自 `web/src/mocks/growthOsMockData.ts`，第 15 节开始进行首次真实 API 联调。截至第 12 节的当前累计实现，后端已有 `GET /health`、`X-Request-ID` 和统一错误 envelope；这些能力尚未被本节前端调用。
 
 ## 验证
 
@@ -33,4 +33,4 @@ QA 证据见[第 14 节 QA 验收](../../qa/lessons/lesson-14.md)。
 
 ## 下一节遗留问题
 
-当前页面已经具备真实 API 的接入边界，但后端还没有健康接口和统一响应协议。下一节将让 Go 服务、API 代理和前端状态页面完成第一次联调。
+本节原始检查点尚未建立后端健康与错误契约；截至第 12 节，后端已经提供 `GET /health`、请求关联和统一错误 envelope。第 15 节将继续完成 API 代理、前端请求适配和状态页面的第一次真实联调，而不是重新定义这些后端契约。

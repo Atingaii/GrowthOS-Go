@@ -13,5 +13,6 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0006](ADR-0006-frontend-framework-baseline.md) | 已接受 | 统一 React 前端框架与设计包复刻基线 |
 | [ADR-0007](ADR-0007-modular-monolith-first.md) | 已接受 | 第一版使用模块化单体，以运行证据驱动服务拆分 |
 | [ADR-0008](ADR-0008-supported-go-toolchain-baseline.md) | 已接受 | 最低工具链升级到受支持且可复现的 Go 1.26.6，并接受 Gin v1.12.0 |
+| [ADR-0009](ADR-0009-runtime-boundaries.md) | 已接受 | 显式配置、slog、请求关联和 fault 到 HTTP 的运行时边界 |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。

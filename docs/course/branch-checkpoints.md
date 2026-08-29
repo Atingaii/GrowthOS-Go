@@ -13,9 +13,23 @@
 | 第 9 节：仓库工程基线 | `codex/lesson-09-repository-baseline` | `main` | `e5516b1` | 本地与 `origin` | 单 Go module、目录职责、文档与统一质量门禁 |
 | 第 10 节：模块化单体 | `codex/lesson-10-modular-monolith` | 第 9 节 | `2a8f126` | 本地与 `origin` | 单进程边界、模块依赖规则与拆分条件 |
 | 工程基线加固 | `codex/engineering-baseline-hardening` | 第 10 节 | `ce7f8a0` | 本地与 `origin` | module 身份、测试隔离、文档镜像安全与领域占位边界 |
-| 第 11 节：Gin HTTP 服务 | `codex/lesson-11-gin-http-service` | 工程基线加固 | 实现 `ade1fad`；以最终分支 tip 为准 | 本地与 `origin` | Gin 进程、健康接口、HTTP Server 生命周期与优雅关闭 |
+| 第 11 节：Gin HTTP 服务 | `codex/lesson-11-gin-http-service` | 工程基线加固 | 实现 `ade1fad`；验收 tip `4734706` | 本地与 `origin` | Gin 进程、健康接口、HTTP Server 生命周期与优雅关闭 |
+| 第 12 节：配置、日志与错误 | `codex/lesson-12-config-logging-errors` | 第 11 节已验收 tip | 实现 `60a6116`；完整章节以最终分支 tip 为准 | 本地与 `origin` | `GROWTHOS_` 配置、`slog`、请求关联、fault 与 HTTP 错误 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
+
+第 12 节可运行实现固定在 `60a6116` 并已推送，配套验收文档同样紧随实现提交。学习实现细节时可先查看该提交，学习完整章节时以 `origin/codex/lesson-12-config-logging-errors` 的最终 tip 为准。
+
+## 稳定章节分支与累计快照
+
+课程同时保留两类用途不同的分支：
+
+| 类型 | 分支规则 | 是否移动 | 当前事实 |
+| --- | --- | --- | --- |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 12 节已验收且同名远端存在；它和更早章节分支都不会随后续课程移动 |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 12 节验收发布后，本地与 `origin` 均指向该节稳定分支的最终 tip |
+
+学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
 ## 历史章节分支
 
@@ -45,12 +59,14 @@ git switch codex/lesson-09-repository-baseline
 git switch codex/lesson-10-modular-monolith
 git switch codex/engineering-baseline-hardening
 git switch codex/lesson-11-gin-http-service
+git switch codex/lesson-12-config-logging-errors
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
 
 ```bash
 git switch --track origin/codex/lesson-11-gin-http-service
+git switch --track origin/codex/lesson-12-config-logging-errors
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -59,9 +75,13 @@ git switch --track origin/codex/lesson-11-gin-http-service
 git log --oneline --decorate --graph --max-count=20
 git diff --stat codex/engineering-baseline-hardening..codex/lesson-11-gin-http-service
 git diff codex/engineering-baseline-hardening..codex/lesson-11-gin-http-service
+git diff --stat codex/lesson-11-gin-http-service..codex/lesson-12-config-logging-errors
+git diff codex/lesson-11-gin-http-service..codex/lesson-12-config-logging-errors
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
+
+第 12 节直接基于第 11 节已验收 tip。实现提交 `60a6116` 已推送至 `origin/codex/lesson-12-config-logging-errors`；验收文档完成后以该远端分支的最终 tip 作为完整学习检查点。
 
 ## 分支使用约束
 

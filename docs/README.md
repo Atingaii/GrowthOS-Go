@@ -16,6 +16,7 @@
 | 系统设计 | [GrowthOS 系统设计 V0](product/system-design-v0.md) | 产品架构、系统上下文、用例、领域关系与近期运行形态 |
 | 课程实施 | [96 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
 | 学习分支 | [课程分支检查点](course/branch-checkpoints.md) | 按章节切换、比较和核查实现分支 |
+| 运行配置 | [配置参考](configuration.md) | `GROWTHOS_` 环境变量、默认值、校验与秘密边界 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
 | API 契约 | [API 文档](api/README.md) | 按章节查看前端 API 新增、调整和联调状态 |
@@ -27,8 +28,8 @@
 
 ## 当前基线
 
-- 当前完成：第 1～11 节和第 14 节前端整体框架，共 12 节。
-- 当前代码：已有可运行的 Gin 产品进程和 `GET /health`；`web/` 已有 React/Vite/Tailwind UI 框架，但页面仍使用 Mock 数据。
+- 当前完成：第 1～12 节和第 14 节前端整体框架，共 13 节。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误与 `GET /health`；`web/` 页面仍使用 Mock 数据。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
 - 当前明确未做：业务 API、数据库表、Redis、MQ、微服务和 Java 实现；健康接口不检查这些依赖，前端真实 API 联调留给第 15 节。
 
