@@ -8,6 +8,7 @@
 - **分支：** `codex/lesson-17-lottery-domain-objects`
 - **直接起点：** `f9cdd3c`（第 16 节最终检查点）
 - **实现提交：** `0b59217`
+- **文档内容提交：** `792f04e`
 - **完整检查点：** 以包含本记录的同名远端分支最终 tip 为准
 - **验收日期：** 2026-08-29
 - **验收结果：** 通过
@@ -89,7 +90,7 @@ Node.js 与 pnpm 只在最终统一门禁中验证既有前端没有回归；第
 0b59217ef8c9b8cbb681009016d3528babd98ae4 refs/heads/codex/lesson-17-lottery-domain-objects
 ```
 
-该提交从 `f9cdd3c` 线性前进，没有修改 `main`。学习者可以先比较：
+该实现提交从 `f9cdd3c` 线性前进，没有修改 `main`；课程、API、QA、设计手记、面试问答、ADR 与全局当前态随后固定在 `792f04e`。学习者可以先比较：
 
 ```bash
 git diff f9cdd3c..0b59217 -- internal/lottery

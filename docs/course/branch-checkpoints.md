@@ -18,7 +18,7 @@
 | 第 13 节：MySQL 与 Migration | `codex/lesson-13-mysql-migrations` | 第 12 节验收 tip `ac9ad0e` | 实现 `b3f5aa7`；加固 `b734463`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 身份隔离、`sqlx` pool、readiness、前向 Migration 与真实 MySQL 验收 |
 | 第 15 节：前后端第一次联调 | `codex/lesson-15-first-fullstack-integration` | 累计检查点 `f0cd8e1` | 实现 `7e499cc`；浏览器契约加固 `2283a70`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 同源代理、统一 Fetch、运行时解码、独立探针状态、竞态与真实浏览器故障验收 |
 | 第 16 节：Docker Compose 开发环境 | `codex/lesson-16-docker-compose-development` | 第 15 节验收 tip `03ebe56` | 文件凭据 `e746a6f`；日志边界 `52c3add`；Compose 栈 `7aa6c9e`；文档内容 `ad8078c`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 唯一同源入口、网络与身份隔离、一次性迁移、秘密文件、故障演练和 M0 负载门禁 |
-| 第 17 节：Lottery 最小领域对象 | `codex/lesson-17-lottery-domain-objects` | 第 16 节最终检查点 `f9cdd3c` | 实现 `0b59217`；完整章节以最终分支 tip 为准 | 本地与 `origin` | Strategy 聚合、Award 候选、整数相对权重、显式 reward/no_reward、领域不变量与适配器边界 |
+| 第 17 节：Lottery 最小领域对象 | `codex/lesson-17-lottery-domain-objects` | 第 16 节最终检查点 `f9cdd3c` | 实现 `0b59217`；文档内容 `792f04e`；完整章节以最终分支 tip 为准 | 本地与 `origin` | Strategy 聚合、Award 候选、整数相对权重、显式 reward/no_reward、领域不变量与适配器边界 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -28,7 +28,7 @@
 
 第 16 节从第 15 节最终验收 tip `03ebe56` 开始。`e746a6f` 建立直接密码与 `_FILE` 二选一的秘密输入边界，`52c3add` 阻止 MySQL driver 绕过 JSON 日志，`7aa6c9e` 再交付隔离的 Compose 栈、脱敏同源网关、Secret 生成器、smoke 与定速负载工具，`ad8078c` 固化课程、QA、设计手记、面试问答、ADR、Runbook 与全局索引。按这四个提交依次阅读，可以分别理解“配置边界—可观测边界—运行拓扑—验证与设计复盘”，完整章节以同名远端分支最终 tip 为准。
 
-第 17 节从第 16 节最终检查点 `f9cdd3c` 开始。`0b59217` 只把 `internal/lottery/.gitkeep` 替换为持久化无关的 Strategy/Award 纯领域模型及单元测试，没有混入表、Repository、随机算法、API、真实前端或 Redis。先比较实现提交可以专注理解对象与不变量，再查看分支最终 tip 中的课程、API、QA、设计手记、面试问答、ADR 与全局状态，可以学习“设计意图—可执行模型—证据边界”如何闭环。
+第 17 节从第 16 节最终检查点 `f9cdd3c` 开始。`0b59217` 只把 `internal/lottery/.gitkeep` 替换为持久化无关的 Strategy/Award 纯领域模型及单元测试，没有混入表、Repository、随机算法、API、真实前端或 Redis；`792f04e` 再固化课程、API、QA、第一性原理设计手记、24 道面试问答、ADR 与全局当前态。先比较实现提交可以专注理解对象与不变量，再比较文档提交，可以学习“设计意图—可执行模型—证据边界”如何闭环。
 
 ## 稳定章节分支与累计快照
 
@@ -108,7 +108,7 @@ git diff f9cdd3c..codex/lesson-17-lottery-domain-objects
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 
