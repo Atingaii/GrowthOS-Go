@@ -131,6 +131,22 @@ describe("SystemStatusPage", () => {
     expect(screen.getAllByText("无法连接 API")).toHaveLength(2);
   });
 
+  it("distinguishes a same-origin gateway failure from a malformed API envelope", () => {
+    const gatewayError = new ApiClientError("proxy detail", {
+      kind: "gateway",
+      status: 502,
+      elapsedMs: 9,
+    });
+    renderState({
+      health: { phase: "error", error: gatewayError },
+      readiness: { phase: "error", error: gatewayError },
+    });
+
+    expect(screen.getByText("无法确认 API 状态")).toBeTruthy();
+    expect(screen.getAllByText("代理无法连接 API（HTTP 502）")).toHaveLength(2);
+    expect(screen.queryByText("响应契约无法识别")).toBeNull();
+  });
+
   it("keeps the overall state unknown when readiness succeeds but health fails", () => {
     renderState({
       health: {

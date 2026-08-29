@@ -115,6 +115,24 @@ describe("requestJSON", () => {
     });
   });
 
+  it.each([
+    [
+      "non-JSON content type",
+      () => new Response("GrowthOS", { status: 200, headers: { "Content-Type": "text/plain" } }),
+    ],
+    [
+      "malformed JSON",
+      () => new Response("{", { status: 200, headers: { "Content-Type": "application/json" } }),
+    ],
+  ])("classifies a successful %s response as a contract failure", async (_name, response) => {
+    const fetcher = vi.fn<FetchLike>().mockResolvedValue(response());
+
+    await expect(requestJSON("/health", { decode: decodeName, fetcher })).rejects.toMatchObject({
+      kind: "contract",
+      status: 200,
+    });
+  });
+
   it("classifies a decoder exception as a contract failure", async () => {
     const fetcher = vi
       .fn<FetchLike>()
@@ -177,6 +195,15 @@ describe("requestJSON", () => {
     });
   });
 
+  it("requires a JSON gateway response to satisfy the API error envelope", async () => {
+    const fetcher = vi.fn<FetchLike>().mockResolvedValue(jsonResponse({}, { status: 502 }));
+
+    await expect(requestJSON("/health", { decode: decodeName, fetcher })).rejects.toMatchObject({
+      kind: "contract",
+      status: 502,
+    });
+  });
+
   it("aborts and classifies a request when the deadline expires", async () => {
     vi.useFakeTimers();
     const promise = requestJSON("/health", {
@@ -226,5 +253,26 @@ describe("requestJSON", () => {
         signal: controller.signal,
       }),
     ).rejects.toMatchObject({ kind: "cancelled" });
+  });
+
+  it.each(["https://evil.example/health", "//evil.example/health", "health"])(
+    "rejects the unsafe request path %s before fetch",
+    async (path) => {
+      const fetcher = vi.fn<FetchLike>();
+
+      await expect(requestJSON(path, { decode: decodeName, fetcher })).rejects.toMatchObject({
+        kind: "contract",
+      });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([99, 30_001, 1.5])("rejects the invalid timeout %s before fetch", async (timeoutMs) => {
+    const fetcher = vi.fn<FetchLike>();
+
+    await expect(
+      requestJSON("/health", { decode: decodeName, fetcher, timeoutMs }),
+    ).rejects.toMatchObject({ kind: "contract" });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

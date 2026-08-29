@@ -56,4 +56,42 @@ describe("systemApi", () => {
       status: 200,
     });
   });
+
+  it("accepts additive fields and an RFC 3339 timestamp with nanoseconds", async () => {
+    const fetcher = vi.fn<FetchLike>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "ok",
+          version: "lesson-15",
+          timestamp: "2026-08-29T08:00:00.123456789Z",
+          future_field: "ignored",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(fetchHealth({ fetcher })).resolves.toMatchObject({
+      data: {
+        status: "ok",
+        version: "lesson-15",
+        timestamp: "2026-08-29T08:00:00.123456789Z",
+      },
+    });
+  });
+
+  it("rejects a parseable date that is not an RFC 3339 timestamp", async () => {
+    const fetcher = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ status: "ok", version: "lesson-15", timestamp: "2026-08-29" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    await expect(fetchHealth({ fetcher })).rejects.toMatchObject({
+      kind: "contract",
+      status: 200,
+    });
+  });
 });
