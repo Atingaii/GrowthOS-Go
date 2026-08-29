@@ -116,9 +116,9 @@ HTTP Server 不允许标准库在 `ErrorLog=nil` 时回退到进程全局 logger
 - 测试向底层诊断写入带秘密哨兵和 stack 哨兵的字符串，结构化输出不包含二者；
 - Server 返回的可处理错误仍沿正常 Go 错误链交给进程入口，不依赖原始 ErrorLog 文本诊断。
 
-## 当前未覆盖项与剩余风险
+## 第 12 节验收时未覆盖项与剩余风险
 
-- 健康接口仍只证明进程 liveness，不检查数据库、缓存、消息或业务状态；这些能力尚未接入；
+- 健康接口只证明进程 liveness，不检查数据库、缓存、消息或业务状态；第 13 节后续新增了独立 MySQL `/ready`，但没有改变本接口语义；
 - 本节没有业务 API，fault 到具体业务 code 的第一批真实映射要在后续业务章节验证；
 - 没有 OpenTelemetry span、`trace_id`、日志采集平台或跨进程传播；
 - 没有动态配置、Nacos、Secret manager 或运行时配置刷新；
@@ -126,6 +126,8 @@ HTTP Server 不允许标准库在 `ErrorLog=nil` 时回退到进程全局 logger
 - React 尚未消费 error envelope 和 request ID，第 15 节以前没有浏览器联调证据；
 - Vite 的 695.11 kB 主 chunk warning 仍需后续代码拆分与体积预算；
 - 本轮没有性能、容量、长稳或故障注入证明。
+
+数据库连接、账号隔离、前向 Migration 与 readiness 的后续证据见[第 13 节 QA](lesson-13.md)。本段保留第 12 节验收时的历史范围，不把后续能力倒写成本节交付。
 
 ## 清理记录
 

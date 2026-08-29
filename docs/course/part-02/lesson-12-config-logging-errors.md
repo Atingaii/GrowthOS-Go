@@ -267,6 +267,8 @@ configs/growth-api.env.example
 
 配置体系具备承载未来数据库参数的能力，不代表数据库已经接入。本节没有 DSN、连接池、Migration、Redis 或 MQ 配置，也不探测本机 Docker Desktop 的容器。
 
+> 后续状态：第 13 节已经在这条类型化边界上加入 MySQL、独立 Migration 配置、连接池和 readiness；这不改变“第 12 节本身没有数据库变化”的历史事实。见[第 13 节正文](lesson-13-mysql-migrations.md)。
+
 ## 13. API 变化
 
 - `GET /health` 成功 JSON 保持不变；
@@ -295,3 +297,5 @@ configs/growth-api.env.example
 进程已经能够可靠加载配置、记录请求并返回稳定错误，但还没有持久化事实。第 13 节需要回答：
 
 > 如何在不泄露数据库凭据的前提下接入 MySQL、配置并验证连接池、选择前向 Migration 机制，并让启动失败、迁移失败和健康/readiness 语义保持可诊断？
+
+该问题已由[第 13 节：接入 MySQL 与 Migration](lesson-13-mysql-migrations.md)完成：API/Migrator 身份分离，`/health` 与 `/ready` 分离，前向命令只暴露 `up/status`，首个业务 Migration 仍保留到第 18 节。

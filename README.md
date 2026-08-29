@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-13%20lessons%20completed-2563EB?style=flat-square" alt="已完成 13 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-14%20lessons%20completed-2563EB?style=flat-square" alt="已完成 14 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～12 节和第 14 节 React 前端框架，共 13 节；Go 进程已有无外部依赖的健康接口、类型化配置、结构化日志、请求关联和统一错误，但尚无业务 API 或持久化。业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～14 节，共 14 节；Go 进程已有 liveness/readiness、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池和独立前向 Migration 命令。当前没有业务 API、业务表或业务持久化事实；Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
 
 ## 项目简介
 
@@ -87,37 +87,40 @@ AI 不直接修改数据库，也不拥有超级权限。自然语言负责表�
 - **数据库也是课程主线：** 数据库接入后使用 SQL Migration、`sqlx` 和手写核心 SQL，保留每次结构演进的原因。
 - **范式不是教条：** 核心事实重视一致性和流水，配置允许版本与 JSON，分析数据按查询模式设计宽表。
 - **事实与派生数据分离：** 目标形态中由 MySQL 承载业务事实，缓存、搜索和分析模型可以重建。
-- **文档与代码同批交付：** 产品、ADR、API、QA 和运维文档必须跟随实现更新，并通过漂移检查。
+- **文档与代码同批交付：** 产品、设计推导、ADR、API、QA、面试和运维文档必须跟随实现更新，并通过漂移检查。
 - **只先完成 Go 版本：** Java 版在 Go 版形成稳定业务 Specification 后单独规划，不维护两套半成品。
 
 ## 当前可用内容
 
-### Go HTTP 运行时
+### Go HTTP 与 MySQL 运行时
 
-第 11～12 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的产品进程：提供不带业务依赖的 `GET /health`、信号驱动的优雅关闭、`GROWTHOS_` 类型化配置、`slog` 日志、`X-Request-ID` 与统一错误 envelope。
+第 11～13 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的产品进程：提供 `GET /health` liveness、`GET /ready` MySQL readiness、信号驱动的优雅关闭、`GROWTHOS_` 类型化配置、`slog`、`X-Request-ID`、统一错误和有界 `sqlx` 连接池。
+
+从第 13 节起，公开默认值不再等于完整可启动配置。管理员需要先创建权限隔离的 `growthos_app` / `growthos_migrator` 账号，并通过未跟踪环境或 Secret 注入对应密码；示例文件有意不包含密码。注入 API Secret 后运行：
 
 ```bash
 make api-run
 ```
 
-在另一个终端核查健康与统一错误契约：
+在另一个终端核查两个探针和统一错误：
 
 ```bash
 curl -i -H 'X-Request-ID: readme-health' http://127.0.0.1:8080/health
+curl -i -H 'X-Request-ID: readme-ready' http://127.0.0.1:8080/ready
 curl -i http://127.0.0.1:8080/missing
-curl -i -X POST http://127.0.0.1:8080/health
+curl -i -X POST http://127.0.0.1:8080/ready
 ```
 
-默认配置安全内置，也可以通过环境变量显式覆盖：
+`/health` 不查询外部依赖，只证明进程和 handler 可响应；API 启动前已经执行一次有界 MySQL Ping，运行中 `/ready` 每次有界 Ping，失败返回 503 `dependency_unavailable`。这让平台能区分“进程崩溃”和“依赖故障”。
+
+Migration 使用独立账号、配置和命令，不在 API 启动时自动执行：
 
 ```bash
-GROWTHOS_HTTP_ADDRESS=127.0.0.1:18080 \
-GROWTHOS_LOG_LEVEL=debug \
-GROWTHOS_LOG_FORMAT=text \
-make api-run
+make db-status
+make db-migrate
 ```
 
-完整变量、默认值和校验规则见[配置参考](docs/configuration.md)。`configs/growth-api.env.example` 不会被程序自动加载，也不包含秘密。健康成功响应仍只有 `status`、`version`、`timestamp` 三个 JSON 字段；请求 ID 位于响应 header，404、405 和 500 使用包含 `error.code`、`error.message`、`error.request_id` 的统一 envelope，405 还返回 `Allow: GET`。精确契约见[第 12 节 API 记录](docs/api/lessons/lesson-12.md)。健康响应只证明当前进程和 HTTP handler 可用，不检查 MySQL、Redis、消息队列或业务模块，也不代表前端已经完成真实联调。
+当前产品迁移集为空，两个命令正确结果为 `no_migrations`，不会占用首个版本号或创建业务表。完整变量见[配置参考](docs/configuration.md)，探针契约见[第 13 节 API 记录](docs/api/lessons/lesson-13.md)，发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。React 真实联调仍留在第 15 节。
 
 ### React 前端框架
 
@@ -132,7 +135,7 @@ make web-install
 cd web && pnpm run dev
 ```
 
-默认访问 `http://localhost:5173`。第 11 节已建立 Go 健康接口；React 页面仍使用 Mock 数据，第 15 节才完成首次真实前后端联调。
+默认访问 `http://localhost:5173`。第 11～13 节已建立 Go liveness/readiness 与 MySQL 基础设施；React 页面仍使用 Mock 数据，第 15 节才完成首次真实前后端联调。
 
 ### 工程质量门禁
 
@@ -155,9 +158,9 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health` | 业务 API、gRPC + Protobuf、`sqlx`、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池 | 业务 API、gRPC + Protobuf、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts | 用户端、运营端、MCP 与 AI Operator 真实联调 |
-| 数据 | 尚未建立业务表 | MySQL、Redis、ClickHouse、OpenSearch |
+| 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、嵌入式前向 Migration；尚无业务表 | 业务 SQL、Redis、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
 | 交付 | 本地质量门禁 | Docker Compose、GitHub Actions、Kubernetes、可观测体系 |
@@ -171,7 +174,7 @@ make verify
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
-| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9～12、14 节完成 |
+| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9～14 节完成 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |
@@ -200,10 +203,10 @@ GrowthOS-Go/
 ├── internal/        # 私有领域与基础设施模块，按章节逐步加入
 ├── pkg/             # 少量稳定的公共 Go 包
 ├── configs/         # 可版本化且不包含秘密的配置示例
-├── migrations/      # 第 13 节开始使用的前向 SQL Migration
+├── migrations/      # 已启用的嵌入式前向 SQL Migration；第 18 节加入首个业务版本
 ├── deploy/          # 随基础设施逐步加入的部署资源
 ├── scripts/         # 本地自动化脚本
-├── docs/            # 产品、架构、ADR、API、QA 和课程事实源
+├── docs/            # 产品、架构、ADR、API、QA、设计推导、面试与课程事实源
 └── web/             # React 用户端、运营端、MCP 与 AI Operator 框架
 ```
 
@@ -223,7 +226,10 @@ GrowthOS-Go/
 | [非功能需求基线](docs/product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复与降级目标 |
 | [前端架构](docs/frontend/frontend-architecture.md) | 页面边界、路由、Mock 和运行方式 |
 | [运行配置](docs/configuration.md) | `GROWTHOS_` 变量、默认值、校验和秘密边界 |
+| [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md) | 状态检查、前向发布、故障停止条件与清理 |
 | [章节 API 台账](docs/api/lessons/README.md) | 每节新增或调整的前端调用契约 |
+| [第一性原理设计手记](docs/design-thinking/README.md) | 每章的事实、推导链、备选矩阵、失败模型与重决策条件 |
+| [章节面试问答](docs/interview/README.md) | 每章核心问题、追问、项目证据与选型边界 |
 | [ADR 索引](docs/decisions/README.md) | 长期架构决策及其取舍 |
 | [QA 索引](docs/qa/README.md) | 验收证据、已知风险与未覆盖项 |
 
@@ -239,7 +245,7 @@ make docs-sync VAULT=/absolute/path/to/growthOS
 
 1. 变更范围聚焦，代码、文档、测试和 Migration 描述同一个事实；
 2. 长期技术决策新增或替代 ADR；
-3. 行为变化同步更新 API、QA 和相关课程文档；
+3. 行为变化同步更新 API、QA、设计手记、面试问答和相关课程文档；
 4. `make verify` 完整通过；
 5. API Key、密码和环境专属配置不进入仓库。
 

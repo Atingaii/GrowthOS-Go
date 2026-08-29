@@ -9,12 +9,12 @@
 
 本节没有新增真实 Go API 调用。页面通过 `web/src/mocks/growthOsMockData.ts` 使用演示数据，目的是先完成完整 UI 框架和路由，不把尚未实现的后端能力误写为已上线接口。
 
-本记录保留第 14 节交付时的前端边界。截至第 12 节的当前累计实现，Go 后端已经提供 `GET /health`、`X-Request-ID` 和统一错误 envelope，但 React 仍未发起真实请求。
+本记录保留第 14 节交付时的前端边界。截至第 13 节的当前累计实现，Go 后端已经提供 `GET /health`、MySQL `GET /ready`、`X-Request-ID` 和统一错误 envelope，并建立连接/Migration 基础设施；React 仍未发起真实请求。
 
 | 类型 | 边界 | 调用方 | 状态 |
 | --- | --- | --- | --- |
 | Mock 数据 | `web/src/mocks/growthOsMockData.ts` | 用户端、运营端、MCP、Agent 页面 | Mock |
-| 前端真实 HTTP 调用 | 暂无；后端已有 `/health`，尚未联调 | 暂无 | 规划中 |
+| 前端真实 HTTP 调用 | 暂无；后端已有 `/health` 与 `/ready`，尚未联调 | 暂无 | 规划中 |
 
 ## 后续领域 API 边界
 
@@ -33,6 +33,6 @@
 
 ## 遗留问题
 
-- 第 12 节已经确定 Go 健康路径、请求 ID 与错误 envelope；第 15 节需要实现前端真实请求适配和代理；
+- 第 12～13 节已经确定 Go liveness/readiness、请求 ID 与错误 envelope；第 15 节需要实现前端真实请求适配和代理；
 - 真实 API 接入后，应把请求参数和响应示例写入对应章节 API 记录；
 - Mock 与真实 API 的切换方式需要在首次联调时补充环境变量和 QA 证据。

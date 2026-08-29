@@ -31,7 +31,7 @@
 | 11 | 81～88 | AI MCP Gateway | JSON-RPC、MCP 生命周期、Gateway、动态 Tool、权限审计 |
 | 12 | 89～96 | AI Agent、可观测、压测与上线 | LLM、Agent、审批、Guardrail、OTel、压测与 Kubernetes |
 
-完整标题和实施状态以 [status.csv](status.csv) 为唯一状态源。完成章节必须同时登记课程正文和 [QA 证据](../qa/README.md)，否则 `make doc-check` 失败。逐节学习时可按[课程分支检查点](branch-checkpoints.md)切换和比较实现分支；分支已存在不等于章节已经验收完成。
+完整标题和实施状态以 [status.csv](status.csv) 为唯一状态源。完成章节必须同时登记课程正文和 [QA 证据](../qa/README.md)，否则 `make doc-check` 失败。第 13 节起，每节还要交付独立的[第一性原理设计手记](../design-thinking/README.md)与[面试问答](../interview/README.md)；第 1～12、14 节按新增规范回填后，再把这两项纳入自动完成门禁。逐节学习时可按[课程分支检查点](branch-checkpoints.md)切换和比较实现分支；分支已存在不等于章节已经验收完成。
 
 ## 当前进度
 
@@ -47,9 +47,10 @@
 - [第 10 节：为什么第一版不直接微服务](part-02/lesson-10-modular-monolith-first.md) 已完成。
 - [第 11 节：使用 Gin 初始化 Go Web 服务](part-02/lesson-11-gin-http-service.md) 已完成。
 - [第 12 节：配置、日志与错误码体系](part-02/lesson-12-config-logging-errors.md) 已完成并验收。
-- 第 14 节前端整体框架已完成；第 13、15 节及后续章节仍按台账规划。
-- 第 11 节已建立最小 Go HTTP 进程和 `GET /health`；它尚无业务或数据库依赖，前后端在第 15 节完成首次真实 API 联调。
-- 第 12 节已集中 `GROWTHOS_` 配置、`slog`、`request_id` 和统一错误 envelope；它没有引入数据库或 OpenTelemetry。
+- [第 13 节：接入 MySQL 与 Migration](part-02/lesson-13-mysql-migrations.md) 已完成并验收。
+- [第 14 节：React TypeScript 前端工程初始化](part-02/lesson-14-react-frontend-framework.md) 已完成；第 15 节及后续章节仍按台账规划。
+- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令。
+- 当前没有业务 API 或业务表，React 仍使用 Mock 数据，前后端在第 15 节完成首次真实 API 联调。
 - 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 
@@ -58,14 +59,14 @@
 1. 不为保持路线图编号美观而重写已发生的 Migration 历史。
 2. 每个阶段保留当时合理方案及其失效条件，避免把终态倒灌到早期章节。
 3. 新技术必须对应已观察或已论证的问题；技术清单不是验收清单。
-4. 课程正文描述认知过程，ADR 描述稳定决策，QA 描述验证证据，章节 API 记录描述前端调用契约，四者不能互相替代。
+4. 课程正文描述学习路径，第一性原理手记保留开放推导，ADR 固化稳定决策，QA 描述验证证据，章节 API 记录前端调用契约，面试文档负责准确口述与追问；六者不能互相替代。
 5. 架构图和 ER 图都标注版本；最终完整图只在第 96 节基于实际实现生成。
 
 ## 前后端与数据库节奏
 
 前端不是最终阶段补上的展示层。React + TypeScript 在第 14 节初始化，第 15 节完成首次 API 联调；抽奖页、运营后台、活动详情、积分/优惠券中心、Growth Feed、数据大盘、MCP 控制台和 AI Operator 依次在对应业务章节交付。
 
-数据库同样不是预制终态。第 13 节只建立连接与 Migration 机制；第 18 节才创建 `strategy`、`strategy_award` 两张业务表。后续每一次字段、索引、新表、冗余快照或宽表变化，必须记录新业务需求、现有设计的不足、Migration、查询/并发影响和 QA 证据。已执行的 Migration 只追加，不回写历史。
+数据库同样不是预制终态。第 13 节已经建立连接、账号隔离、readiness 与前向 Migration 机制，但产品迁移集仍为空；第 18 节才创建 `strategy`、`strategy_award` 两张业务表并使用首个 `000001`。后续每一次字段、索引、新表、冗余快照或宽表变化，必须记录新业务需求、现有设计的不足、Migration、查询/并发影响和 QA 证据。已执行的 Migration 只追加，不回写历史。
 
 ## 可部署里程碑
 

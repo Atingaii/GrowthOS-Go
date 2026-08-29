@@ -26,6 +26,7 @@
 | 第 10 节 | 模块化单体决策，无真实前端调用 | 已完成 | [第 10 节 API 记录](lessons/lesson-10.md) |
 | 第 11 节 | 新增进程健康接口 `GET /health`，前端尚未调用 | 已完成 | [第 11 节 API 记录](lessons/lesson-11.md) |
 | 第 12 节 | 统一请求关联与 404/405/500 错误 envelope，健康成功 body 不变 | 已完成 | [第 12 节 API 记录](lessons/lesson-12.md) |
+| 第 13 节 | 新增 MySQL readiness `GET /ready`，保持 `/health` liveness | 已完成 | [第 13 节 API 记录](lessons/lesson-13.md) |
 | 第 14 节 | 建立 Mock 数据边界，未新增真实后端调用 | 已完成 | [第 14 节 API 记录](lessons/lesson-14.md) |
 | 第 15 节 | 前端调用 Go 健康接口并完成首次联调 | 计划中 | 待本节实现后补充 |
 

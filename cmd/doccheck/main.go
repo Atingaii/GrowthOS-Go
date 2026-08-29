@@ -65,6 +65,8 @@ func checkRequiredFiles(root string) []error {
 		"docs/course/README.md",
 		"docs/course/status.csv",
 		"docs/decisions/README.md",
+		"docs/design-thinking/README.md",
+		"docs/interview/README.md",
 		"docs/product/product-brief.md",
 		"docs/qa/README.md",
 		"docs/standards/definition-of-done.md",

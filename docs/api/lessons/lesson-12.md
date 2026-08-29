@@ -161,7 +161,10 @@ X-Request-ID: request-500
 | `not_found` | 404 |
 | `conflict` | 409 |
 | `rate_limited` | 429 |
+| `unavailable` | 503 |
 | `internal` 或未知错误 | 500 |
+
+`unavailable -> 503` 在第 13 节数据库 readiness 出现真实调用场景；第 12 节结束时尚未有依赖探针。精确响应见[第 13 节 API 记录](lesson-13.md)。
 
 具体业务 fault 可以为同一 kind 使用不同稳定 code；code 必须匹配小写字母开头、仅包含小写字母/数字/下划线且不超过 64 字节。公开 message 必须是去除首尾空白、无控制字符且不超过 256 个 Unicode 字符的安全文本。
 
@@ -201,7 +204,7 @@ Recovery 不把 panic 值或 stack 直接写入当前日志，因为二者可能
 
 ## 遗留问题
 
-- 第 13 节为数据库接入补充配置和启动失败证据；
+- 第 13 节数据库配置、启动失败、readiness 与 Migration 证据已经完成，见[第 13 节 API 记录](lesson-13.md)；
 - 第 15 节让前端统一 HTTP client 消费 error code 与 request ID；
 - 身份认证出现后补充 401/403 的真实契约测试；
 - 第 94 节接入 OpenTelemetry 后增加真实 `trace_id`，不替换 request ID；

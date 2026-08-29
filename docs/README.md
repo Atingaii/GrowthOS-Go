@@ -17,20 +17,23 @@
 | 课程实施 | [96 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
 | 学习分支 | [课程分支检查点](course/branch-checkpoints.md) | 按章节切换、比较和核查实现分支 |
 | 运行配置 | [配置参考](configuration.md) | `GROWTHOS_` 环境变量、默认值、校验与秘密边界 |
+| 数据库运维 | [MySQL Migration 运维手册](runbooks/mysql-migrations.md) | 身份隔离、前向发布、故障停止条件与清理 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
 | API 契约 | [API 文档](api/README.md) | 按章节查看前端 API 新增、调整和联调状态 |
 | 架构决策 | [ADR 索引](decisions/README.md) | 稳定决策、取舍和后果 |
 | 质量证据 | [QA 索引](qa/README.md) | 测试策略、验收记录和已知风险 |
+| 设计推导 | [第一性原理设计手记](design-thinking/README.md) | 按章节保留事实、方案权衡、失败模型、风险账本与重决策条件 |
+| 面试复盘 | [面试问答索引](interview/README.md) | 按章节把设计、追问、证据与选型边界整理为可口述问答 |
 | 完成标准 | [Definition of Done](standards/definition-of-done.md) | 何时可以称为完成 |
 | 文档治理 | [文档治理规范](standards/documentation-governance.md) | 文档归属和漂移控制 |
 | Obsidian 同步 | [同步说明](standards/obsidian-sync.md) | 根 README/docs 单向镜像到个人 Vault |
 
 ## 当前基线
 
-- 当前完成：第 1～12 节和第 14 节前端整体框架，共 13 节。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误与 `GET /health`；`web/` 页面仍使用 Mock 数据。
+- 当前完成：第 1～14 节，共 14 节。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`web/` 页面仍使用 Mock 数据。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：业务 API、数据库表、Redis、MQ、微服务和 Java 实现；健康接口不检查这些依赖，前端真实 API 联调留给第 15 节。
+- 当前明确未做：业务 API、业务数据库表、Redis、MQ、微服务和 Java 实现；`/health` 不检查外部依赖，`/ready` 只检查 MySQL 连接，前端真实 API 联调留给第 15 节。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

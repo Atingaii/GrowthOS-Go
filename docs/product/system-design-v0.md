@@ -10,7 +10,7 @@
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、使用 Mock 数据的 React 前端框架，以及第 11～12 节已验收的无业务依赖 Gin 进程、`GET /health`、类型化配置、结构化日志、请求关联与统一错误。业务 API、业务数据库、Redis、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
+V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、使用 Mock 数据的 React 前端框架，以及第 11～13 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池和独立 Migration 命令。业务 API、业务表、Redis、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
 
 ## 2. 图例与状态
 
@@ -190,14 +190,17 @@ flowchart LR
 flowchart LR
     BROWSER[浏览器]
     WEB[React Web\n当前为 Mock 框架]
-    API[Go Gin API\n第 11～12 节运行时]
+    API[Go Gin API\n第 11～13 节运行时]
+    MIGRATE[growth-migrate\n独立 up / status]
     MODULES[模块化单体\n按业务上下文组织]
-    MYSQL[(MySQL\n第 13 节接入)]
+    MYSQL[(MySQL 8.4\n连接/Migration 已接入\n无业务表)]
     REDIS[(Redis\n按业务需求接入)]
 
     BROWSER --> WEB
     WEB -.第 15 节首次联调.-> API
     API --> MODULES
+    API -->|启动 Ping 与 /ready| MYSQL
+    MIGRATE -->|前向结构演进| MYSQL
     MODULES -.后续事实数据.-> MYSQL
     MODULES -.后续派生缓存.-> REDIS
 ```
@@ -206,8 +209,8 @@ flowchart LR
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与 Mock 数据；第 11～12 节 Gin 健康、配置、日志、请求关联与错误契约已验收 | 已存在的能力按台账和 QA 核查 |
-| 第 9～16 节 | 第 12 节运行时基线已完成；继续构建 MySQL 连接与 Migration、前后端联调和开发环境 | 继续构建 |
+| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与 Mock 数据；第 11～13 节 Gin、配置、错误、MySQL 连接、readiness 与 Migration 已验收 | 已存在的能力按台账和 QA 核查 |
+| 第 9～16 节 | 第 13 节数据库基础设施已完成；继续构建前后端联调和 Compose 开发环境 | 继续构建 |
 | 第 17～72 节 | 抽奖、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
 | 第 73～96 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 

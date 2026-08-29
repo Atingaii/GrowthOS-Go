@@ -18,6 +18,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 10 节验收](lessons/lesson-10.md) | 模块化单体取舍、依赖边界与拆分触发条件评审 | 通过 |
 | [第 11 节验收](lessons/lesson-11.md) | Gin 健康契约、进程生命周期、优雅关闭与错误传播 | 通过 |
 | [第 12 节验收](lessons/lesson-12.md) | 类型化配置、结构化日志、请求关联、fault 与统一 HTTP 错误 | 通过 |
+| [第 13 节验收](lessons/lesson-13.md) | MySQL 身份隔离、连接池、readiness、前向 Migration 与真实容器联调 | 通过 |
 | [第 14 节验收](lessons/lesson-14.md) | React 前端整体框架与 UI 基线 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
