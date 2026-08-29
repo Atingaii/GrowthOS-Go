@@ -4,6 +4,8 @@
 package httpapi
 
 import (
+	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,8 +17,10 @@ const HealthPath = "/health"
 
 // RouterOptions contains process metadata dependencies used by HTTP handlers.
 type RouterOptions struct {
-	Version string
-	Clock   Clock
+	Version            string
+	Clock              Clock
+	Logger             *slog.Logger
+	RequestIDGenerator RequestIDGenerator
 }
 
 // NewRouter builds the product process's Gin router.
@@ -29,9 +33,17 @@ func NewRouter(options RouterOptions) *gin.Engine {
 	if clock == nil {
 		clock = systemClock{}
 	}
+	logger := options.Logger
+	if logger == nil {
+		logger = discardLogger()
+	}
 
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(
+		requestIDMiddleware(options.RequestIDGenerator),
+		accessLogMiddleware(logger, clock),
+		recoveryMiddleware(logger),
+	)
 	router.HandleMethodNotAllowed = true
 	// Do not trust client-controlled forwarding headers until an explicit reverse
 	// proxy CIDR allowlist is configured. This keeps future ClientIP-based logs,
@@ -39,6 +51,12 @@ func NewRouter(options RouterOptions) *gin.Engine {
 	if err := router.SetTrustedProxies(nil); err != nil {
 		panic(err)
 	}
+	router.NoRoute(func(ginContext *gin.Context) {
+		abortWithFaultStatus(ginContext, http.StatusNotFound, routeNotFoundFault)
+	})
+	router.NoMethod(func(ginContext *gin.Context) {
+		abortWithFaultStatus(ginContext, http.StatusMethodNotAllowed, methodNotAllowedFault)
+	})
 	router.GET(HealthPath, newHealthHandler(version, clock))
 
 	return router

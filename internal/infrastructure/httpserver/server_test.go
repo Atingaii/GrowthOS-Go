@@ -1,9 +1,12 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -14,6 +17,10 @@ import (
 
 func TestNewAppliesSafeHTTPTimeoutDefaults(t *testing.T) {
 	server := New(http.NotFoundHandler(), Config{})
+
+	if server.httpServer.ErrorLog == nil {
+		t.Fatal("net/http ErrorLog = nil, want safe non-global logger")
+	}
 
 	tests := []struct {
 		name string
@@ -26,6 +33,56 @@ func TestNewAppliesSafeHTTPTimeoutDefaults(t *testing.T) {
 		{name: "idle", got: server.httpServer.IdleTimeout, want: 60 * time.Second},
 	}
 
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.got != test.want {
+				t.Fatalf("timeout = %s, want %s", test.got, test.want)
+			}
+		})
+	}
+}
+
+func TestNewRoutesNetHTTPDiagnosticsThroughRedactedStructuredLog(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	server := New(http.NotFoundHandler(), Config{ErrorLogger: logger})
+
+	server.httpServer.ErrorLog.Print("panic serving: password=must-not-appear\nstack-secret")
+
+	if strings.Contains(output.String(), "must-not-appear") || strings.Contains(output.String(), "stack-secret") {
+		t.Fatalf("net/http error log leaked raw diagnostic: %s", output.String())
+	}
+	var record map[string]any
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatalf("decode structured net/http log: %v\n%s", err, output.String())
+	}
+	if record["level"] != "ERROR" || record["msg"] != "http_server_error" || record["component"] != "net/http" {
+		t.Fatalf("unexpected net/http log record: %#v", record)
+	}
+}
+
+func TestNewAppliesConfiguredHTTPTimeouts(t *testing.T) {
+	server := New(http.NotFoundHandler(), Config{
+		ShutdownTimeout:   7 * time.Second,
+		ReadHeaderTimeout: 8 * time.Second,
+		ReadTimeout:       9 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       11 * time.Second,
+	})
+
+	if server.shutdownTimeout != 7*time.Second {
+		t.Fatalf("shutdown timeout = %s, want %s", server.shutdownTimeout, 7*time.Second)
+	}
+	tests := []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{name: "read header", got: server.httpServer.ReadHeaderTimeout, want: 8 * time.Second},
+		{name: "read", got: server.httpServer.ReadTimeout, want: 9 * time.Second},
+		{name: "write", got: server.httpServer.WriteTimeout, want: 10 * time.Second},
+		{name: "idle", got: server.httpServer.IdleTimeout, want: 11 * time.Second},
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.got != test.want {

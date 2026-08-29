@@ -20,12 +20,16 @@ func TestRouterRegistersHealthEndpoint(t *testing.T) {
 		Clock: ClockFunc(func() time.Time {
 			return checkedAt
 		}),
+		RequestIDGenerator: func() string { return "health-request-id" },
 	})
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, HealthPath, nil))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Header().Get(RequestIDHeader); got != "health-request-id" {
+		t.Fatalf("%s = %q, want %q", RequestIDHeader, got, "health-request-id")
 	}
 	var response healthResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {

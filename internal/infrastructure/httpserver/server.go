@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -21,12 +22,17 @@ const (
 	defaultIdleTimeout       = 60 * time.Second
 )
 
-// Config controls the small set of server settings needed by the first
-// product process. A fuller application configuration boundary is introduced
-// separately from this HTTP lifecycle.
+// Config contains the validated listener and lifecycle values needed by the
+// HTTP server. The process-level appconfig package owns environment loading;
+// this package keeps defensive zero-value defaults for direct callers.
 type Config struct {
-	Address         string
-	ShutdownTimeout time.Duration
+	Address           string
+	ShutdownTimeout   time.Duration
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ErrorLogger       *slog.Logger
 }
 
 // Server runs one net/http server and stops it when its context is cancelled.
@@ -45,6 +51,22 @@ func New(handler http.Handler, config Config) *Server {
 	if shutdownTimeout <= 0 {
 		shutdownTimeout = DefaultShutdownTimeout
 	}
+	readHeaderTimeout := config.ReadHeaderTimeout
+	if readHeaderTimeout <= 0 {
+		readHeaderTimeout = defaultReadHeaderTimeout
+	}
+	readTimeout := config.ReadTimeout
+	if readTimeout <= 0 {
+		readTimeout = defaultReadTimeout
+	}
+	writeTimeout := config.WriteTimeout
+	if writeTimeout <= 0 {
+		writeTimeout = defaultWriteTimeout
+	}
+	idleTimeout := config.IdleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = defaultIdleTimeout
+	}
 	if handler == nil {
 		handler = http.NotFoundHandler()
 	}
@@ -53,10 +75,11 @@ func New(handler http.Handler, config Config) *Server {
 		httpServer: &http.Server{
 			Addr:              address,
 			Handler:           handler,
-			ReadHeaderTimeout: defaultReadHeaderTimeout,
-			ReadTimeout:       defaultReadTimeout,
-			WriteTimeout:      defaultWriteTimeout,
-			IdleTimeout:       defaultIdleTimeout,
+			ReadHeaderTimeout: readHeaderTimeout,
+			ReadTimeout:       readTimeout,
+			WriteTimeout:      writeTimeout,
+			IdleTimeout:       idleTimeout,
+			ErrorLog:          newHTTPErrorLog(config.ErrorLogger),
 		},
 		shutdownTimeout: shutdownTimeout,
 	}

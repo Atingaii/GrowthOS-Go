@@ -3,7 +3,8 @@ package main
 
 import (
 	"context"
-	"log"
+	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,7 +12,12 @@ import (
 
 	"github.com/Atingaii/GrowthOS-Go/internal/infrastructure/httpapi"
 	"github.com/Atingaii/GrowthOS-Go/internal/infrastructure/httpserver"
+	"github.com/Atingaii/GrowthOS-Go/internal/platform/appconfig"
+	"github.com/Atingaii/GrowthOS-Go/internal/platform/logging"
+	"github.com/gin-gonic/gin"
 )
+
+const serviceName = "growth-api"
 
 // version can be replaced at build time with:
 // go build -ldflags "-X main.version=<build-label>" ./cmd/growth-api
@@ -19,16 +25,80 @@ var version = "dev"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	exitCode := run(ctx, os.LookupEnv, os.Stdout)
+	stop()
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
+}
 
+func run(ctx context.Context, lookup appconfig.LookupFunc, output io.Writer) int {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	bootstrapLogger, err := logging.New(
+		output,
+		"info",
+		"json",
+		slog.String("service", serviceName),
+		slog.String("version", version),
+	)
+	if err != nil {
+		return 1
+	}
+
+	config, err := appconfig.Load(lookup)
+	if err != nil {
+		bootstrapLogger.ErrorContext(ctx, "configuration rejected", slog.Any("error", err))
+		return 1
+	}
+
+	logger, err := logging.New(
+		output,
+		string(config.Log.Level),
+		string(config.Log.Format),
+		slog.String("service", serviceName),
+		slog.String("environment", string(config.Environment)),
+		slog.String("version", version),
+	)
+	if err != nil {
+		bootstrapLogger.ErrorContext(ctx, "logger configuration rejected", slog.Any("error", err))
+		return 1
+	}
+
+	// Gin's debug mode writes its own unstructured route table to stdout. The
+	// product process owns logging through slog, so keep framework diagnostics
+	// quiet in every deployment environment.
+	gin.SetMode(gin.ReleaseMode)
 	router := httpapi.NewRouter(httpapi.RouterOptions{
 		Version: version,
 		Clock:   httpapi.ClockFunc(time.Now),
+		Logger:  logger,
 	})
-	server := httpserver.New(router, httpserver.Config{})
+	server := httpserver.New(router, httpServerConfig(config.HTTP, logger))
 
+	logger.InfoContext(
+		ctx,
+		"service starting",
+		slog.String("http_address", config.HTTP.Address),
+		slog.Int64("shutdown_timeout_ms", config.HTTP.ShutdownTimeout.Milliseconds()),
+	)
 	if err := server.Run(ctx); err != nil {
-		log.Printf("growth-api stopped with an error: %v", err)
-		os.Exit(1)
+		logger.ErrorContext(ctx, "service stopped with an error", slog.Any("error", err))
+		return 1
+	}
+	logger.InfoContext(ctx, "service stopped")
+	return 0
+}
+
+func httpServerConfig(config appconfig.HTTPConfig, logger *slog.Logger) httpserver.Config {
+	return httpserver.Config{
+		Address:           config.Address,
+		ShutdownTimeout:   config.ShutdownTimeout,
+		ReadHeaderTimeout: config.ReadHeaderTimeout,
+		ReadTimeout:       config.ReadTimeout,
+		WriteTimeout:      config.WriteTimeout,
+		IdleTimeout:       config.IdleTimeout,
+		ErrorLogger:       logger,
 	}
 }
