@@ -8,9 +8,11 @@
 - **分支：** `codex/lesson-20-lottery-weighted-algorithm`
 - **实现提交：** `db679cf`（`feat: add unbiased weighted award selection`）
 - **语义校准提交：** `f2475fa`（澄清 Go 1.26 默认 Reader 的不可恢复失败与可返回 reader error 的边界；不改变运行行为）
+- **文档内容提交：** `6f08b80`（课程、API、QA、ADR、第一性原理设计手记、面试问答与全局索引）
+- **完整学习检查点：** 以 `origin/codex/lesson-20-lottery-weighted-algorithm` 的最终 tip 为准
 - **日期：** 2026-08-29
 
-> 本记录验收的是“合法 Strategy 快照如何在内存中选择一个 Award”，不是一次可追踪、可重试、可发奖的 Draw。没有 HTTP 请求、DrawID、最终结果表、幂等键、库存、资格、次数、权益发放或 Redis；多候选重复调用可能产生不同的独立临时选择，单候选则确定返回唯一 Award，两者都不能外推为 `INV-03` 已满足。
+> 本记录验收的是“合法 Strategy 快照如何在内存中选择一个 Award”，不是一次可追踪、可重试、可发奖的 Draw。没有 HTTP 请求、DrawID、最终结果表、幂等键、库存、资格、次数、权益发放或 Redis；多候选重复调用会执行新的临时选择，结果不保证相同，跨调用相关性由 source 契约决定；单候选则确定返回唯一 Award。两者都不能外推为 `INV-03` 已满足。
 
 ## 1. 验收范围
 
@@ -299,6 +301,6 @@ Compose 回归仍只证明第 19 节运行镜像与既有工程链路。镜像�
 
 ## 16. 验收结论
 
-实现提交 `db679cf` 与语义校准提交 `f2475fa` 已推送到 `origin/codex/lesson-20-lottery-weighted-algorithm`。当前可以准确陈述：**GrowthOS 已实现一个支持完整 `uint64`、以密码学 bounded source 为生产适配器、对合法 Strategy 做无偏权重映射的内存选择器。**
+实现提交 `db679cf`、语义校准提交 `f2475fa` 与文档内容提交 `6f08b80` 已推送到 `origin/codex/lesson-20-lottery-weighted-algorithm`。当前可以准确陈述：**GrowthOS 已实现一个支持完整 `uint64`、以密码学 bounded source 为生产适配器、对合法 Strategy 做无偏权重映射的内存选择器。**
 
-当前不能陈述：**已经实现可上线的抽奖接口、高并发抽奖、最终结果幂等、库存一致性、权益发放或监管公平。** 文档内容提交与最终章节 tip 将在本节全部交叉审查、门禁和 Compose 回归完成后登记到[课程分支检查点](../../course/branch-checkpoints.md)。
+当前不能陈述：**已经实现可上线的抽奖接口、高并发抽奖、最终结果幂等、库存一致性、权益发放或监管公平。** 文档内容提交已登记到[课程分支检查点](../../course/branch-checkpoints.md)，完整章节以同名远端分支最终 tip 为准。

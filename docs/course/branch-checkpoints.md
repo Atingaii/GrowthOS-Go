@@ -21,6 +21,7 @@
 | 第 17 节：Lottery 最小领域对象 | `codex/lesson-17-lottery-domain-objects` | 第 16 节最终检查点 `f9cdd3c` | 实现 `0b59217`；文档内容 `792f04e`；完整章节以最终分支 tip 为准 | 本地与 `origin` | Strategy 聚合、Award 候选、整数相对权重、显式 reward/no_reward、领域不变量与适配器边界 |
 | 第 18 节：Lottery 首组业务表 | `codex/lesson-18-lottery-schema` | 第 17 节最终检查点 `24e606a` | 实现 `7593aaa`；策略内身份加固 `f74fdf2`；文档内容 `215abd1`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 两表最小 schema、复合身份、迁移故障语义、最小权限授权与真实 MySQL/Compose 验收 |
 | 第 19 节：Lottery Strategy 仓储 | `codex/lesson-19-lottery-repository` | 第 18 节最终检查点 `4c06e25` | 实现 `50ac811`；证据加固 `2c420c9`；文档内容 `09556d8`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 窄 application 端口、聚合写事务、只读 RR 快照、恢复校验、语义错误与精确 SELECT/INSERT 权限 |
+| 第 20 节：Lottery 加权选择算法 | `codex/lesson-20-lottery-weighted-algorithm` | 第 19 节最终检查点 `7b67d2c` | 实现 `db679cf`；Go 1.26 随机源语义校准 `f2475fa`；文档内容 `6f08b80`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 完整 `uint64` 无偏区间、整数 bucket 映射、单候选短路、失败关闭、随机源端口与并发边界 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -36,14 +37,16 @@
 
 第 19 节从第 18 节最终检查点 `4c06e25` 开始。`50ac811` 增加 consumer-owned Create/FindByID 窄端口、MySQL adapter、父子原子写事务、只读 RR 聚合快照、存量数据恢复校验、稳定错误分类、真实 MySQL 并发/取消/执行计划测试，以及两表精确 `SELECT, INSERT` 授权；`2c420c9` 再以生产 `TxOptions` 的真实只读事务探针、真实 1205 和逆序多 Award SQL 控制流收紧证据；`09556d8` 固化课程、API、QA、1098 行第一性原理设计手记、28 道面试问答、ADR 与全局当前态。依次阅读这三个提交，可以分别理解实现、证据加固和设计复盘；完整学习版本以同名远端分支最终 tip 为准。
 
+第 20 节从第 19 节最终检查点 `7b67d2c` 开始。`db679cf` 增加领域拥有的 bounded random port、覆盖完整 `uint64` 的 CryptoSource 适配器、无浮点和无取模偏差的加权 bucket 映射、稳定错误分类，以及穷举边界、MaxUint64、拒绝采样、typed-nil、并发与 benchmark 证据；`f2475fa` 根据 Go 1.26.6 官方契约校准默认 `crypto/rand.Reader` 不可恢复失败与自定义 reader 可返回错误的语义边界；`6f08b80` 固化课程、API、QA、4223 行第一性原理设计手记、30 道带来源的面试问答、ADR 与全局当前态。依次阅读这三个提交，可以把核心算法、运行时语义和架构复盘分开学习；完整学习版本以同名远端分支最终 tip 为准。
+
 ## 稳定章节分支与累计快照
 
 课程同时保留两类用途不同的分支：
 
 | 类型 | 分支规则 | 是否移动 | 当前事实 |
 | --- | --- | --- | --- |
-| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 19 节实现、真实数据库验收与最终文档均推送后，冻结同名远端 tip |
-| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 19 节最终检查点和门禁通过后快进至该节稳定分支 tip |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 20 节实现、算法/并发验收与最终文档均推送后，冻结同名远端 tip |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 20 节最终检查点和门禁通过后快进至该节稳定分支 tip |
 
 学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
@@ -83,6 +86,7 @@ git switch codex/lesson-16-docker-compose-development
 git switch codex/lesson-17-lottery-domain-objects
 git switch codex/lesson-18-lottery-schema
 git switch codex/lesson-19-lottery-repository
+git switch codex/lesson-20-lottery-weighted-algorithm
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
@@ -96,6 +100,7 @@ git switch --track origin/codex/lesson-16-docker-compose-development
 git switch --track origin/codex/lesson-17-lottery-domain-objects
 git switch --track origin/codex/lesson-18-lottery-schema
 git switch --track origin/codex/lesson-19-lottery-repository
+git switch --track origin/codex/lesson-20-lottery-weighted-algorithm
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -118,11 +123,13 @@ git diff --stat 24e606a..codex/lesson-18-lottery-schema
 git diff 24e606a..codex/lesson-18-lottery-schema
 git diff --stat 4c06e25..codex/lesson-19-lottery-repository
 git diff 4c06e25..codex/lesson-19-lottery-repository
+git diff --stat 7b67d2c..codex/lesson-20-lottery-weighted-algorithm
+git diff 7b67d2c..codex/lesson-20-lottery-weighted-algorithm
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`。第 18 节直接基于 `24e606a`，实现提交为 `7593aaa`，策略内身份加固为 `f74fdf2`，文档内容提交为 `215abd1`。第 19 节直接基于 `4c06e25`，实现提交为 `50ac811`，证据加固为 `2c420c9`，文档内容为 `09556d8`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`。第 18 节直接基于 `24e606a`，实现提交为 `7593aaa`，策略内身份加固为 `f74fdf2`，文档内容提交为 `215abd1`。第 19 节直接基于 `4c06e25`，实现提交为 `50ac811`，证据加固为 `2c420c9`，文档内容为 `09556d8`。第 20 节直接基于 `7b67d2c`，实现提交为 `db679cf`，随机源语义校准为 `f2475fa`，文档内容为 `6f08b80`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 
