@@ -9,7 +9,7 @@
 8,1,画 V0 系统设计,已完成,docs/course/part-01/lesson-08-v0-system-design.md,docs/qa/lessons/lesson-08.md
 9,2,创建 GrowthOS-Go 仓库,已完成,docs/course/part-02/lesson-09-create-growthos-go-repository.md,docs/qa/lessons/lesson-09.md
 10,2,为什么第一版不直接微服务,已完成,docs/course/part-02/lesson-10-modular-monolith-first.md,docs/qa/lessons/lesson-10.md
-11,2,使用 Gin 初始化 Go Web 服务,计划中,,
+11,2,使用 Gin 初始化 Go Web 服务,已完成,docs/course/part-02/lesson-11-gin-http-service.md,docs/qa/lessons/lesson-11.md
 12,2,配置日志与错误码体系,计划中,,
 13,2,接入 MySQL 与 Migration,计划中,,
 14,2,React TypeScript 前端工程初始化,已完成,docs/course/part-02/lesson-14-react-frontend-framework.md,docs/qa/lessons/lesson-14.md

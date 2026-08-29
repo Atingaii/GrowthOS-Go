@@ -18,16 +18,16 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.24" />
+  <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-11%20lessons%20completed-2563EB?style=flat-square" alt="已完成 11 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-12%20lessons%20completed-2563EB?style=flat-square" alt="已完成 12 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～10 节和第 14 节 React 前端框架；业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
+> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～11 节和第 14 节 React 前端框架；第 11 节只交付无外部依赖的 Gin 健康接口与进程生命周期。业务 API、业务表、Redis、RocketMQ、微服务、MCP Gateway 与 Agent 仍处于后续计划，不能把目标 SLO、仓库占位目录或前端 Mock 页面视为这些能力已经实现。
 
 ## 项目简介
 
@@ -91,6 +91,17 @@ AI 不直接修改数据库，也不拥有超级权限。自然语言负责表�
 
 ## 当前可用内容
 
+### Go HTTP 运行时
+
+第 11 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的最小产品进程，提供不带业务依赖的 `GET /health`，并支持信号驱动的优雅关闭：
+
+```bash
+go run ./cmd/growth-api
+curl -i http://127.0.0.1:8080/health
+```
+
+健康响应只证明当前进程和 HTTP handler 可用，不检查 MySQL、Redis、消息队列或业务模块，也不代表前端已经完成真实联调。
+
 ### React 前端框架
 
 `web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架，包含响应式布局、明暗主题、路由、集中 Mock 数据与基础可视化。当前主要用于确认产品信息架构与 UI 基线。
@@ -104,11 +115,11 @@ make web-install
 cd web && pnpm run dev
 ```
 
-默认访问 `http://localhost:5173`。真实 Go API 将从第 11 节开始建立，并在第 15 节完成首次前后端联调。
+默认访问 `http://localhost:5173`。第 11 节已建立 Go 健康接口；React 页面仍使用 Mock 数据，第 15 节才完成首次真实前后端联调。
 
 ### 工程质量门禁
 
-本地需要 Go 1.24+、Node.js 22+ 和 pnpm。运行统一检查：
+本地需要 Go 1.26.6+、Node.js 22+ 和 pnpm。Go 工具链基线及维护策略见 [ADR-0008](docs/decisions/ADR-0008-supported-go-toolchain-baseline.md)。运行统一检查：
 
 ```bash
 make verify
@@ -127,7 +138,7 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.24、工程与文档检查工具 | Gin、gRPC + Protobuf、`sqlx`、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、`GET /health`、工程与文档检查工具 | 业务 API、gRPC + Protobuf、`sqlx`、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts | 用户端、运营端、MCP 与 AI Operator 真实联调 |
 | 数据 | 尚未建立业务表 | MySQL、Redis、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
@@ -143,7 +154,7 @@ make verify
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
-| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9、10、14 节完成 |
+| 2 | 9～16 | Go + React 从零搭建 | 进行中：第 9、10、11、14 节完成 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 计划中 |
 | 4 | 25～32 | 规则系统与营销活动 | 计划中 |
 | 5 | 33～40 | 活动账户、订单与库存 | 计划中 |

@@ -25,7 +25,7 @@ make verify
 git diff --check HEAD^
 ```
 
-执行环境：macOS arm64、Go 1.26.6（按 `go.mod` 的 Go 1.24 语言基线编译）、Node.js 24.19.0、pnpm 11.22.0。
+原始执行环境：macOS arm64、Go 1.26.6、Node.js 24.19.0、pnpm 11.22.0。第 10 节验收时仓库尚声明 Go 1.24.0；第 11 节根据 [ADR-0008](../../decisions/ADR-0008-supported-go-toolchain-baseline.md)把当前最低工具链统一为实际已验证的 Go 1.26.6。本行保留第 10 节当时真正使用的工具链，不表示用旧版本重新执行了验收。
 
 结果：Go 包发现、单元测试、文档检查、TypeScript 类型检查和 Vite 生产构建全部通过。Vite 仍报告既有入口包大于 500 kB 的非阻塞提示，本节没有改变前端产物。
 

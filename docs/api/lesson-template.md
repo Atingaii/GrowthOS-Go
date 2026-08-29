@@ -2,7 +2,7 @@
 
 - **章节：** `docs/course/part-XX/lesson-XX-title.md`
 - **日期：** YYYY-MM-DD
-- **状态：** 规划中 / Mock / 已联调 / 已验收 / 已废弃
+- **状态：** 规划中 / Mock / 待验收 / 已联调 / 已验收 / 已废弃
 - **QA：** `docs/qa/lessons/lesson-XX.md`
 
 ## 本节 API 变化

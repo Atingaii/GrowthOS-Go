@@ -31,7 +31,7 @@
 | 11 | 81～88 | AI MCP Gateway | JSON-RPC、MCP 生命周期、Gateway、动态 Tool、权限审计 |
 | 12 | 89～96 | AI Agent、可观测、压测与上线 | LLM、Agent、审批、Guardrail、OTel、压测与 Kubernetes |
 
-完整标题和实施状态以 [status.csv](status.csv) 为唯一状态源。完成章节必须同时登记课程正文和 [QA 证据](../qa/README.md)，否则 `make doc-check` 失败。
+完整标题和实施状态以 [status.csv](status.csv) 为唯一状态源。完成章节必须同时登记课程正文和 [QA 证据](../qa/README.md)，否则 `make doc-check` 失败。逐节学习时可按[课程分支检查点](branch-checkpoints.md)切换和比较实现分支；分支已存在不等于章节已经验收完成。
 
 ## 当前进度
 
@@ -45,8 +45,9 @@
 - [第 8 节：画 V0 系统设计](part-01/lesson-08-v0-system-design.md) 已完成。
 - [第 9 节：创建 GrowthOS-Go 仓库](part-02/lesson-09-create-growthos-go-repository.md) 已完成。
 - [第 10 节：为什么第一版不直接微服务](part-02/lesson-10-modular-monolith-first.md) 已完成。
-- 第 14 节前端整体框架已完成；其他章节仍处于规划状态。
-- 产品运行时代码将在第 11 节首次提供 HTTP 服务，前后端在第 15 节完成首次真实 API 联调。
+- [第 11 节：使用 Gin 初始化 Go Web 服务](part-02/lesson-11-gin-http-service.md) 已完成。
+- 第 14 节前端整体框架已完成；第 12、13、15 节及后续章节仍按台账规划。
+- 第 11 节已建立最小 Go HTTP 进程和 `GET /health`；它尚无业务或数据库依赖，前后端在第 15 节完成首次真实 API 联调。
 - 第 16、24、40、56、72、80、88、96 节分别形成可启动的阶段性里程碑。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 

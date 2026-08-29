@@ -14,7 +14,8 @@
 | 第 8 节 | [画 V0 系统设计](lesson-08.md) | 已完成 |
 | 第 9 节 | [创建 GrowthOS-Go 仓库](lesson-09.md) | 已完成 |
 | 第 10 节 | [模块化单体边界](lesson-10.md) | 已完成 |
+| 第 11 节 | [Gin 健康接口](lesson-11.md) | 已完成 |
 | 第 14 节 | [前端框架与 Mock 边界](lesson-14.md) | 已完成 |
-| 第 15 节 | 待 Go 健康接口首次联调 | 计划中 |
+| 第 15 节 | 待前端调用 Go 健康接口并完成首次联调 | 计划中 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。
