@@ -269,7 +269,7 @@ func TestRestoreStrategyRejectsNonCanonicalStoredName(t *testing.T) {
 	}
 }
 
-func mustAward(t *testing.T, id AwardID, name string, weight Weight, outcome AwardOutcome) Award {
+func mustAward(t testingTB, id AwardID, name string, weight Weight, outcome AwardOutcome) Award {
 	t.Helper()
 
 	award, err := NewAward(id, name, weight, outcome)
