@@ -13,6 +13,9 @@ var (
 	ErrStrategyNameTooLong = errors.New("lottery: strategy name is too long")
 	// ErrStrategyAwardsRequired reports that a strategy has no selectable outcome.
 	ErrStrategyAwardsRequired = errors.New("lottery: strategy requires at least one award")
+	// ErrStrategyAwardsTooMany reports a Strategy whose aggregate size would
+	// exceed the bounded persistence and synchronous selection budget.
+	ErrStrategyAwardsTooMany = errors.New("lottery: strategy has too many awards")
 	// ErrDuplicateAwardID reports that two awards in one strategy share an identity.
 	ErrDuplicateAwardID = errors.New("lottery: award id must be unique within a strategy")
 	// ErrTotalWeightOverflow reports that award weights cannot be summed safely.

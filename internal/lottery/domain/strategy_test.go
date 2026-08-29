@@ -245,6 +245,26 @@ func TestStrategyAwardLookup(t *testing.T) {
 	}
 }
 
+func TestStrategyRejectsAwardCollectionAboveOperationalBound(t *testing.T) {
+	t.Parallel()
+
+	awards := make([]Award, 0, MaxAwardsPerStrategy+1)
+	for index := 1; index <= MaxAwardsPerStrategy+1; index++ {
+		awards = append(awards, mustAward(
+			t,
+			AwardID(index),
+			"Bounded candidate",
+			1,
+			AwardOutcomeReward,
+		))
+	}
+
+	_, err := NewStrategy(7, "Oversized strategy", awards)
+	if !errors.Is(err, ErrStrategyAwardsTooMany) {
+		t.Fatalf("NewStrategy() error = %v, want errors.Is(_, %v)", err, ErrStrategyAwardsTooMany)
+	}
+}
+
 func TestRestoreStrategyRejectsNonCanonicalStoredName(t *testing.T) {
 	t.Parallel()
 

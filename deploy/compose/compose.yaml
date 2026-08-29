@@ -115,6 +115,7 @@ services:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_HTTP_ADDRESS: 0.0.0.0:8080
       GROWTHOS_HTTP_WRITE_TIMEOUT: 10s
+      GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED: "true"
       GROWTHOS_LOTTERY_SELECTION_TIMEOUT: 3s
       GROWTHOS_LOG_FORMAT: json
       GROWTHOS_MYSQL_ADDRESS: mysql:3306
@@ -184,7 +185,7 @@ services:
     logging: *json-logging
 
   web:
-    image: growthos/web:lesson-16
+    image: growthos/web:lesson-21
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.web

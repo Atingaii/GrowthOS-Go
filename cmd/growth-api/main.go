@@ -81,7 +81,8 @@ func runWithDependencies(
 	}
 
 	components, err := dependencies.OpenRuntime(ctx, config.MySQL)
-	if err != nil || nilDatabaseRuntime(components.database) || components.selection == nil {
+	if err != nil || nilDatabaseRuntime(components.database) ||
+		components.selection == nil || components.selection.Validate() != nil {
 		if !nilDatabaseRuntime(components.database) {
 			// Defend the dependency boundary even when an injected or future
 			// opener violates the conventional nil-on-error contract.
@@ -111,12 +112,14 @@ func runWithDependencies(
 		ReadinessChecker: database,
 		ReadinessTimeout: config.MySQL.PingTimeout,
 	})
-	if err := lotteryhttp.RegisterRoutes(router, components.selection, lotteryhttp.Options{
-		Logger:  logger,
-		Timeout: config.Lottery.SelectionTimeout,
-	}); err != nil {
-		logger.ErrorContext(ctx, "lottery HTTP adapter startup failed", slog.String("component", "lottery"))
-		return 1
+	if config.Lottery.EphemeralSelectionEnabled {
+		if err := lotteryhttp.RegisterRoutes(router, components.selection, lotteryhttp.Options{
+			Logger:  logger,
+			Timeout: config.Lottery.SelectionTimeout,
+		}); err != nil {
+			logger.ErrorContext(ctx, "lottery HTTP adapter startup failed", slog.String("component", "lottery"))
+			return 1
+		}
 	}
 	server := httpserver.New(router, httpServerConfig(config.HTTP, logger))
 

@@ -20,6 +20,9 @@ func TestEphemeralSelectionLoadsRequestedStrategyAndReturnsConfiguredAward(t *te
 	if err != nil {
 		t.Fatalf("construct service: %v", err)
 	}
+	if err := service.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
 
 	ctx := context.WithValue(context.Background(), selectionContextKey{}, "request-context")
 	got, err := service.Select(ctx, strategy.ID())
@@ -66,12 +69,51 @@ func TestEphemeralSelectionRejectsMissingAndTypedNilDependencies(t *testing.T) {
 	}
 
 	var nilService *EphemeralSelectionService
+	if err := nilService.Validate(); !errors.Is(err, ErrSelectionNotConfigured) {
+		t.Fatalf("nil service Validate() error = %v, want not configured", err)
+	}
 	if _, err := nilService.Select(context.Background(), 1); !errors.Is(err, ErrSelectionNotConfigured) {
 		t.Fatalf("nil service error = %v, want not configured", err)
 	}
 	brokenService := &EphemeralSelectionService{strategies: typedNilReader, selector: validSelector}
+	if err := brokenService.Validate(); !errors.Is(err, ErrSelectionNotConfigured) {
+		t.Fatalf("broken service Validate() error = %v, want not configured", err)
+	}
 	if _, err := brokenService.Select(context.Background(), 1); !errors.Is(err, ErrSelectionNotConfigured) {
 		t.Fatalf("typed-nil field error = %v, want not configured", err)
+	}
+}
+
+func TestEphemeralSelectionMakesObservedCancellationWinDependencyErrorRace(t *testing.T) {
+	strategy := selectionTestStrategy(t, 7, []domain.Award{
+		selectionTestAward(t, 1, "Only", 1, domain.AwardOutcomeReward),
+	})
+
+	readerContext, cancelReader := context.WithCancel(context.Background())
+	readerFailure := errors.New("reader completed after cancellation")
+	reader := &selectionReaderStub{err: readerFailure, afterRead: cancelReader}
+	selector := &awardSelectorStub{}
+	service, err := NewEphemeralSelectionService(reader, selector)
+	if err != nil {
+		t.Fatalf("construct reader-race service: %v", err)
+	}
+	if _, err := service.Select(readerContext, strategy.ID()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("reader race error = %v, want canceled", err)
+	}
+	if selector.calls != 0 {
+		t.Fatalf("selector calls = %d, want zero after reader cancellation", selector.calls)
+	}
+
+	selectorContext, cancelSelector := context.WithCancel(context.Background())
+	selectorFailure := errors.New("selector completed after cancellation")
+	reader = &selectionReaderStub{strategy: strategy}
+	selector = &awardSelectorStub{err: selectorFailure, afterSelect: cancelSelector}
+	service, err = NewEphemeralSelectionService(reader, selector)
+	if err != nil {
+		t.Fatalf("construct selector-race service: %v", err)
+	}
+	if _, err := service.Select(selectorContext, strategy.ID()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("selector race error = %v, want canceled", err)
 	}
 }
 
@@ -256,15 +298,19 @@ func (stub *selectionReaderStub) FindByID(ctx context.Context, id domain.Strateg
 }
 
 type awardSelectorStub struct {
-	award    domain.Award
-	err      error
-	strategy domain.Strategy
-	calls    int
+	award       domain.Award
+	err         error
+	strategy    domain.Strategy
+	calls       int
+	afterSelect context.CancelFunc
 }
 
 func (stub *awardSelectorStub) Select(strategy domain.Strategy) (domain.Award, error) {
 	stub.calls++
 	stub.strategy = strategy
+	if stub.afterSelect != nil {
+		stub.afterSelect()
+	}
 	return stub.award, stub.err
 }
 

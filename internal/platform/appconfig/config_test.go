@@ -245,6 +245,7 @@ func TestLoadRejectsInvalidValuesWithoutEchoingThem(t *testing.T) {
 		{name: "write over maximum", variable: httpWriteTimeoutVariable, value: "11m"},
 		{name: "idle over maximum", variable: httpIdleTimeoutVariable, value: "11m"},
 		{name: "Lottery selection over maximum", variable: lotterySelectionTimeoutVariable, value: "31s"},
+		{name: "Lottery ephemeral selection boolean", variable: lotteryEphemeralSelectionVariable, value: "TOP_SECRET_BOOLEAN"},
 		{name: "log level", variable: logLevelVariable, value: "TOP_SECRET_LEVEL"},
 		{name: "log format", variable: logFormatVariable, value: "TOP_SECRET_FORMAT"},
 	}
@@ -260,6 +261,45 @@ func TestLoadRejectsInvalidValuesWithoutEchoingThem(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), test.value) {
 				t.Fatalf("Load() error echoed supplied value: %q", err)
+			}
+		})
+	}
+}
+
+func TestLoadAllowsEphemeralSelectionOnlyInDevelopmentAndTest(t *testing.T) {
+	for _, environment := range []Environment{EnvironmentDevelopment, EnvironmentTest} {
+		t.Run(string(environment), func(t *testing.T) {
+			config, err := Load(mapLookup(apiVariables(map[string]string{
+				environmentVariable:               string(environment),
+				lotteryEphemeralSelectionVariable: "true",
+				lotterySelectionTimeoutVariable:   "3s",
+				mysqlReadTimeoutVariable:          "5s",
+			})))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if !config.Lottery.EphemeralSelectionEnabled {
+				t.Fatal("ephemeral selection was not enabled")
+			}
+		})
+	}
+
+	for _, environment := range []Environment{EnvironmentStaging, EnvironmentProduction} {
+		t.Run(string(environment), func(t *testing.T) {
+			config, err := Load(mapLookup(apiVariables(map[string]string{
+				environmentVariable:               string(environment),
+				lotteryEphemeralSelectionVariable: "true",
+				mysqlTLSModeVariable:              string(MySQLTLSVerifyIdentity),
+				mysqlTLSCAFileVariable:            "/run/secrets/mysql-ca.pem",
+			})))
+			if err == nil {
+				t.Fatal("Load() error = nil, want environment gate failure")
+			}
+			if config != (Config{}) {
+				t.Fatal("Load() returned a nonzero config on failure")
+			}
+			if !strings.Contains(err.Error(), lotteryEphemeralSelectionVariable) {
+				t.Fatalf("Load() error = %q, want feature variable", err)
 			}
 		})
 	}
@@ -556,6 +596,37 @@ func TestLoadRequiresLotterySelectionBudgetBeforeHTTPWriteDeadline(t *testing.T)
 	}
 	if config.Lottery.SelectionTimeout != 2*time.Second {
 		t.Fatalf("selection timeout = %s, want 2s", config.Lottery.SelectionTimeout)
+	}
+}
+
+func TestLoadRequiresLotterySelectionDeadlineBeforeMySQLReadTimeout(t *testing.T) {
+	for _, selectionTimeout := range []string{"5s", "4.000000001s"} {
+		config, err := Load(mapLookup(apiVariables(map[string]string{
+			lotterySelectionTimeoutVariable: selectionTimeout,
+			mysqlReadTimeoutVariable:        "5s",
+		})))
+		if err == nil {
+			t.Fatal("Load() error = nil, want Lottery/MySQL timeout relationship failure")
+		}
+		if config != (Config{}) {
+			t.Fatal("Load() returned a nonzero config on failure")
+		}
+		for _, variable := range []string{lotterySelectionTimeoutVariable, mysqlReadTimeoutVariable} {
+			if !strings.Contains(err.Error(), variable) {
+				t.Fatalf("Load() error = %q, want %s", err, variable)
+			}
+		}
+	}
+
+	config, err := Load(mapLookup(apiVariables(map[string]string{
+		lotterySelectionTimeoutVariable: "4s",
+		mysqlReadTimeoutVariable:        "5s",
+	})))
+	if err != nil {
+		t.Fatalf("Load() ordered dependency timeout error = %v", err)
+	}
+	if config.Lottery.SelectionTimeout != 4*time.Second {
+		t.Fatalf("selection timeout = %s, want 4s", config.Lottery.SelectionTimeout)
 	}
 }
 

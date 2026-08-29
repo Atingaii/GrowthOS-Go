@@ -7,6 +7,12 @@ import (
 	"slices"
 )
 
+// MaxAwardsPerStrategy bounds the aggregate work performed by construction,
+// persistence recovery, and the synchronous weighted selector. The value is
+// intentionally far above the current product fixtures; changing it requires
+// capacity evidence and a repository query-limit review.
+const MaxAwardsPerStrategy = 1000
+
 // StrategyID identifies one reusable Lottery decision configuration. It is not
 // a Marketing activity identifier.
 type StrategyID uint64
@@ -58,6 +64,9 @@ func RestoreStrategy(id StrategyID, name string, awards []Award) (Strategy, erro
 	}
 	if len(awards) == 0 {
 		return Strategy{}, ErrStrategyAwardsRequired
+	}
+	if len(awards) > MaxAwardsPerStrategy {
+		return Strategy{}, ErrStrategyAwardsTooMany
 	}
 
 	awardIDs := make(map[AwardID]struct{}, len(awards))

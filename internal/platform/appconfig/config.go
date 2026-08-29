@@ -89,10 +89,13 @@ const (
 	maximumMigrationReadTimeout     = 10*time.Minute + 30*time.Second
 	readinessResponseBudget         = time.Second
 	selectionResponseBudget         = time.Second
+	selectionDependencyBudget       = time.Second
 	migrationTimeoutBudget          = 5 * time.Second
 	maximumPasswordBytes            = 1024
 	maximumPasswordFileBytes        = maximumPasswordBytes + 3
 )
+
+const lotteryEphemeralSelectionVariable = "GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED"
 
 const (
 	redactedAPIConfig       = "growth-api configuration (redacted)"
@@ -167,7 +170,8 @@ type HTTPConfig struct {
 // separate from HTTP server lifecycle and MySQL driver timeouts because the
 // operation budget spans both transport and application dependencies.
 type LotteryConfig struct {
-	SelectionTimeout time.Duration
+	EphemeralSelectionEnabled bool
+	SelectionTimeout          time.Duration
 }
 
 // LogConfig controls structured logging output.
@@ -263,7 +267,8 @@ func Default() Config {
 			IdleTimeout:       defaultHTTPIdleTimeout,
 		},
 		Lottery: LotteryConfig{
-			SelectionTimeout: defaultLotterySelectionTimeout,
+			EphemeralSelectionEnabled: false,
+			SelectionTimeout:          defaultLotterySelectionTimeout,
 		},
 		Log: LogConfig{
 			Level:  LogLevelInfo,
@@ -341,9 +346,15 @@ func Load(lookup LookupFunc) (Config, error) {
 		&config.Lottery.SelectionTimeout,
 		&problems,
 	)
+	lotteryEphemeralSelectionValid := loadBoolean(
+		lookup,
+		lotteryEphemeralSelectionVariable,
+		&config.Lottery.EphemeralSelectionEnabled,
+		&problems,
+	)
 
 	loadLog(lookup, &config.Log, &problems)
-	tlsModeValid, _ := loadMySQLConnection(
+	tlsModeValid, mysqlReadTimeoutValid := loadMySQLConnection(
 		lookup,
 		&config.MySQL.MySQLConnectionConfig,
 		mysqlReadTimeoutVariable,
@@ -369,6 +380,16 @@ func Load(lookup LookupFunc) (Config, error) {
 		(config.HTTP.WriteTimeout <= selectionResponseBudget ||
 			config.Lottery.SelectionTimeout > config.HTTP.WriteTimeout-selectionResponseBudget) {
 		problems = append(problems, fmt.Errorf("%s plus a %s response budget must be no greater than %s", lotterySelectionTimeoutVariable, selectionResponseBudget, httpWriteTimeoutVariable))
+	}
+	if mysqlReadTimeoutValid && lotterySelectionTimeoutValid &&
+		(config.MySQL.ReadTimeout <= selectionDependencyBudget ||
+			config.Lottery.SelectionTimeout > config.MySQL.ReadTimeout-selectionDependencyBudget) {
+		problems = append(problems, fmt.Errorf("%s plus a %s dependency budget must be no greater than %s", lotterySelectionTimeoutVariable, selectionDependencyBudget, mysqlReadTimeoutVariable))
+	}
+	if environmentValid && lotteryEphemeralSelectionValid &&
+		config.Lottery.EphemeralSelectionEnabled &&
+		(config.Environment == EnvironmentStaging || config.Environment == EnvironmentProduction) {
+		problems = append(problems, fmt.Errorf("%s must be false in staging and production", lotteryEphemeralSelectionVariable))
 	}
 	validateDeploymentTLS(config.Environment, config.MySQL.MySQLConnectionConfig, environmentValid, tlsModeValid, &problems)
 
@@ -455,6 +476,19 @@ func loadLog(lookup LookupFunc, destination *LogConfig, problems *[]error) {
 			*problems = append(*problems, fmt.Errorf("%s must be one of json, text", logFormatVariable))
 		}
 	}
+}
+
+func loadBoolean(lookup LookupFunc, variable string, destination *bool, problems *[]error) bool {
+	value, present := lookup(variable)
+	if !present {
+		return true
+	}
+	if value != "true" && value != "false" {
+		*problems = append(*problems, fmt.Errorf("%s must be either true or false", variable))
+		return false
+	}
+	*destination = value == "true"
+	return true
 }
 
 func loadMySQLConnection(

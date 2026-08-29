@@ -3,6 +3,7 @@ package mysqlrepo
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"testing"
 
@@ -50,6 +51,8 @@ func TestClassifyOperationError(t *testing.T) {
 		{name: "deadlock", cause: &mysql.MySQLError{Number: 1213}, wantErr: application.ErrRepositoryRetryable},
 		{name: "canceled", cause: context.Canceled, wantErr: context.Canceled},
 		{name: "deadline", cause: context.DeadlineExceeded, wantErr: context.DeadlineExceeded},
+		{name: "bad connection", cause: driver.ErrBadConn, wantErr: application.ErrRepositoryRetryable},
+		{name: "network timeout", cause: repositoryNetworkTimeout{}, wantErr: application.ErrRepositoryRetryable},
 		{name: "duplicate outside root insert", cause: &mysql.MySQLError{Number: 1062}, wantErr: application.ErrRepositoryFailure},
 		{name: "other", cause: errors.New("driver detail"), wantErr: application.ErrRepositoryFailure},
 	}
@@ -65,6 +68,12 @@ func TestClassifyOperationError(t *testing.T) {
 		})
 	}
 }
+
+type repositoryNetworkTimeout struct{}
+
+func (repositoryNetworkTimeout) Error() string   { return "network timeout detail" }
+func (repositoryNetworkTimeout) Timeout() bool   { return true }
+func (repositoryNetworkTimeout) Temporary() bool { return true }
 
 func TestClassifyRootInsertDuplicate(t *testing.T) {
 	t.Parallel()

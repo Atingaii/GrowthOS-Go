@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -57,6 +58,7 @@ func TestSelectionHTTPReturnsMaxUint64RewardAsDecimalStrings(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, selectionURL(strconvMaxUint64), nil)
+	acknowledgeEphemeralSelection(request)
 	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
@@ -78,20 +80,20 @@ func TestSelectionHTTPReturnsMaxUint64RewardAsDecimalStrings(t *testing.T) {
 	}
 
 	var response selectionResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(recorder.Body.Bytes()))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&response); err != nil {
 		t.Fatalf("decode response: %v", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		t.Fatalf("response contains trailing JSON: %v", err)
 	}
 	want := selectionResponse{Selection: selectionBody{
 		Durability: "ephemeral",
-		Strategy: selectionStrategy{
-			ID:          strconvMaxUint64,
-			Name:        "Maximum strategy",
-			TotalWeight: strconvMaxUint64,
-		},
+		StrategyID: strconvMaxUint64,
 		Award: selectionAward{
 			ID:      strconvMaxUint64,
 			Name:    "Maximum reward",
-			Weight:  strconvMaxUint64,
 			Outcome: string(domain.AwardOutcomeReward),
 		},
 	}}
@@ -117,7 +119,9 @@ func TestSelectionHTTPReturnsNoRewardAsSuccessfulOutcome(t *testing.T) {
 	)
 	router := selectionHTTPRouter(t, service, selectionRouterOptions{requestID: "no-reward-request"})
 	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, selectionURL("77"), nil))
+	request := httptest.NewRequest(http.MethodPost, selectionURL("77"), nil)
+	acknowledgeEphemeralSelection(request)
+	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
@@ -192,6 +196,7 @@ func TestSelectionHTTPRejectsAnyBodyAndIdempotencyClaim(t *testing.T) {
 		router := selectionHTTPRouter(t, service, selectionRouterOptions{requestID: "body-request"})
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, selectionURL("1"), strings.NewReader("{}"))
+		acknowledgeEphemeralSelection(request)
 		router.ServeHTTP(recorder, request)
 		assertSelectionError(t, recorder, http.StatusBadRequest, "request_body_not_allowed", "body-request")
 	})
@@ -202,8 +207,20 @@ func TestSelectionHTTPRejectsAnyBodyAndIdempotencyClaim(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, selectionURL("1"), strings.NewReader(" "))
 		request.ContentLength = -1
 		request.TransferEncoding = []string{"chunked"}
+		acknowledgeEphemeralSelection(request)
 		router.ServeHTTP(recorder, request)
 		assertSelectionError(t, recorder, http.StatusBadRequest, "request_body_not_allowed", "chunked-request")
+	})
+
+	t.Run("empty chunked framing", func(t *testing.T) {
+		router := selectionHTTPRouter(t, service, selectionRouterOptions{requestID: "empty-chunked-request"})
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, selectionURL("1"), http.NoBody)
+		request.ContentLength = -1
+		request.TransferEncoding = []string{"chunked"}
+		acknowledgeEphemeralSelection(request)
+		router.ServeHTTP(recorder, request)
+		assertSelectionError(t, recorder, http.StatusBadRequest, "request_body_not_allowed", "empty-chunked-request")
 	})
 
 	for _, value := range []string{"", "client-assumes-replay"} {
@@ -214,6 +231,78 @@ func TestSelectionHTTPRejectsAnyBodyAndIdempotencyClaim(t *testing.T) {
 			request.Header[IdempotencyKeyHeader] = []string{value}
 			router.ServeHTTP(recorder, request)
 			assertSelectionError(t, recorder, http.StatusBadRequest, "idempotency_not_supported", "idempotency-request")
+		})
+	}
+	if readerCalls.Load() != 0 {
+		t.Fatalf("reader calls = %d, want zero", readerCalls.Load())
+	}
+}
+
+func TestSelectionHTTPRequiresDemoAcknowledgementAndRejectsUndeclaredInput(t *testing.T) {
+	var readerCalls atomic.Int64
+	strategy := selectionHTTPStrategy(t, 1, "Placeholder", []domain.Award{
+		selectionHTTPAward(t, 1, "Only", 1, domain.AwardOutcomeReward),
+	})
+	service := selectionHTTPService(
+		t,
+		strategyReaderFunc(func(context.Context, domain.StrategyID) (domain.Strategy, error) {
+			readerCalls.Add(1)
+			return strategy, nil
+		}),
+		awardSelectorFunc(func(domain.Strategy) (domain.Award, error) { return strategy.Awards()[0], nil }),
+	)
+
+	tests := []struct {
+		name      string
+		configure func(*http.Request)
+		code      string
+	}{
+		{name: "missing acknowledgement", code: "demo_mode_required"},
+		{
+			name: "wrong acknowledgement",
+			configure: func(request *http.Request) {
+				request.Header.Set(DemoModeHeader, "durable-draw")
+			},
+			code: "demo_mode_required",
+		},
+		{
+			name: "duplicate acknowledgement",
+			configure: func(request *http.Request) {
+				request.Header[DemoModeHeader] = []string{DemoModeEphemeralSelection, DemoModeEphemeralSelection}
+			},
+			code: "demo_mode_required",
+		},
+		{
+			name: "query parameter",
+			configure: func(request *http.Request) {
+				acknowledgeEphemeralSelection(request)
+			},
+			code: "query_parameters_not_allowed",
+		},
+		{
+			name: "declared trailer",
+			configure: func(request *http.Request) {
+				acknowledgeEphemeralSelection(request)
+				request.Trailer = http.Header{"X-Lottery-Ticket": nil}
+			},
+			code: "request_body_not_allowed",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router := selectionHTTPRouter(t, service, selectionRouterOptions{requestID: "strict-input-request"})
+			target := selectionURL("1")
+			if test.name == "query parameter" {
+				target += "?seed=caller-controlled"
+			}
+			request := httptest.NewRequest(http.MethodPost, target, nil)
+			if test.configure != nil {
+				test.configure(request)
+			}
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+			assertSelectionError(t, recorder, http.StatusBadRequest, test.code, "strict-input-request")
 		})
 	}
 	if readerCalls.Load() != 0 {
@@ -267,7 +356,9 @@ func TestSelectionHTTPMapsStableErrorClassesWithoutLeakingCauses(t *testing.T) {
 				logger:    logger,
 			})
 			recorder := httptest.NewRecorder()
-			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, selectionURL("12"), nil))
+			request := httptest.NewRequest(http.MethodPost, selectionURL("12"), nil)
+			acknowledgeEphemeralSelection(request)
+			router.ServeHTTP(recorder, request)
 			assertSelectionError(t, recorder, test.status, test.code, "mapped-error-request")
 			if strings.Contains(recorder.Body.String(), "never-expose") || strings.Contains(logs.String(), "never-expose") {
 				t.Fatalf("secret cause leaked; response=%s logs=%s", recorder.Body.String(), logs.String())
@@ -278,6 +369,8 @@ func TestSelectionHTTPMapsStableErrorClassesWithoutLeakingCauses(t *testing.T) {
 				}
 			} else if !strings.Contains(logs.String(), `"error_class":"`+test.logClass+`"`) {
 				t.Fatalf("logs = %s, want stable class %q", logs.String(), test.logClass)
+			} else if !strings.Contains(logs.String(), `"strategy_id":"12"`) {
+				t.Fatalf("logs = %s, want canonical strategy_id", logs.String())
 			}
 		})
 	}
@@ -304,7 +397,9 @@ func TestSelectionHTTPDeadlineCancelsRepositoryAndReturnsJSONBeforeGatewayBudget
 	})
 	recorder := httptest.NewRecorder()
 	startedAt := time.Now()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, selectionURL("1"), nil))
+	request := httptest.NewRequest(http.MethodPost, selectionURL("1"), nil)
+	acknowledgeEphemeralSelection(request)
+	router.ServeHTTP(recorder, request)
 	elapsed := time.Since(startedAt)
 
 	assertSelectionError(t, recorder, http.StatusServiceUnavailable, "lottery_selection_unavailable", "deadline-request")
@@ -377,7 +472,9 @@ func TestSelectionHTTPConcurrentRequestsUseSharedCryptoSelectorSafely(t *testing
 		go func() {
 			defer waitGroup.Done()
 			recorder := httptest.NewRecorder()
-			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, selectionURL("808"), nil))
+			request := httptest.NewRequest(http.MethodPost, selectionURL("808"), nil)
+			acknowledgeEphemeralSelection(request)
+			router.ServeHTTP(recorder, request)
 			if recorder.Code != http.StatusOK {
 				failures <- recorder.Body.String()
 				return
@@ -408,6 +505,22 @@ func TestRegisterRoutesRejectsMissingComposition(t *testing.T) {
 	}
 	if err := RegisterRoutes(gin.New(), nil, Options{}); !errors.Is(err, ErrServiceRequired) {
 		t.Fatalf("nil service error = %v, want service required", err)
+	}
+	if err := RegisterRoutes(gin.New(), &application.EphemeralSelectionService{}, Options{}); !errors.Is(err, ErrServiceRequired) {
+		t.Fatalf("zero service error = %v, want service required", err)
+	}
+	strategy := selectionHTTPStrategy(t, 1, "Configured", []domain.Award{
+		selectionHTTPAward(t, 1, "Only", 1, domain.AwardOutcomeReward),
+	})
+	service := selectionHTTPService(
+		t,
+		strategyReaderFunc(func(context.Context, domain.StrategyID) (domain.Strategy, error) { return strategy, nil }),
+		awardSelectorFunc(func(domain.Strategy) (domain.Award, error) { return strategy.Awards()[0], nil }),
+	)
+	for _, timeout := range []time.Duration{-time.Nanosecond, MaximumSelectionTimeout + time.Nanosecond} {
+		if err := RegisterRoutes(gin.New(), service, Options{Timeout: timeout}); !errors.Is(err, ErrTimeoutInvalid) {
+			t.Fatalf("timeout %s error = %v, want invalid timeout", timeout, err)
+		}
 	}
 }
 
@@ -474,6 +587,10 @@ func (ioDiscard) Write(p []byte) (int, error) { return len(p), nil }
 
 func selectionURL(strategyID string) string {
 	return strings.Replace(SelectionPath, ":"+StrategyIDParameter, strategyID, 1)
+}
+
+func acknowledgeEphemeralSelection(request *http.Request) {
+	request.Header.Set(DemoModeHeader, DemoModeEphemeralSelection)
 }
 
 func selectionHTTPStrategy(

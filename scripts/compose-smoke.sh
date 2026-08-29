@@ -171,6 +171,13 @@ if [ "$inspected_value" != 'growthos/api:lesson-21' ]; then
 fi
 ok 'api image identifies the lesson-21 Lottery API release'
 
+resolve_container web
+inspect_value '{{.Config.Image}}' image
+if [ "$inspected_value" != 'growthos/web:lesson-21' ]; then
+    fail "web image is $inspected_value instead of growthos/web:lesson-21"
+fi
+ok 'web image identifies the lesson-21 hardened API gateway build'
+
 # The dollar-prefixed expressions belong to the container shell.
 # shellcheck disable=SC2016
 if ! migration_state=$(compose exec -T mysql sh -c '
@@ -230,13 +237,13 @@ if ! actual_app_grants=$(compose exec -T mysql sh -c '
     fail 'could not inspect growthos_app grants'
 fi
 expected_app_grants=$(LC_ALL=C sort <<'EOF'
-GRANT SELECT, INSERT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
-GRANT SELECT, INSERT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
+GRANT SELECT ON `growthos`.`lottery_strategy` TO `growthos_app`@`%`
+GRANT SELECT ON `growthos`.`lottery_strategy_award` TO `growthos_app`@`%`
 GRANT USAGE ON *.* TO `growthos_app`@`%`
 EOF
 )
 if [ "$actual_app_grants" != "$expected_app_grants" ]; then
-    fail 'growthos_app grants differ from the current SELECT+INSERT allowlist'
+    fail 'growthos_app grants differ from the current SELECT-only allowlist'
 fi
 # Mandatory roles are effective privileges even though they are not assigned
 # directly to growthos_app, so an exact per-account SHOW GRANTS check is not
@@ -276,7 +283,25 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has DELETE permission'
 fi
-ok 'growthos_app has exactly two-table SELECT+INSERT and no UPDATE, DELETE, or migration-table access'
+# A zero-row INSERT still requires table INSERT privilege but cannot mutate the
+# database even if an over-broad grant regresses.
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="INSERT INTO lottery_strategy (strategy_id, name) SELECT 1, '\''permission probe'\'' WHERE FALSE"
+' >/dev/null 2>&1; then
+    fail 'growthos_app unexpectedly has lottery_strategy INSERT permission'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="INSERT INTO lottery_strategy_award (strategy_id, award_id, name, weight, outcome) SELECT 1, 1, '\''permission probe'\'', 1, '\''reward'\'' WHERE FALSE"
+' >/dev/null 2>&1; then
+    fail 'growthos_app unexpectedly has lottery_strategy_award INSERT permission'
+fi
+ok 'growthos_app has exactly two-table SELECT and no INSERT, UPDATE, DELETE, or migration-table access'
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-compose-smoke.XXXXXX")
 cleanup() {
@@ -290,10 +315,12 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 response_number=0
-request() {
-    request_route=$1
-    expected_status=$2
-    request_accept=$3
+perform_request() {
+    request_method=$1
+    request_route=$2
+    expected_status=$3
+    request_accept=$4
+    shift 4
     response_number=$((response_number + 1))
     response_headers="$temporary_directory/headers-$response_number"
     response_body="$temporary_directory/body-$response_number"
@@ -304,7 +331,9 @@ request() {
         --globoff \
         --connect-timeout "$connect_timeout" \
         --max-time "$max_time" \
+        --request "$request_method" \
         --header "Accept: $request_accept" \
+        "$@" \
         --dump-header "$response_headers" \
         --output "$response_body" \
         --write-out '%{http_code}' \
@@ -315,6 +344,10 @@ request() {
     if [ "$response_status" != "$expected_status" ]; then
         fail "$request_route returned HTTP $response_status instead of $expected_status"
     fi
+}
+
+request() {
+    perform_request GET "$1" "$2" "$3"
 }
 
 header_value() {
@@ -332,6 +365,23 @@ header_value() {
             }
         }
         END { print header_result }
+    ' "$header_file"
+}
+
+header_count() {
+    requested_header=$1
+    header_file=$2
+    awk -v requested_header="$requested_header" '
+        {
+            header_line = $0
+            sub(/\r$/, "", header_line)
+            header_name = header_line
+            sub(/:.*/, "", header_name)
+            if (tolower(header_name) == tolower(requested_header)) {
+                header_total++
+            }
+        }
+        END { print header_total + 0 }
     ' "$header_file"
 }
 
@@ -378,6 +428,35 @@ if [ -z "$header_request_id" ] || [ "$header_request_id" != "$body_request_id" ]
     fail 'the unknown API route returned inconsistent request IDs'
 fi
 ok 'an unknown API route returned the correlated 404 JSON contract'
+
+lottery_route=/api/v1/lottery/strategies/18446744073709551615/ephemeral-selections
+perform_request \
+    POST \
+    "$lottery_route" \
+    404 \
+    application/json \
+    --header 'X-GrowthOS-Demo-Mode: ephemeral-selection'
+assert_json_response "$lottery_route"
+if ! jq -e '
+    .error |
+    type == "object" and
+    .code == "lottery_strategy_not_found" and
+    .message == "lottery strategy not found" and
+    (.request_id | type == "string" and length > 0)
+' "$response_body" >/dev/null 2>&1; then
+    fail 'the ephemeral selection route did not return the strategy-not-found contract against the unseeded database'
+fi
+body_request_id=$(jq -r '.error.request_id' "$response_body")
+header_request_id=$(header_value 'X-Request-ID' "$response_headers")
+if [ -z "$header_request_id" ] || [ "$header_request_id" != "$body_request_id" ]; then
+    fail 'the ephemeral selection route returned inconsistent request IDs'
+fi
+cache_control=$(header_value 'Cache-Control' "$response_headers" | tr '[:upper:]' '[:lower:]')
+cache_control_count=$(header_count 'Cache-Control' "$response_headers")
+if [ "$cache_control_count" -ne 1 ] || [ "$cache_control" != 'no-store' ]; then
+    fail 'the ephemeral selection route must return exactly one Cache-Control: no-store header'
+fi
+ok 'the lesson-21 ephemeral selection route reached MySQL and returned the correlated no-store 404 contract'
 
 published_ports() {
     # The dollar-prefixed names belong to Docker's Go template, not this shell.

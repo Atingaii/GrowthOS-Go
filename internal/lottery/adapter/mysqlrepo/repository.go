@@ -3,7 +3,10 @@ package mysqlrepo
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"fmt"
+	"net"
 
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/application"
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/domain"
@@ -23,12 +26,14 @@ const (
 		SELECT strategy_id, name
 		FROM lottery_strategy
 		WHERE strategy_id = ?`
-	selectAwardsSQL = `
-		SELECT award_id, name, weight, outcome
-		FROM lottery_strategy_award
-		WHERE strategy_id = ?
-		ORDER BY award_id`
 )
+
+var selectAwardsSQL = fmt.Sprintf(`
+	SELECT award_id, name, weight, outcome
+	FROM lottery_strategy_award
+	WHERE strategy_id = ?
+	ORDER BY award_id
+	LIMIT %d`, domain.MaxAwardsPerStrategy+1)
 
 var errNilDatabase = errors.New("mysql repository database is nil")
 var errNilContext = errors.New("mysql repository context is nil")
@@ -260,6 +265,13 @@ func classifyOperationError(err error) error {
 		case 1205, 1213:
 			return application.WrapRepositoryError(application.ErrRepositoryRetryable, err)
 		}
+	}
+	if errors.Is(err, driver.ErrBadConn) {
+		return application.WrapRepositoryError(application.ErrRepositoryRetryable, err)
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) {
+		return application.WrapRepositoryError(application.ErrRepositoryRetryable, err)
 	}
 	return application.WrapRepositoryError(application.ErrRepositoryFailure, err)
 }

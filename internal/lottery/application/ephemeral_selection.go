@@ -60,6 +60,16 @@ func NewEphemeralSelectionService(
 	}, nil
 }
 
+// Validate reports whether all required dependencies were supplied through the
+// constructor. Inbound adapters call it during startup so a manually-created
+// zero value cannot leave readiness green while every business request fails.
+func (service *EphemeralSelectionService) Validate() error {
+	if service == nil || dependencyIsNil(service.strategies) || dependencyIsNil(service.selector) {
+		return ErrSelectionNotConfigured
+	}
+	return nil
+}
+
 // Select executes one explicitly ephemeral selection. Context cancellation can
 // stop the repository read and prevents selection when observed before the
 // selector call. The synchronous selector port itself is not interruptible.
@@ -70,14 +80,17 @@ func (service *EphemeralSelectionService) Select(
 	if ctx == nil || strategyID == 0 {
 		return EphemeralSelection{}, ErrSelectionInvalidArgument
 	}
-	if service == nil || dependencyIsNil(service.strategies) || dependencyIsNil(service.selector) {
-		return EphemeralSelection{}, ErrSelectionNotConfigured
+	if err := service.Validate(); err != nil {
+		return EphemeralSelection{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return EphemeralSelection{}, err
 	}
 
 	strategy, err := service.strategies.FindByID(ctx, strategyID)
+	if contextError := ctx.Err(); contextError != nil {
+		return EphemeralSelection{}, contextError
+	}
 	if err != nil {
 		return EphemeralSelection{}, err
 	}
@@ -89,6 +102,9 @@ func (service *EphemeralSelectionService) Select(
 	}
 
 	award, err := service.selector.Select(strategy)
+	if contextError := ctx.Err(); contextError != nil {
+		return EphemeralSelection{}, contextError
+	}
 	if err != nil {
 		return EphemeralSelection{}, err
 	}

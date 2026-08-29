@@ -220,6 +220,31 @@ func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
 	}
 }
 
+func TestRunRejectsUnconfiguredSelectionServiceAndClosesDatabase(t *testing.T) {
+	database := &stubDatabase{}
+	var output bytes.Buffer
+	exitCode := runWithDependencies(
+		context.Background(),
+		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		&output,
+		runtimeDependencies{OpenRuntime: func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+			return runtimeComponents{
+				database:  database,
+				selection: &application.EphemeralSelectionService{},
+			}, nil
+		}},
+	)
+	if exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if database.closeCalls != 1 {
+		t.Fatalf("database close calls = %d, want exactly 1 after invalid composition", database.closeCalls)
+	}
+	if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
+		t.Fatalf("unconfigured selection service was not logged safely: %s", output.String())
+	}
+}
+
 func TestRunRejectsMissingRuntimeOpener(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(

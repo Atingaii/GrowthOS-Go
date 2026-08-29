@@ -19,20 +19,32 @@ import (
 const (
 	// SelectionPath is versioned because it is a business contract. One POST
 	// performs a new ephemeral selection and never creates a durable DrawResult.
-	SelectionPath = "/api/v1/lottery/strategies/:strategy_id/selections"
+	SelectionPath = "/api/v1/lottery/strategies/:strategy_id/ephemeral-selections"
 	// StrategyIDParameter is the Gin path parameter used by SelectionPath.
 	StrategyIDParameter = "strategy_id"
 	// IdempotencyKeyHeader is rejected explicitly because this endpoint has no
 	// persisted result to which a retry key could be bound.
 	IdempotencyKeyHeader = "Idempotency-Key"
-	// DefaultSelectionTimeout stays below the Compose gateway's four-second
-	// upstream budget. Deployments should still pass their validated setting.
+	// DemoModeHeader makes callers explicitly acknowledge the development/test
+	// simulation contract. Because it is not a CORS-safelisted header, an
+	// unrelated browser origin cannot trigger this POST with a plain HTML form.
+	// It is a CSRF guard for the local demo, not authentication.
+	DemoModeHeader = "X-GrowthOS-Demo-Mode"
+	// DemoModeEphemeralSelection is the sole accepted acknowledgement value.
+	DemoModeEphemeralSelection = "ephemeral-selection"
+	// DefaultSelectionTimeout is the cooperative application deadline used when
+	// a caller does not supply an already validated deployment value.
 	DefaultSelectionTimeout = 3 * time.Second
+	// MaximumSelectionTimeout mirrors the configuration boundary and prevents a
+	// direct adapter caller from silently installing an effectively unbounded
+	// handler.
+	MaximumSelectionTimeout = 30 * time.Second
 )
 
 var (
 	ErrRouterRequired  = errors.New("lottery HTTP adapter: router is required")
 	ErrServiceRequired = errors.New("lottery HTTP adapter: selection service is required")
+	ErrTimeoutInvalid  = errors.New("lottery HTTP adapter: selection timeout is invalid")
 
 	invalidStrategyIDFault = fault.MustNew(
 		fault.KindInvalid,
@@ -50,6 +62,18 @@ var (
 		fault.KindInvalid,
 		"idempotency_not_supported",
 		"idempotency is not supported for ephemeral selections",
+		nil,
+	)
+	demoModeRequiredFault = fault.MustNew(
+		fault.KindInvalid,
+		"demo_mode_required",
+		"X-GrowthOS-Demo-Mode must be ephemeral-selection",
+		nil,
+	)
+	queryParametersNotAllowedFault = fault.MustNew(
+		fault.KindInvalid,
+		"query_parameters_not_allowed",
+		"query parameters are not allowed",
 		nil,
 	)
 	strategyNotFoundFault = fault.MustNew(
@@ -86,9 +110,15 @@ func RegisterRoutes(
 	if service == nil {
 		return ErrServiceRequired
 	}
+	if err := service.Validate(); err != nil {
+		return ErrServiceRequired
+	}
 	timeout := options.Timeout
-	if timeout <= 0 {
+	if timeout == 0 {
 		timeout = DefaultSelectionTimeout
+	}
+	if timeout < 0 || timeout > MaximumSelectionTimeout {
+		return ErrTimeoutInvalid
 	}
 	logger := options.Logger
 	if logger == nil {
@@ -104,21 +134,14 @@ type selectionResponse struct {
 }
 
 type selectionBody struct {
-	Durability string            `json:"durability"`
-	Strategy   selectionStrategy `json:"strategy"`
-	Award      selectionAward    `json:"award"`
-}
-
-type selectionStrategy struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	TotalWeight string `json:"total_weight"`
+	Durability string         `json:"durability"`
+	StrategyID string         `json:"strategy_id"`
+	Award      selectionAward `json:"award"`
 }
 
 type selectionAward struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Weight  string `json:"weight"`
 	Outcome string `json:"outcome"`
 }
 
@@ -137,6 +160,14 @@ func newSelectionHandler(
 			sharedhttp.AbortWithError(ginContext, idempotencyNotSupportedFault)
 			return
 		}
+		if !validDemoModeHeader(ginContext.Request.Header.Values(DemoModeHeader)) {
+			sharedhttp.AbortWithError(ginContext, demoModeRequiredFault)
+			return
+		}
+		if requestHasQuery(ginContext.Request) {
+			sharedhttp.AbortWithError(ginContext, queryParametersNotAllowedFault)
+			return
+		}
 		if !emptyRequestBody(ginContext) {
 			sharedhttp.AbortWithError(ginContext, requestBodyNotAllowedFault)
 			return
@@ -145,12 +176,12 @@ func newSelectionHandler(
 		selectionContext, cancel := context.WithTimeout(ginContext.Request.Context(), timeout)
 		defer cancel()
 		selection, err := service.Select(selectionContext, strategyID)
-		if err == nil {
-			err = selectionContext.Err()
+		if contextError := selectionContext.Err(); contextError != nil {
+			err = contextError
 		}
 		if err != nil {
 			publicFault, class := publicSelectionFault(err)
-			logSelectionFailure(logger, selectionContext, ginContext, publicFault, class)
+			logSelectionFailure(logger, selectionContext, ginContext, strategyID, publicFault, class)
 			sharedhttp.AbortWithError(ginContext, publicFault)
 			return
 		}
@@ -158,6 +189,14 @@ func newSelectionHandler(
 		ginContext.Header("Cache-Control", "no-store")
 		ginContext.JSON(http.StatusOK, mapSelection(selection))
 	}
+}
+
+func validDemoModeHeader(values []string) bool {
+	return len(values) == 1 && values[0] == DemoModeEphemeralSelection
+}
+
+func requestHasQuery(request *http.Request) bool {
+	return request != nil && request.URL != nil && (request.URL.RawQuery != "" || request.URL.ForceQuery)
 }
 
 func parseStrategyID(raw string) (domain.StrategyID, error) {
@@ -173,25 +212,25 @@ func parseStrategyID(raw string) (domain.StrategyID, error) {
 
 func emptyRequestBody(ginContext *gin.Context) bool {
 	request := ginContext.Request
-	if request == nil || request.Body == nil || request.Body == http.NoBody {
-		return true
-	}
-	if request.ContentLength > 0 {
+	if request == nil {
 		return false
 	}
-	limitedBody := http.MaxBytesReader(ginContext.Writer, request.Body, 0)
-	_, err := io.Copy(io.Discard, limitedBody)
-	return err == nil
+	// Decide from framing only. Reading an unknown/chunked body here would place
+	// slow-client time outside the selection deadline and tie up a handler.
+	if request.ContentLength != 0 || len(request.TransferEncoding) != 0 || len(request.Trailer) != 0 {
+		return false
+	}
+	return true
 }
 
 func publicSelectionFault(err error) (*fault.Error, string) {
 	switch {
-	case errors.Is(err, application.ErrStrategyNotFound):
-		return strategyNotFoundFault, "strategy_not_found"
 	case errors.Is(err, context.Canceled):
 		return selectionUnavailableFault, "request_canceled"
 	case errors.Is(err, context.DeadlineExceeded):
 		return selectionUnavailableFault, "request_deadline"
+	case errors.Is(err, application.ErrStrategyNotFound):
+		return strategyNotFoundFault, "strategy_not_found"
 	case errors.Is(err, application.ErrRepositoryRetryable):
 		return selectionUnavailableFault, "repository_retryable"
 	case errors.Is(err, domain.ErrRandomSourceFailure):
@@ -229,11 +268,13 @@ func logSelectionFailure(
 	logger *slog.Logger,
 	ctx context.Context,
 	ginContext *gin.Context,
+	strategyID domain.StrategyID,
 	publicFault *fault.Error,
 	class string,
 ) {
 	attributes := []any{
 		slog.String("request_id", sharedhttp.RequestID(ginContext)),
+		slog.String("strategy_id", strconv.FormatUint(uint64(strategyID), 10)),
 		slog.String("error_class", class),
 	}
 	if publicFault.Kind() == fault.KindUnavailable {
@@ -250,15 +291,10 @@ func mapSelection(selection application.EphemeralSelection) selectionResponse {
 	award := selection.Award
 	return selectionResponse{Selection: selectionBody{
 		Durability: "ephemeral",
-		Strategy: selectionStrategy{
-			ID:          strconv.FormatUint(uint64(strategy.ID()), 10),
-			Name:        strategy.Name(),
-			TotalWeight: strconv.FormatUint(strategy.TotalWeight(), 10),
-		},
+		StrategyID: strconv.FormatUint(uint64(strategy.ID()), 10),
 		Award: selectionAward{
 			ID:      strconv.FormatUint(uint64(award.ID()), 10),
 			Name:    award.Name(),
-			Weight:  strconv.FormatUint(uint64(award.Weight()), 10),
 			Outcome: string(award.Outcome()),
 		},
 	}}
