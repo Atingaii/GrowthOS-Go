@@ -18,8 +18,8 @@ type MembershipRoutingReasonCode string
 const (
 	MembershipStrategyRoutingRuleCode MembershipRoutingRuleCode = "lottery.membership_tier.route_strategy"
 
-	MembershipRoutingBranchPremiumOverride MembershipRoutingBranch = "premium"
-	MembershipRoutingBranchBaselineDefault MembershipRoutingBranch = "default"
+	MembershipRoutingBranchPremiumOverride MembershipRoutingBranch = "premium_override"
+	MembershipRoutingBranchBaselineDefault MembershipRoutingBranch = "baseline_default"
 
 	MembershipRoutingReasonPremiumStrategy  MembershipRoutingReasonCode = "premium_strategy_selected"
 	MembershipRoutingReasonBaselineStrategy MembershipRoutingReasonCode = "baseline_strategy_selected"
@@ -96,13 +96,25 @@ func RouteMembershipStrategy(
 		)
 	}
 
-	branch := MembershipRoutingBranchBaselineDefault
-	reason := MembershipRoutingReasonBaselineStrategy
-	target := policy.BaselineDefault()
-	if fact.Tier() == MembershipTierPremium {
+	var (
+		branch MembershipRoutingBranch
+		reason MembershipRoutingReasonCode
+		target StrategyID
+	)
+	switch fact.Tier() {
+	case MembershipTierStandard:
+		branch = MembershipRoutingBranchBaselineDefault
+		reason = MembershipRoutingReasonBaselineStrategy
+		target = policy.BaselineDefault()
+	case MembershipTierPremium:
 		branch = MembershipRoutingBranchPremiumOverride
 		reason = MembershipRoutingReasonPremiumStrategy
 		target = policy.PremiumTarget()
+	default:
+		return MembershipStrategyRouteDecision{}, fmt.Errorf(
+			"%w: membership tier has no explicit branch",
+			ErrMembershipRoutingEvaluationInvalid,
+		)
 	}
 	step := MembershipRoutingPathStep{
 		ruleCode: MembershipStrategyRoutingRuleCode,

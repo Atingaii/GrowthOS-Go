@@ -74,6 +74,26 @@ func TestRouteMembershipStrategyExposesBranchSpecificTerminalPaths(t *testing.T)
 	}
 }
 
+func TestMembershipRoutingStableCodesAreLiteralContracts(t *testing.T) {
+	if MembershipStrategyRoutingRuleCode != "lottery.membership_tier.route_strategy" {
+		t.Fatalf("rule code changed: %q", MembershipStrategyRoutingRuleCode)
+	}
+	if MembershipRoutingBranchPremiumOverride != "premium_override" {
+		t.Fatalf("premium branch changed: %q", MembershipRoutingBranchPremiumOverride)
+	}
+	if MembershipRoutingBranchBaselineDefault != "baseline_default" {
+		t.Fatalf("baseline branch changed: %q", MembershipRoutingBranchBaselineDefault)
+	}
+	if MembershipRoutingReasonPremiumStrategy != "premium_strategy_selected" ||
+		MembershipRoutingReasonBaselineStrategy != "baseline_strategy_selected" {
+		t.Fatalf(
+			"reason contract changed: %q/%q",
+			MembershipRoutingReasonPremiumStrategy,
+			MembershipRoutingReasonBaselineStrategy,
+		)
+	}
+}
+
 func TestRouteMembershipStrategyKeepsBranchEvidenceWhenTargetsConverge(t *testing.T) {
 	evaluatedAt := time.Unix(100, 0).UTC()
 	policy, _ := NewMembershipStrategyRoutingPolicy("converged-v1", 100, 100)
