@@ -74,41 +74,17 @@ func RouteMembershipStrategy(
 			err,
 		)
 	}
-	if err := fact.Validate(); err != nil {
-		return MembershipStrategyRouteDecision{}, fmt.Errorf(
-			"%w: %w",
-			ErrMembershipRoutingEvaluationInvalid,
-			err,
-		)
+	branch, reason, err := evaluateMembershipRoutingBranch(fact, evaluatedAt)
+	if err != nil {
+		return MembershipStrategyRouteDecision{}, err
 	}
 	evaluatedAt = canonicalMembershipInstant(evaluatedAt)
-	if evaluatedAt.IsZero() {
-		return MembershipStrategyRouteDecision{}, fmt.Errorf(
-			"%w: evaluated-at is required",
-			ErrMembershipRoutingEvaluationInvalid,
-		)
-	}
-	if fact.ObservedAt().After(evaluatedAt) {
-		return MembershipStrategyRouteDecision{}, fmt.Errorf(
-			"%w: %w",
-			ErrMembershipRoutingEvaluationInvalid,
-			ErrMembershipTierFactFromFuture,
-		)
-	}
 
-	var (
-		branch MembershipRoutingBranch
-		reason MembershipRoutingReasonCode
-		target StrategyID
-	)
-	switch fact.Tier() {
-	case MembershipTierStandard:
-		branch = MembershipRoutingBranchBaselineDefault
-		reason = MembershipRoutingReasonBaselineStrategy
+	var target StrategyID
+	switch branch {
+	case MembershipRoutingBranchBaselineDefault:
 		target = policy.BaselineDefault()
-	case MembershipTierPremium:
-		branch = MembershipRoutingBranchPremiumOverride
-		reason = MembershipRoutingReasonPremiumStrategy
+	case MembershipRoutingBranchPremiumOverride:
 		target = policy.PremiumTarget()
 	default:
 		return MembershipStrategyRouteDecision{}, fmt.Errorf(
@@ -132,6 +108,53 @@ func RouteMembershipStrategy(
 		evaluatedAt:    evaluatedAt,
 		path:           []MembershipRoutingPathStep{step},
 	}, nil
+}
+
+// evaluateMembershipRoutingBranch applies the one closed membership-tier rule
+// without selecting a policy target. It is package-local so both the concrete
+// router and the bounded graph evaluator can share typed branch semantics
+// without introducing a generic rule registry or untyped fact bag.
+func evaluateMembershipRoutingBranch(
+	fact MembershipTierFactSnapshot,
+	evaluatedAt time.Time,
+) (MembershipRoutingBranch, MembershipRoutingReasonCode, error) {
+	if err := fact.Validate(); err != nil {
+		return "", "", fmt.Errorf(
+			"%w: %w",
+			ErrMembershipRoutingEvaluationInvalid,
+			err,
+		)
+	}
+	evaluatedAt = canonicalMembershipInstant(evaluatedAt)
+	if evaluatedAt.IsZero() {
+		return "", "", fmt.Errorf(
+			"%w: evaluated-at is required",
+			ErrMembershipRoutingEvaluationInvalid,
+		)
+	}
+	if fact.ObservedAt().After(evaluatedAt) {
+		return "", "", fmt.Errorf(
+			"%w: %w",
+			ErrMembershipRoutingEvaluationInvalid,
+			ErrMembershipTierFactFromFuture,
+		)
+	}
+
+	switch fact.Tier() {
+	case MembershipTierStandard:
+		return MembershipRoutingBranchBaselineDefault,
+			MembershipRoutingReasonBaselineStrategy,
+			nil
+	case MembershipTierPremium:
+		return MembershipRoutingBranchPremiumOverride,
+			MembershipRoutingReasonPremiumStrategy,
+			nil
+	default:
+		return "", "", fmt.Errorf(
+			"%w: membership tier has no explicit branch",
+			ErrMembershipRoutingEvaluationInvalid,
+		)
+	}
 }
 
 // Confirmed distinguishes a complete business route from a zero error result.
