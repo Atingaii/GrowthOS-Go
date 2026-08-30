@@ -954,6 +954,8 @@ request POST /api/v1/lottery/strategies/21003/ephemeral-selections 400 - '{}' ep
 assert_error_response request_body_not_allowed 'request body is not allowed'
 request POST /api/v1/lottery/strategies/21003/ephemeral-selections 400 'Transfer-Encoding: chunked' '' ephemeral-selection
 assert_error_response request_body_not_allowed 'request body is not allowed'
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 400 'Trailer: X-Lottery-Ticket' - ephemeral-selection
+assert_error_response request_body_not_allowed 'request body is not allowed'
 request POST /api/v1/lottery/strategies/21003/ephemeral-selections 400 'Idempotency-Key: acceptance-retry' - ephemeral-selection
 assert_error_response idempotency_not_supported 'idempotency is not supported for ephemeral selections'
 ok 'missing, invalid, demo-header, query, method, path, body-framing, and idempotency rejection contracts passed'
