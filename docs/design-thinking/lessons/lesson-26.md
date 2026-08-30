@@ -715,7 +715,7 @@ v1 的 `RiskAdmissionPolicy` 只保留 revision，映射固定。这看似“配
 - caller 在 read 返回前取消时，原始 caller context error 优先；
 - error string 不渲染秘密 cause；
 - `errors.Is` 不能同时命中两个 application class；
--受信 `Cause()` 仍能取到底层诊断。
+- 受信 `Cause()` 仍能取到底层诊断。
 
 这些测试证伪的是“过期边界 off-by-one”“provider timeout 冒充 caller timeout”和“错误链多重分类”。
 
@@ -738,7 +738,7 @@ v1 的 `RiskAdmissionPolicy` 只保留 revision，映射固定。这看似“配
 
 还需要证明：
 
-- chain clock 每次 Evaluate 恰好调用一次；
+- chain clock 每次 Evaluate 至多调用一次；通过输入/配置校验且未预先取消后恰好调用一次；
 - clock 在任一 reader 前调用；
 - 两个 step 与 aggregate 的 evaluated-at 完全相同；
 - trace rule code 顺序固定为 new-user、risk；

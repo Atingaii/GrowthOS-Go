@@ -74,7 +74,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 第 25 节资格事实与错误边界见[课程正文](../course/part-04/lesson-25-user-eligibility.md)、[API 零变化记录](../api/lessons/lesson-25.md)、[QA](../qa/lessons/lesson-25.md)、[第一性原理手记](../design-thinking/lessons/lesson-25.md)、[面试问答](../interview/lessons/lesson-25.md)和 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)。这些证据来自 domain/application 单元、fuzz、并发、取消和架构停止线测试；本节没有 Compose、真实外部目录或浏览器验收，不能外推为在线资格链已经交付。
 
-第 26 节第二条风险规则与固定前置资格链见[规则链基线](participation-prerequisite-chain-v1.md)、[课程正文](../course/part-04/lesson-26-responsibility-chain.md)、[API 零变化记录](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[第一性原理手记](../design-thinking/lessons/lesson-26.md)、[面试问答](../interview/lessons/lesson-26.md)和 [ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)。这些证据验证 Participation 内核中的 source-owned risk snapshot、一次 shared as-of、固定 `new-user -> risk` 顺序、后序零调用短路、零 aggregate 技术失败、单一公开错误 class 与最小 trace；没有真实 fact adapter、公开 API、Lottery/composition 装配、Compose 或浏览器 E2E，不能据此声称线上请求已经受资格保护。
+第 26 节第二条风险规则与固定前置资格链见[规则链基线](participation-prerequisite-chain-v1.md)、[课程正文](../course/part-04/lesson-26-responsibility-chain.md)、[API 零变化记录](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[第一性原理手记](../design-thinking/lessons/lesson-26.md)、[面试问答](../interview/lessons/lesson-26.md)和 [ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)。这些证据验证 Participation 内核中的 source-owned risk snapshot、一次 shared as-of、固定 `new-user -> risk` 顺序、后序零调用短路、零 aggregate 技术失败、两个事实读取 wrapper 各自的单一公开错误 class 与最小 trace；没有真实 fact adapter、公开 API、Lottery/composition 装配、Compose 或浏览器 E2E，不能据此声称线上请求已经受资格保护。
 
 ## 成功信号
 

@@ -90,7 +90,7 @@ freshness 从权威 `assessed_at` 计算。adapter 不得在每次读取时用�
 | --- | --- | --- | --- |
 | `eligible` | 还有节点则继续；全部完成才最终通过 | 全部完成后 `eligible` | `nil` |
 | `ineligible` | 立即短路 | `ineligible`，沿用终止节点稳定 reason | `nil` |
-| 事实/配置/clock/依赖技术失败 | 立即短路 | 零值，无可信最终决定 | 单一稳定 typed error |
+| 事实/配置/clock/依赖技术失败 | 立即短路 | 零值，无可信最终决定 | 对应稳定 typed error；两个事实读取 wrapper 各只暴露一个公开 class |
 | caller cancel/deadline | 立即短路 | 零值 | 原始 context error 可由 `errors.Is` 识别 |
 
 “fail closed”只表示下游不能继续，不表示把技术失败伪装成 `ineligible`。不使用 `bool` 同时承载继续、拒绝、未知、错误和取消。
@@ -142,7 +142,7 @@ trace 只包含实际执行的节点，不伪造未执行节点为“成功”�
 - 新用户通过、风险阻断时得到两步最终 ineligible；
 - 风险事实缺失、过期、future、损坏或依赖失败时最终决定为零；
 - pre-cancel、clock 后取消、每个 reader 返回后取消都让 caller context 优先；
-- chain clock 每次最多且恰好调用一次，两个 trace step 的 evaluated-at 完全相同；
+- chain clock 每次最多调用一次；通过输入/配置校验且未预先取消的有效求值恰好调用一次，两个已执行 trace step 的 evaluated-at 完全相同；
 - 两条规则的先后顺序和 trace 长度确定；
 - concurrent Evaluate 没有共享请求态竞态，`go test -race` 通过。
 
