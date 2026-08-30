@@ -91,35 +91,14 @@ func (service *MembershipStrategyRoutingService) Route(
 		return domain.MembershipStrategyRouteDecision{}, err
 	}
 
-	evaluatedAt := canonicalMembershipRoutingInstant(service.clock.Now())
-	if contextError := ctx.Err(); contextError != nil {
-		return domain.MembershipStrategyRouteDecision{}, contextError
-	}
-	if evaluatedAt.IsZero() {
-		return domain.MembershipStrategyRouteDecision{}, ErrMembershipRoutingClockInvalid
-	}
-
-	fact, err := service.membershipFacts.FindMembershipTierFact(ctx, subjectRef)
-	if contextError := ctx.Err(); contextError != nil {
-		return domain.MembershipStrategyRouteDecision{}, contextError
-	}
+	fact, evaluatedAt, err := readFreshMembershipTierFact(
+		ctx,
+		subjectRef,
+		service.membershipFacts,
+		service.clock,
+		service.maxFactAge,
+	)
 	if err != nil {
-		return domain.MembershipStrategyRouteDecision{}, classifyMembershipTierFactReadError(err)
-	}
-	if err := fact.Validate(); err != nil {
-		return domain.MembershipStrategyRouteDecision{}, fmt.Errorf(
-			"%w: %w",
-			ErrMembershipTierFactInvalid,
-			err,
-		)
-	}
-	if fact.SubjectRef() != subjectRef || fact.ObservedAt().After(evaluatedAt) {
-		return domain.MembershipStrategyRouteDecision{}, ErrMembershipTierFactInvalid
-	}
-	if evaluatedAt.Sub(fact.ObservedAt()) > service.maxFactAge {
-		return domain.MembershipStrategyRouteDecision{}, ErrMembershipTierFactStale
-	}
-	if err := ctx.Err(); err != nil {
 		return domain.MembershipStrategyRouteDecision{}, err
 	}
 
@@ -145,6 +124,51 @@ func canonicalMembershipRoutingInstant(value time.Time) time.Time {
 		return time.Time{}
 	}
 	return value.UTC().Round(0)
+}
+
+// readFreshMembershipTierFact captures the one controlled business instant,
+// reads one authoritative membership snapshot, and applies the shared
+// freshness contract. The caller owns argument/configuration validation and
+// any higher-level classification of operation-context cancellation.
+func readFreshMembershipTierFact(
+	ctx context.Context,
+	subjectRef domain.MembershipSubjectRef,
+	membershipFacts MembershipTierFactReader,
+	clock MembershipRoutingClock,
+	maxFactAge time.Duration,
+) (domain.MembershipTierFactSnapshot, time.Time, error) {
+	evaluatedAt := canonicalMembershipRoutingInstant(clock.Now())
+	if contextError := ctx.Err(); contextError != nil {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, contextError
+	}
+	if evaluatedAt.IsZero() {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, ErrMembershipRoutingClockInvalid
+	}
+
+	fact, err := membershipFacts.FindMembershipTierFact(ctx, subjectRef)
+	if contextError := ctx.Err(); contextError != nil {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, contextError
+	}
+	if err != nil {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, classifyMembershipTierFactReadError(err)
+	}
+	if err := fact.Validate(); err != nil {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, fmt.Errorf(
+			"%w: %w",
+			ErrMembershipTierFactInvalid,
+			err,
+		)
+	}
+	if fact.SubjectRef() != subjectRef || fact.ObservedAt().After(evaluatedAt) {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, ErrMembershipTierFactInvalid
+	}
+	if evaluatedAt.Sub(fact.ObservedAt()) > maxFactAge {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, ErrMembershipTierFactStale
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.MembershipTierFactSnapshot{}, time.Time{}, err
+	}
+	return fact, evaluatedAt, nil
 }
 
 func classifyMembershipTierFactReadError(err error) error {
