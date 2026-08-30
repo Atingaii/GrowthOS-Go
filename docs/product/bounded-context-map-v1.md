@@ -4,7 +4,7 @@
 
 **更新日期：** 2026-08-30
 
-**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17 节以[最小 Lottery 领域对象](../course/part-03/lesson-17-lottery-domain-objects.md)、第 18 节以[第一组 Lottery 业务表](../course/part-03/lesson-18-lottery-schema.md)、第 19 节以[Strategy 仓储](../course/part-03/lesson-19-lottery-repository.md)、第 20 节以[加权 Award 选择](../course/part-03/lesson-20-lottery-weighted-selection.md)、第 21 节以[临时 Lottery API](../course/part-03/lesson-21-lottery-api.md)、第 22 节以[真实 React 临时选择页](../course/part-03/lesson-22-react-lottery-page.md)校准实现状态
+**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17 节以[最小 Lottery 领域对象](../course/part-03/lesson-17-lottery-domain-objects.md)、第 18 节以[第一组 Lottery 业务表](../course/part-03/lesson-18-lottery-schema.md)、第 19 节以[Strategy 仓储](../course/part-03/lesson-19-lottery-repository.md)、第 20 节以[加权 Award 选择](../course/part-03/lesson-20-lottery-weighted-selection.md)、第 21 节以[临时 Lottery API](../course/part-03/lesson-21-lottery-api.md)、第 22 节以[真实 React 临时选择页](../course/part-03/lesson-22-react-lottery-page.md)、第 23 节以[Lottery 规则所有权](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)校准实现与演进边界
 
 ## 1. 地图用途
 
@@ -117,7 +117,7 @@ flowchart LR
 
 `Campaign` 与 `Activity` 当前在中文产品文档中统一称“活动”。后续编码阶段再结合现有生态和团队语言选择代码名，不能同时制造两个同义聚合。
 
-### 7.1 第 17～22 节 Lottery 语言、持久化、选择、临时传输与体验边界落地
+### 7.1 第 17～23 节 Lottery 语言、持久化、选择、临时传输与规则所有权边界
 
 第 17 节把本地图中的一小段分析语言落成 `internal/lottery/domain`：
 
@@ -145,7 +145,11 @@ flowchart LR
 
 第 22 节以 `lotteryApi`、运行时 decoder 和 React 请求状态 Hook 真实消费这条 route：页面端不再随机决定 Award，完整 ID 继续保持 decimal string，失败不透明重试，`reward` 只表示服务端选中了奖励候选。活动、积分、优惠券、Admin、MCP 和 Agent 等工作台仍是 Mock/本地状态；共享壳层只是体验层信息架构，不拥有 Lottery、Governance 或 IAM 事实。
 
-下一节仍是第 23 节“需求升级抽奖策略需要规则”，第 24 节完成首次 Redis 缓存；第 25～30 节继续形成资格规则、决策引擎与 Activity 等真实业务对象。公共访问控制安排在第 31～35 节：先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，再实现真实会话、服务端强制、前端权限感知和越权端到端验收；第 36 节首个真实运营后台只能消费这套统一能力，不能在各业务上下文复制角色开关。当前没有登录或 RBAC，不能用按工作台隐藏菜单代替授权。在正式 Draw/Result 与幂等语义出现前，也不能把 ephemeral route、仓储、Selector 或 React 页面解释为 Lottery 上下文已经形成最终结果事实，不能在调用超时后无条件重试并声称得到同一次结果。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节证据见[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)。
+第 23 节没有把复合“抽奖规则”塞进 Strategy，而是把判断按权威事实和业务阶段拆开：Marketing 拥有 Activity 发布态/时间窗，Participation 拥有用户资格、次数与本场景风险准入，Lottery 拥有 Strategy 路由、候选集合与终端加权选择，Benefit/库存能力拥有奖励可分配性与交付，公共访问控制拥有操作者对资源动作的授权。编排者可以组合这些决定，但不能因为处于同一 Go 进程就越过端口读取别的上下文表并自行宣布事实。
+
+第 23 节同时固定四组不同语义：资格拒绝不等于 `no_reward`，依赖失败不等于用户不合格，奖励不可用不等于合法未中奖，授权拒绝不等于业务资格拒绝。它只形成 [Lottery 业务规则需求基线](lottery-rule-requirements-v1.md)和 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)，没有新增 Go 类型、规则链、规则树、Migration、API、Redis 或 React 判断；通用执行原语必须等待第 25～26 节出现至少两个真实消费者后再由消费方反推。
+
+下一节第 24 节只为可重建的 Strategy 读取投影建立首次 Redis 缓存，不缓存用户资格或一次决策结果；第 25～30 节继续形成资格规则、决策引擎与 Activity 等真实业务对象。公共访问控制安排在第 31～35 节：先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，再实现真实会话、服务端强制、前端权限感知和越权端到端验收；第 36 节首个真实运营后台只能消费这套统一能力，不能在各业务上下文复制角色开关。当前没有登录或 RBAC，不能用按工作台隐藏菜单代替授权。在正式 Draw/Result 与幂等语义出现前，也不能把 ephemeral route、仓储、Selector 或 React 页面解释为 Lottery 上下文已经形成最终结果事实，不能在调用超时后无条件重试并声称得到同一次结果。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节证据见[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)；第 23 节证据见对应的[API](../api/lessons/lesson-23.md)、[QA](../qa/lessons/lesson-23.md)、[设计手记](../design-thinking/lessons/lesson-23.md)和[面试问答](../interview/lessons/lesson-23.md)。
 
 ## 8. 外部系统和防腐边界
 

@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v11 基线
+**状态：** v12 基线
 **更新日期：** 2026-08-30
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)
 
 ## 一句话定位
 
@@ -48,13 +48,17 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 第 17 节把 Lottery 最小业务语言落成纯 Go 领域对象：`Strategy` 管理至少一个 `Award`，候选使用正整数相对权重，并显式区分 `reward` 与 `no_reward`。第 18 节用 `000001` / `000002` 分别创建 `lottery_strategy` 与 `lottery_strategy_award`，保存 Strategy 根行和隶属于它的 Award 候选；当前产品 Migration latest 为 2。第 19 节再以两个窄 application 端口和 MySQL adapter 实现 Strategy Create/FindByID：完整父子聚合原子写入，一次读取来自同一个只读 RR 快照，恢复时重新验证领域不变量。第 20 节在领域层增加 `WeightedSelector` 与 consumer-owned `BoundedRandomSource`，多候选从均匀 `[0,totalWeight)` 整数位置映射到规范排序的 Award，生产 adapter 使用 `crypto/rand.Int` 并覆盖完整 `uint64` 范围；单候选不消耗随机源，`no_reward` 仍是正常选择结果。第 21 节以 `EphemeralSelectionService` 组合只读 Repository 与 Selector，并通过 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 暴露第一次真实纵向调用；完整 uint64 identity 以十进制 string 传输，路由默认关闭且只允许 development/test 显式打开。第 22 节增加同源 bodyless POST transport、严格 Lottery runtime decoder 与 React 请求状态 Hook，使 `/lottery` 真实消费该临时接口，并在共享工作台壳层中区分 pending、`reward`、`no_reward`、服务端拒绝、网络故障、超时、取消与契约漂移。
 
+第 23 节用“活动有效、新用户且有次数、风险允许、按会员等级路由、奖励可分配、仍可能 `no_reward`”这一复合需求检查现有模型，确认业务口中的“抽奖规则”跨越多个事实所有者。Activity 发布态与时间窗归 Marketing，用户资格、次数和参与风控归 Participation，Strategy 路由与终端选择归 Lottery，库存与权益交付归 Benefit/库存能力，操作者权限归统一访问控制。业务资格拒绝、合法 `no_reward`、技术失败/结果未知与授权拒绝必须保持不同语义。
+
+这一节没有新增 `Rule`、`RuleEngine`、通用上下文、Migration、API、Redis 或前端判断。现阶段只有一个真实终端选择消费者，提前把规则字段塞进 `Strategy` 会让两表 Repository 只能恢复残缺聚合，并污染第 24 节缓存完整性语义；通用执行接口至少要等第 25 节出现首个真实资格事实、第 26 节出现两个以上具体规则后，再由消费者反推。完整需求见 [Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)，长期停止线见 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)。
+
 数据库只承担它能可靠表达的子集：正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性以及基础名称形态。`*_name_basic` 只拒绝空串和首尾 ASCII U+0020 空格，不等价于领域层完整名称契约；外键不能保证至少一个 Award，单行约束也不能验证跨行总权重是否溢出。两表的 `updated_at` 是行级元数据，不是聚合版本，Award 更新不会自动推进 Strategy 时间戳。
 
 当前 Compose 运行身份仅可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要创建 fixture 的 Repository 集成测试使用可丢弃 schema 中的隔离 writer 身份。GrowthOS 已有可验证的领域、持久化结构、内部 Repository、加权选择器、一个真实后端业务路由及其 React 消费者，但还没有正式 Draw API、认证、RBAC、持久化结果或 Redis 业务缓存。除系统状态页和 `/lottery` 外，其他用户、运营、MCP 与 Agent 页面仍是明确标注的 Mock 快照或浏览器本地交互。
 
 尤其，ephemeral API 返回的 Award 仍是一次瞬时计算结果，不是带 DrawID、幂等键和持久化状态的一次用户抽奖最终事实；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。当前没有认证、对象级授权、Participation 资格、Draw/Result、库存或发奖实现，因此“一次抽奖只能有一个最终结果”仍是待后续章节验证的业务不变量。调用超时后直接重试会形成一次新的临时选择，不能被描述为安全的业务重试。
 
-第 21 节服务端事实、契约和取舍分别见[课程正文](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[第一性原理手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节 React 消费与工作台设计见对应的[课程正文](../course/part-03/lesson-22-react-lottery-page.md)、[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[第一性原理手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)。隔离 acceptance 的 64 个多 Award 请求最多并行 16 个，只证明当前链路并发返回配置内结果，且调用前后两张 Lottery 业务表 fingerprint 不变；访问日志、连接统计等技术副作用仍可能发生，因此这不是“系统零副作用”、64 并发、64 RPS 或业务性能结果。浏览器 UI 验收同样不能替代业务负载证据。
+第 21 节服务端事实、契约和取舍分别见[课程正文](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[第一性原理手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节 React 消费与工作台设计见对应的[课程正文](../course/part-03/lesson-22-react-lottery-page.md)、[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[第一性原理手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)；第 23 节规则边界见对应的[课程正文](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[API](../api/lessons/lesson-23.md)、[QA](../qa/lessons/lesson-23.md)、[第一性原理手记](../design-thinking/lessons/lesson-23.md)和[面试问答](../interview/lessons/lesson-23.md)。隔离 acceptance 的 64 个多 Award 请求最多并行 16 个，只证明当前链路并发返回配置内结果，且调用前后两张 Lottery 业务表 fingerprint 不变；访问日志、连接统计等技术副作用仍可能发生，因此这不是“系统零副作用”、64 并发、64 RPS 或业务性能结果。浏览器 UI 验收同样不能替代业务负载证据；第 23 节的文档评审也不能替代尚未发生的规则运行时测试。
 
 ## 成功信号
 

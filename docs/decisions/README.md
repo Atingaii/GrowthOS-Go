@@ -23,6 +23,7 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0016](ADR-0016-lottery-repository-boundaries.md) | 已接受 | 以窄端口、聚合写事务、只读 RR 快照和语义错误实现 Lottery Strategy 仓储 |
 | [ADR-0017](ADR-0017-lottery-weighted-selection.md) | 已接受 | 以 consumer-owned bounded source、减法桶和 crypto adapter 实现无偏加权 Award 选择 |
 | [ADR-0018](ADR-0018-ephemeral-lottery-selection-api.md) | 已接受 | 以默认关闭的 development/test ephemeral route 组合只读快照与加权选择，并明确拒绝把临时结果冒充正式 Draw |
+| [ADR-0019](ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md) | 已接受 | 按事实所有者和业务阶段拆分 Lottery 规则，保持终端选择纯度，并以真实证据驱动规则链、规则树与访问控制演进 |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。
 
