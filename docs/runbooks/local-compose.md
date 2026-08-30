@@ -1,6 +1,6 @@
 # GrowthOS 本地 Docker Compose 运维手册
 
-**适用范围：** 第 16～21 节单机 Docker Desktop/Engine 开发环境
+**适用范围：** 第 16～24 节单机 Docker Desktop/Engine 开发环境
 
 **默认入口：** `http://127.0.0.1:8088`
 
@@ -8,11 +8,11 @@
 
 **数据边界：** 只有本项目 `mysql_data` named volume 持久业务/迁移数据；`mysql_socket` named volume 只承载运行期 Unix socket；Redis 明确不持久；用户已有 MySQL、Redis、RabbitMQ、PostgreSQL 等资源不在本手册操作范围内
 
-架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)、[ADR-0016](../decisions/ADR-0016-lottery-repository-boundaries.md)与 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。当前 Lottery HTTP/部署契约见[第 21 节 API](../api/lessons/lesson-21.md)，环境证据见[第 21 节 QA](../qa/lessons/lesson-21.md)，学习推导见[课程](../course/part-03/lesson-21-lottery-api.md)、[设计手记](../design-thinking/lessons/lesson-21.md)和[面试问答](../interview/lessons/lesson-21.md)。
+架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)、[ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)与 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。当前缓存契约见[第 24 节 API](../api/lessons/lesson-24.md)，环境证据见[第 24 节 QA](../qa/lessons/lesson-24.md)，学习推导见[课程](../course/part-03/lesson-24-redis-strategy-cache.md)、[设计手记](../design-thinking/lessons/lesson-24.md)、[面试问答](../interview/lessons/lesson-24.md)和专门的 [Redis Strategy 缓存运维手册](redis-strategy-cache.md)。
 
 ## 1. 目的
 
-本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括 Lottery Migration、第 21 节两表 SELECT-only 运行授权门、长期 smoke 与一次性 ephemeral API acceptance。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
+本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括 Lottery Migration、两表 SELECT-only 运行授权门、Redis Strategy 投影缓存、长期 smoke 与一次性 Lottery/cache acceptance。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
 
 它不是生产发布手册，不授权操作者删除用户现有容器/volume、修改共享数据库账号、绕过 Secret guard，或把本地 HTTP/密码/TLS 配置复制到 staging/production。
 
@@ -40,9 +40,9 @@
 | `migrate` | 不发布 | 对 MySQL schema 可能有持久影响 | 正常为退出 0；失败会阻止 API 初始启动 |
 | `mysql-grants` | 不发布且 `network_mode: none` | 修改 `growthos_app` 授权；不修改业务行 | 正常为退出 0；失败会阻止 API 初始启动 |
 | `mysql` | 不发布 | `growthos_mysql_data` | API `/health` 可继续 200，`/ready` 应 503 |
-| `redis` | 不发布 | 无；`/data` tmpfs | API 和 MySQL readiness 不应变化 |
+| `redis` | 不发布 | 无；`/data` tmpfs | 缓存读写有界失败并回源 MySQL；探针不应变化 |
 
-网络：`edge` 只连接 Web/API；`data` 只连接 API/Migrate/MySQL；`cache` 当前只连接 Redis。`mysql-grants` 不连接任何网络，只通过只读 `growthos_mysql_socket` 访问 MySQL。不要为了临时调试把 service 永久加入不需要的网络。
+网络：`edge` 只连接 Web/API；`data` 只连接 API/Migrate/MySQL；`cache` 是 Docker internal 网络，只连接 API/Redis。`mysql-grants` 不连接任何网络，只通过只读 `growthos_mysql_socket` 访问 MySQL。Web、Migrate、MySQL、mysql-grants 不得读取 Redis Secret；不要为了临时调试把 service 永久加入不需要的网络。
 
 ## 4. 主机前置检查
 
@@ -185,10 +185,10 @@ make compose-build
 预期本地 image：
 
 ```text
-growthos/api:lesson-19
-growthos/migrate:lesson-19
-growthos/web:lesson-16
-growthos/redis:7.4.11
+growthos/api:lesson-24
+growthos/migrate:lesson-24
+growthos/web:lesson-22
+growthos/redis:7.4.11-lesson-24
 ```
 
 构建使用固定 toolchain/tag、Go module verify 和 pnpm frozen lockfile。不要在失败时改成 `latest` 或取消 lockfile 检查；先定位 registry、网络、架构或依赖问题。
@@ -207,7 +207,7 @@ MySQL healthy (Migrator identity authenticated SELECT 1)
   -> mysql-grants reconciles exact app allowlist and exits 0
   -> API starts and /health becomes healthy
 
-Web and Redis start independently
+Redis starts independently; API does not wait for Redis health
 ```
 
 `web` 不等待 API，`redis` 不被 API 依赖。看到创建顺序不同不等于错误，判断依据是最终状态与契约。
@@ -269,6 +269,9 @@ make compose-smoke
 - 两张表存在预期的 `*_name_basic` 约束，不残留旧约束名；
 - 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT`，`@@GLOBAL.mandatory_roles` 为空；
 - 应用身份能读两张业务表；INSERT、UPDATE、DELETE 和 `schema_migrations` 访问均被拒绝，smoke 的负向语句不改变数据；
+- API 只在内部 `cache` 网络消费 Redis Secret；其余服务没有缓存网络/Secret；
+- Redis 默认用户关闭，`growthos_api` 只允许缓存前缀内的 `PING/GETRANGE/SET/DEL`；普通 `GET`、前缀外 `SET`、`KEYS`、`SCAN`、`FLUSHALL`、`CONFIG`、`ACL`、`PUBLISH`、`SUBSCRIBE` 均被拒绝；
+- Redis 精确启用 `48mb`、`allkeys-lru`、无 RDB/AOF 持久化；
 - `/health`、`/ready` 为 200 JSON；
 - SPA `/` 为 200；
 - 未知 `/api/...` 为 Go `route_not_found` 404 JSON；未播种、动态推导的 StrategyID 访问 ephemeral route 为 `lottery_strategy_not_found` 404；
@@ -278,9 +281,9 @@ make compose-smoke
 
 脚本用任务专用 `mktemp` 保存响应，并在退出时删除，不会留下 body/header 文件。
 
-### 8.2 第 21 节隔离 Lottery API acceptance
+### 8.2 第 24 节隔离 Lottery/cache acceptance
 
-长期 `growthos` project 的 smoke 故意不写业务 fixture；要验证真实成功选择、失败与网关恢复，使用一次性环境：
+长期 `growthos` project 的 smoke 故意不写业务 fixture；要验证真实成功选择、缓存命中/回源、依赖故障与网关恢复，使用一次性环境：
 
 ```bash
 make compose-lottery-api-acceptance
@@ -295,10 +298,17 @@ make compose-lottery-api-acceptance
 - `HEAD` 在语义上匹配 405 与 `Allow: POST`，但 HEAD 的 wire response 没有 body；
 - 16 KiB + 1 的已知长度请求由 edge 返回 JSON 413；
 - 多 Award 批次**总计 64 个请求，最大并行度 16**，只返回配置内结果；这不是 64 个同时请求、64 RPS、定速负载或生产容量；
+- 缓存 value 的 v1 JSON、完整 uint64 decimal string、2 MiB/1000 Award 边界和最多 10% TTL jitter；
+- poison value 被精确删除、从 MySQL 重载并修复；not-found 不做 negative cache；同一 cold key 的并发请求合并 source fill，其他 key 不被全局阻塞；
+- Redis ACL 的命令/key/channel 边界、默认用户关闭、48 MiB `allkeys-lru` 与无持久化配置；
+- Redis 停止时 cold request 回源 MySQL且 API `/health`、`/ready` 不受影响；Redis 恢复后无需重启 API即可重新填充；
+- MySQL 停止时 warm cache hit 仍可选择，`/ready` 与 cold miss 按既有 unavailable 语义失败；MySQL 恢复后无需重启 API即可回源并填充；
 - 调用前后两张 Lottery 业务表的内容 fingerprint 不变；这只说明该用例没有 Lottery 业务状态写路径，不排除访问日志、连接统计等技术副作用；
 - API stop 时 502/504 的 JSON、no-store 与 request ID 保持关联，恢复后重新通过检查。
 
 脚本退出时只清理由 label、Compose project 与精确 ID 共同证明归属本次任务的容器、网络、volumes、临时 Secret/响应和无其他引用的 acceptance images；不会删除长期 `growthos` volumes、Secret、用户容器或可复用依赖。若 cleanup 报错，先按脚本输出解析精确 project/label，不使用全局 prune。
+
+该脚本还运行三组 10 秒、50 RPS、最大 16 workers 的 M1 本地基线：warm-cache、cache disabled/direct-MySQL、Redis down。它同时读取 Performance Schema 的 prepared statement execute 计数和低基数缓存事件，证明 warm hit 没有权威读取、直接回源每请求执行两条 SELECT、Redis 故障时仍然回源。结果只属于本机当次开发证据，不是容量、SLO 或生产性能对比；精确数据与解释见[第 24 节 QA](../qa/lessons/lesson-24.md)。
 
 ### 8.3 代码 + Compose 验证
 
@@ -474,7 +484,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml up --d
 
 预期 Nginx 通过 Docker DNS 解析当前 API 地址，不重启 Web 即恢复 `/health`、`/ready`。
 
-### 11.3 Redis 停止：验证尚未业务耦合
+### 11.3 Redis 停止：验证可选缓存 fail-open
 
 ```bash
 docker compose --project-name growthos --file deploy/compose/compose.yaml stop redis
@@ -482,13 +492,15 @@ curl --silent --show-error --include http://127.0.0.1:8088/health
 curl --silent --show-error --include http://127.0.0.1:8088/ready
 ```
 
-预期两个 Go 探针继续 200，API/Web/MySQL 不重启。恢复：
+预期两个 Go 探针继续 200，API/Web/MySQL 不重启；对已有 fixture 的 Lottery 请求会在有界缓存读失败后回源 MySQL，业务结果不因 Redis 错误改变。长期 smoke 没有写 fixture，不能仅靠探针证明回源；完整 warm/cold/恢复路径必须使用第 24 节隔离 acceptance。恢复：
 
 ```bash
 docker compose --project-name growthos --file deploy/compose/compose.yaml up --detach --wait --wait-timeout 180 redis
 ```
 
 Redis `/data` 为 tmpfs，重建或移除容器后数据丢失是本节设计。不要用测试数据残留判断持久化能力。
+
+Redis healthy 后无需重启 API；下一次请求会惰性重连并重新填充。若恢复后业务只能靠重启 API，保留日志并检查 client pool 的坏连接驱逐/重连，不把重启写成标准恢复步骤。不要执行 `FLUSHALL` 验证恢复，也不要停止用户自己的 Redis。
 
 ### 11.4 Web 停止
 
@@ -594,7 +606,8 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 - app Secret 与 MySQL volume 不匹配；
 - Migration 或 mysql-grants 没成功；
 - MySQL 未 healthy；
-- HTTP/MySQL timeout 配置非法。
+- HTTP/MySQL timeout 配置非法；
+- Strategy 缓存启用但 Redis Secret 缺失/冲突，Redis地址、TLS、pool 或缓存预算非法；
 
 日志故意没有 driver raw cause。需要进一步诊断时使用受控 MySQL 管理工具和 `SHOW GRANTS`，不要放宽应用日志打印 DSN/密码。
 
@@ -606,7 +619,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 
 ### 12.9 Redis unhealthy
 
-检查 Redis Secret 格式、ACL/config 临时目录、`/data` tmpfs 所有权和 Redis 日志。不要把 Redis 加到 API network/readiness 来“验证连通”，当前无消费者是故意的。
+检查 Redis Secret 格式、ACL/config 临时目录、`/data` tmpfs 所有权和 Redis 日志。API 已是唯一业务消费者并加入 internal `cache` 网络，但 Redis 仍不是启动/readiness authority；不要添加 `depends_on: redis: service_healthy` 或把 Redis 放进 `/ready` 来“修复”依赖。先确认 MySQL 正常时请求能在有界失败后回源，再按 [Redis Strategy 缓存运维手册](redis-strategy-cache.md)检查 ACL、poison value 和重连。不要放宽到 `+@all`、通配 key 或默认用户，也不要用 `FLUSHALL` 清理单个 Strategy。
 
 ### 12.10 read-only filesystem / permission denied
 
@@ -726,13 +739,13 @@ rm -rf deploy/compose/secrets
 - 宿主机 file Secret 和手工恢复；
 - 单 MySQL 数据 volume + 单独 socket IPC volume，无备份/HA；
 - 依赖 root Secret、共享本机 Unix socket 和 `mandatory_roles` 为空的授权作业；
-- Redis 不持久且无业务容量/淘汰策略；
+- Redis 不持久、固定 48 MiB 且使用 `allkeys-lru`；这只是开发缓存策略，不是生产容量测算、备份或 HA；
 - Docker bridge 内置 DNS；
 - `restart: no`、无资源 limit/调度；
 - 本地 M0 探针负载；
 - 无认证、rate limit、集中可观测性和告警。
 
-生产部署必须基于独立环境规格和 ADR，重新决定 Secret manager、TLS、身份、网络策略、probe 暴露、资源、备份恢复、滚动发布、可观测性和容量模型。
+生产部署必须基于独立环境规格和 ADR，重新决定 Secret manager、Redis/MySQL TLS、身份与 ACL、网络策略、probe 暴露、资源、备份恢复、滚动发布、可观测性、缓存容量/淘汰与失效模型。staging/production 启用 Strategy 缓存时配置会强制 Redis `verify_identity`；但通过配置校验本身不等于证书、HA 或容量已经验收。
 
 ## 16. 官方参考
 
