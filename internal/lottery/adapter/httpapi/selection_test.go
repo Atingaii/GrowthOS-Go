@@ -160,6 +160,7 @@ func TestSelectionHTTPRejectsNonCanonicalStrategyIDsBeforeUseCase(t *testing.T) 
 		"01",
 		"+1",
 		"-1",
+		"%201",
 		"1.0",
 		"0x1",
 		"18446744073709551616",
@@ -223,6 +224,16 @@ func TestSelectionHTTPRejectsAnyBodyAndIdempotencyClaim(t *testing.T) {
 		assertSelectionError(t, recorder, http.StatusBadRequest, "request_body_not_allowed", "empty-chunked-request")
 	})
 
+	t.Run("unknown length without transfer encoding", func(t *testing.T) {
+		router := selectionHTTPRouter(t, service, selectionRouterOptions{requestID: "unknown-length-request"})
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, selectionURL("1"), http.NoBody)
+		request.ContentLength = -1
+		acknowledgeEphemeralSelection(request)
+		router.ServeHTTP(recorder, request)
+		assertSelectionError(t, recorder, http.StatusBadRequest, "request_body_not_allowed", "unknown-length-request")
+	})
+
 	for _, value := range []string{"", "client-assumes-replay"} {
 		t.Run("idempotency_"+value, func(t *testing.T) {
 			router := selectionHTTPRouter(t, service, selectionRouterOptions{requestID: "idempotency-request"})
@@ -276,6 +287,14 @@ func TestSelectionHTTPRequiresDemoAcknowledgementAndRejectsUndeclaredInput(t *te
 			name: "query parameter",
 			configure: func(request *http.Request) {
 				acknowledgeEphemeralSelection(request)
+			},
+			code: "query_parameters_not_allowed",
+		},
+		{
+			name: "force query",
+			configure: func(request *http.Request) {
+				acknowledgeEphemeralSelection(request)
+				request.URL.ForceQuery = true
 			},
 			code: "query_parameters_not_allowed",
 		},
