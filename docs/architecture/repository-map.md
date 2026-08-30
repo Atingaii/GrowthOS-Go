@@ -5,7 +5,7 @@
 
 本文件描述当前仓库，而不是第 101 节的目标仓库。目录随需求演进，改动目录职责时必须同步更新本文件。
 
-第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈；第 17～18 节落地 Strategy/Award 聚合与两张业务表；第 19 节以 application 窄端口和 MySQL Strategy Repository 闭合持久化边界；第 20 节新增 consumer-owned bounded random port、加权 Selector 与 crypto adapter；第 21 节把只读 Repository、Selector 和专用 HTTP adapter 装配为 development/test ephemeral selection API；第 22 节通过 Lottery API adapter、运行时 decoder 与请求状态 Hook 形成真实 React 消费者，并用共享 `WorkspaceShell` 收敛四类工作台。当前仍没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、库存、发奖或 Redis 业务调用；除系统探针与 Lottery selection 外，工作台业务数据仍为明确 Mock/本地状态。
+第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈；第 17～18 节落地 Strategy/Award 聚合与两张业务表；第 19 节以 application 窄端口和 MySQL Strategy Repository 闭合持久化边界；第 20 节新增 consumer-owned bounded random port、加权 Selector 与 crypto adapter；第 21 节把只读 Repository、Selector 和专用 HTTP adapter 装配为 development/test ephemeral selection API；第 22 节通过 Lottery API adapter、运行时 decoder 与请求状态 Hook 形成真实 React 消费者，并用共享 `WorkspaceShell` 收敛四类工作台；第 23 节只新增规则需求、ADR 和学习证据，没有改变目录或运行时依赖图。当前仍没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、库存、发奖或 Redis 业务调用；除系统探针与 Lottery selection 外，工作台业务数据仍为明确 Mock/本地状态。
 
 | 路径 | 当前职责 | 引入产品代码的章节 |
 | --- | --- | --- |
@@ -44,7 +44,7 @@
 | `web/src/pages/user/lottery` | `/lottery` 页面与 selection Hook：规范 StrategyID、显式状态机、pending 抑制、取消和旧响应隔离；不产生浏览器随机结果 | 第 22 节 |
 | `web/src/pages/system/status` | `/system/status` 页面、并行探针 hook、取消/竞态控制和组件测试 | 第 15 节 |
 | `web/vite.config.ts` | dev/preview 的 `127.0.0.1` 严格端口和 `/health`、`/ready`、`/api` 精确同源代理 | 第 15 节 |
-| `docs` | 产品、架构、决策、QA、第一性原理设计推导、面试问答和课程事实 | 全程 |
+| `docs` | 产品、架构、决策、QA、第一性原理设计推导、面试问答和课程事实；第 23 节增加 Lottery 规则需求基线与 ADR-0019 | 全程 |
 | `docs/design-thinking` | 按章节保存事实到机制的推导、备选方案、失败模型、风险账本与重决策条件 | 第 13 节起，历史章节回填 |
 | `docs/interview` | 按章节保存可口述问答、追问、项目证据、选型边界与分级外部来源 | 第 13 节起，历史章节回填 |
 | `docs/runbooks` | MySQL Migration 与本地 Compose 的运行、发布、故障停止条件、恢复和数据清理纪律 | 第 13、16 节 |
@@ -61,6 +61,7 @@
 8. `internal/lottery/domain` 不导入 Gin、SQL/sqlx、Redis、`crypto/rand` 或 JSON/DB tag；MySQL adapter 只能通过 `RestoreAward` / `RestoreStrategy` 重建合法聚合，不能静默修复存量事实；randomsource adapter 依赖 domain-owned 窄端口，依赖方向不能反转。
 9. application 层端口按消费者能力拆分；当前没有 CRUD 大接口，ephemeral selection 只依赖 `StrategyReader` 与 Award selector，不获得写能力，adapter 也不反向进入 domain/application。
 10. Lottery HTTP DTO 不复用 domain struct；公开 ID 使用规范十进制 string，weight、Strategy 名称与内部错误不进入 selection 响应。
+11. 业务规则跟随权威事实所有者和业务阶段，不建立跨 Activity、Participation、Lottery、Benefit 与 Governance 的万能 `common/rules`；通用执行原语只有在至少两个真实消费者证明同语义后，才由消费方反推。
 
 第 11 节的 `/health` 仍是无外部依赖的进程 liveness，只证明 Gin 路由和 handler 能响应。第 13 节的 API 在监听前必须打开并 Ping MySQL，运行中 `/ready` 每次用有界 Ping 表示数据库 readiness；依赖故障时 `/ready` 为 503 而 `/health` 仍可为 200。两者都不证明业务数据正确、Migration 最新或 SLO 达标。
 
@@ -72,7 +73,7 @@
 
 第 21 节的 Compose 拓扑仍只发布 `127.0.0.1:8088` 的 Nginx Web 入口。Web/API 位于 `edge`，API/MySQL/Migrator 位于内部 `data`，Redis 单独位于内部 `cache`；启动门为 `mysql healthy → migrate exited 0 → mysql-grants exited 0 → API`。`mysql-grants` 使用 MySQL 官方客户端镜像、非 root UID 999、只读根文件系统和共享 socket，`network_mode: none`，精确撤销旧授权后仅授予两张业务表 `SELECT`，并要求 `@@GLOBAL.mandatory_roles` 为空；它不挂入 data 网络。API、Migrator、Web、Redis 使用非 root、只读根文件系统、去除 capabilities 与 `no-new-privileges`，MySQL 官方镜像则保留初始化阶段 root 和可写数据目录这一明确例外。Nginx 动态解析 API 容器地址，统一回写 `X-Request-ID`，并在 API location 约束本地 Host、请求 framing、16 KiB 上限和 timeout；非法 Host 的 421 是 server-level 非 JSON，HTTP parser 更早拒绝的不支持 Transfer-Encoding 也不承诺 JSON。长期边界见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)，操作步骤见 [Docker Compose 运维手册](../runbooks/local-compose.md)。
 
-第 17 节的 `Strategy` 拥有至少一个 `Award`，在构造时检查正 ID、名称、正权重、封闭 Outcome、AwardID 唯一和总权重溢出，并对候选 slice 做防御性复制和 AwardID 规范排序。第 18 节的两张表保护可由单行、主外键表达的子集。第 19 节 Repository 在写前重新验证调用方聚合，在读后以 `RestoreAward` / `RestoreStrategy` 原样恢复；Create 只写一次完整聚合，FindByID 在单一 read-only RR 快照中读取。第 20 节的 `WeightedSelector` 对多候选请求 `[0,totalWeight)` 均匀位置并用减法桶映射，单候选直接返回，`no_reward` 是成功 Award；生产 `CryptoSource` 支持完整 uint64 并拒绝 modulo bias。第 21 节的 `EphemeralSelectionService` 与 HTTP adapter 只读取快照并返回一次临时选择，完整 uint64 ID 以 decimal string 传输；路由默认关闭且 staging/production 不能开启。第 22 节 React adapter 保持这组 DTO 和失败语义，页面不再由浏览器随机决定 Award，也不自动重试。整条链仍没有 DrawID、结果持久化、认证、授权、幂等、库存、发奖或 Redis 调用，INV-03 尚未满足。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节前端证据见[课程](../course/part-03/lesson-22-react-lottery-page.md)、[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)。
+第 17 节的 `Strategy` 拥有至少一个 `Award`，在构造时检查正 ID、名称、正权重、封闭 Outcome、AwardID 唯一和总权重溢出，并对候选 slice 做防御性复制和 AwardID 规范排序。第 18 节的两张表保护可由单行、主外键表达的子集。第 19 节 Repository 在写前重新验证调用方聚合，在读后以 `RestoreAward` / `RestoreStrategy` 原样恢复；Create 只写一次完整聚合，FindByID 在单一 read-only RR 快照中读取。第 20 节的 `WeightedSelector` 对多候选请求 `[0,totalWeight)` 均匀位置并用减法桶映射，单候选直接返回，`no_reward` 是成功 Award；生产 `CryptoSource` 支持完整 uint64 并拒绝 modulo bias。第 21 节的 `EphemeralSelectionService` 与 HTTP adapter 只读取快照并返回一次临时选择，完整 uint64 ID 以 decimal string 传输；路由默认关闭且 staging/production 不能开启。第 22 节 React adapter 保持这组 DTO 和失败语义，页面不再由浏览器随机决定 Award，也不自动重试。第 23 节保持全部代码契约不变，只明确前置业务拒绝、授权拒绝、资源不可用、技术失败/未知与合法 `no_reward` 不能混用。整条链仍没有 DrawID、结果持久化、认证、授权、幂等、库存、发奖或 Redis 调用，INV-03 尚未满足。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节前端证据见对应[课程](../course/part-03/lesson-22-react-lottery-page.md)和 [QA](../qa/lessons/lesson-22.md)；第 23 节边界见[需求基线](../product/lottery-rule-requirements-v1.md)、[ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)和 [QA](../qa/lessons/lesson-23.md)。
 
 第一版运行时采用 [ADR-0007](../decisions/ADR-0007-modular-monolith-first.md) 确定的模块化单体：一个 Go 产品进程可以装配多个领域模块，但共享进程和数据库实例不改变事实所有权。服务拆分必须等待第 78 节起出现的负载、发布、故障域、合规或团队证据。
 
@@ -83,7 +84,7 @@
 - MySQL 连接、`sqlx` pool 与前向 Migration 机制已在第 13 节接入，第 18 节建立首组 Lottery 表，第 19 节已交付 Create/FindByID 手写 SQL、事务与真实引擎验证；更新、删除、版本发布和缓存仍等待真实用例。
 - React、TypeScript、Vite、Tailwind CSS、Lucide、Recharts 和 Zustand 在第 14 节接入；第 15 节接通系统探针，第 22 节接通 Lottery ephemeral selection 并收敛共享工作台壳层。其余领域仍等待真实 API，不以 Mock 或本地交互冒充完成。
 - 第 16 节已引入 Compose 本地开发环境，但它仍是单机开发拓扑：没有镜像 digest 固定、内部 TLS、生产资源配额、Secret Manager 或业务 Redis 接入。
-- 第 19 节已建立 Lottery Strategy 窄仓储，第 20 节已建立无偏加权 Award 选择，第 21 节已建立两表 `SELECT` 运行权限和受限 ephemeral API，第 22 节已交付真实 ephemeral React 页面。第 23～24 节仍按原主线补充规则与 Redis；正式 Draw/Result、幂等、库存与发奖必须由后续真实问题驱动，写权限不会因“常见 CRUD”被提前加入。
+- 第 19 节已建立 Lottery Strategy 窄仓储，第 20 节已建立无偏加权 Award 选择，第 21 节已建立两表 `SELECT` 运行权限和受限 ephemeral API，第 22 节已交付真实 ephemeral React 页面，第 23 节已建立规则事实所有权与演进停止线。第 24 节只补充可重建 Strategy 读取投影的 Redis 缓存；正式资格、Draw/Result、幂等、库存与发奖必须由后续真实问题驱动，写权限不会因“常见 CRUD”被提前加入。
 - 登录认证、RBAC、租户/对象级数据范围、前后端授权强制与审计拒绝路径尚未实现；当前工作台导航分区不是权限边界。第 25～30 节先形成资格规则、决策引擎与 Activity 等受保护对象，第 31～35 节再以公共模型、真实会话、服务端强制、前端感知和越权验收逐步建立统一访问控制，第 36 节首个真实运营后台复用它。
 - 服务拆分、RPC 和注册中心延迟至第 78 节以后。
 - 最终目录图和 ER 图延迟至第 101 节复盘。

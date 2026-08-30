@@ -145,7 +145,7 @@ flowchart LR
 
 第 22 节以 `lotteryApi`、运行时 decoder 和 React 请求状态 Hook 真实消费这条 route：页面端不再随机决定 Award，完整 ID 继续保持 decimal string，失败不透明重试，`reward` 只表示服务端选中了奖励候选。活动、积分、优惠券、Admin、MCP 和 Agent 等工作台仍是 Mock/本地状态；共享壳层只是体验层信息架构，不拥有 Lottery、Governance 或 IAM 事实。
 
-第 23 节没有把复合“抽奖规则”塞进 Strategy，而是把判断按权威事实和业务阶段拆开：Marketing 拥有 Activity 发布态/时间窗，Participation 拥有用户资格、次数与本场景风险准入，Lottery 拥有 Strategy 路由、候选集合与终端加权选择，Benefit/库存能力拥有奖励可分配性与交付，公共访问控制拥有操作者对资源动作的授权。编排者可以组合这些决定，但不能因为处于同一 Go 进程就越过端口读取别的上下文表并自行宣布事实。
+第 23 节没有把复合“抽奖规则”塞进 Strategy，而是把判断按权威事实和业务阶段拆开：Marketing 拥有 Activity 发布态/时间窗决定，Participation 拥有用户资格、次数与本场景风险准入决定，Lottery 拥有 Strategy 路由、候选集合、终端选择与正式 Draw/Result，Benefit（含内部库存子能力）拥有奖励可分配、交付与补偿决定，Governance 的统一访问控制能力拥有操作者对资源动作的授权决定。外部会员、风险等系统只提供受控原始事实；编排者可以组合这些决定，但不能因为处于同一 Go 进程就越过端口读取别的上下文表并自行宣布事实。
 
 第 23 节同时固定四组不同语义：资格拒绝不等于 `no_reward`，依赖失败不等于用户不合格，奖励不可用不等于合法未中奖，授权拒绝不等于业务资格拒绝。它只形成 [Lottery 业务规则需求基线](lottery-rule-requirements-v1.md)和 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)，没有新增 Go 类型、规则链、规则树、Migration、API、Redis 或 React 判断；通用执行原语必须等待第 25～26 节出现至少两个真实消费者后再由消费方反推。
 

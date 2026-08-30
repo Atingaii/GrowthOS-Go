@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-22%20lessons%20completed-2563EB?style=flat-square" alt="已完成 22 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-23%20lessons%20completed-2563EB?style=flat-square" alt="已完成 23 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～22 节，共 22 节：M0 Compose 开发环境已验收，第 17～21 节依次建立 Lottery `Strategy` / `Award` 领域模型、两张 MySQL 表、Strategy 仓储、无偏加权选择和 development/test 专用 ephemeral API；第 22 节再由 React `/lottery` 通过同源、无请求体且不自动重试的 POST 真实消费该 API。服务端仍只返回不持久化的临时 Award 选择，页面也只表达“候选被选中”。当前没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖或 Redis 业务缓存；其余用户、Admin、MCP 与 Agent 工作台仍是明确标注的 Mock 快照或浏览器本地交互。一个可调用且可见的 ephemeral selection 仍不等于在线抽奖闭环。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～23 节，共 23 节：M0 Compose 开发环境已验收，第 17～21 节依次建立 Lottery `Strategy` / `Award` 领域模型、两张 MySQL 表、Strategy 仓储、无偏加权选择和 development/test 专用 ephemeral API；第 22 节由 React `/lottery` 通过同源、无请求体且不自动重试的 POST 真实消费该 API；第 23 节再以 32 条需求和 ADR 固定 Activity、Participation、Lottery、Benefit（含内部库存子能力）与 Governance 的决定所有权、原始事实来源和失败语义，但没有提前新增规则运行时代码。服务端仍只返回不持久化的临时 Award 选择，页面也只表达“候选被选中”。当前没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖或 Redis 业务缓存；其余用户、Admin、MCP 与 Agent 工作台仍是明确标注的 Mock 快照或浏览器本地交互。一个可调用且可见的 ephemeral selection 仍不等于在线抽奖闭环。
 
 ## 项目简介
 
@@ -153,6 +153,8 @@ curl --request POST \
 
 第 22 节为这条后端能力增加真实 React 消费者：`lotteryApi` 校验完整 `uint64` 十进制 string 和响应 DTO，`useEphemeralLotterySelection` 管理 pending 抑制、取消与旧响应隔离，页面明确区分 `reward`、`no_reward`、HTTP 拒绝、网关/网络失败、timeout、取消和契约漂移。它没有增加 Go 路由，也没有把临时选择升级成正式 Draw。学习资料见[课程正文](docs/course/part-03/lesson-22-react-lottery-page.md)、[API 契约](docs/api/lessons/lesson-22.md)、[QA 证据](docs/qa/lessons/lesson-22.md)、[第一性原理手记](docs/design-thinking/lessons/lesson-22.md)和[面试问答](docs/interview/lessons/lesson-22.md)。
 
+第 23 节把“活动有效、新用户且有次数、风险允许、按会员路由、奖励可分配、仍可能未中奖”拆成可追踪需求，明确业务资格拒绝、合法 `no_reward`、资源不可用、技术失败/结果未知和授权拒绝不能互相冒充。现阶段没有足够真实消费者支撑通用 `Rule`、规则树或 DSL，因此本节只交付[规则需求基线](docs/product/lottery-rule-requirements-v1.md)、[ADR-0019](docs/decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)、[课程](docs/course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[API 零变化记录](docs/api/lessons/lesson-23.md)、[QA](docs/qa/lessons/lesson-23.md)、[设计手记](docs/design-thinking/lessons/lesson-23.md)和[面试问答](docs/interview/lessons/lesson-23.md)。
+
 ### React 前端框架
 
 `web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛桌面侧栏、移动抽屉、顶栏、搜索、主题、通知样例、内容宽度和可访问交互，并重构为高密度、扁平的工作台信息架构。真实前端链路目前只有两类：`/system/status` 消费 Go 的 `GET /health` 与 `GET /ready`；`/lottery` 通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 消费 development/test ephemeral selection API。活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用带时间标签的 Mock 快照或浏览器内本地状态，不是实时后端数据。工作台分组也不是身份或权限系统；当前没有登录认证、RBAC、租户/对象级数据范围或服务端授权强制。
@@ -213,8 +215,8 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award、Create/FindByID 仓储、无偏加权 Selector、crypto random adapter，以及 development/test 专用 ephemeral selection API | 正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
-| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时契约解码；系统状态页和 ephemeral Lottery 页面已真实联调，其余工作台为明确 Mock/本地状态 | 第 23～24 节先闭合 Lottery 规则与缓存；第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award、Create/FindByID 仓储、无偏加权 Selector、crypto random adapter，以及 development/test 专用 ephemeral selection API；第 23 节已冻结规则事实所有权与演进停止线 | 正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
+| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时契约解码；系统状态页和 ephemeral Lottery 页面已真实联调，其余工作台为明确 Mock/本地状态 | 第 24 节先形成 Strategy 读取缓存；第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
 | 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、latest 2 嵌入式前向 Migration；`lottery_strategy` / `lottery_strategy_award` 两张业务表；手写 SQL 以事务创建和 RR 快照读取聚合；当前运行应用仅有两表 `SELECT` 且无 `schema_migrations` 权限；Compose 含隔离且易失的 Redis 环境占位 | Draw/Result、库存与发奖事实、更新/版本化、Redis 缓存、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
@@ -230,7 +232,7 @@ make verify
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
-| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 22 节真实 React ephemeral Lottery 页面与共享工作台已验收；第 23 节按原主线进入抽奖策略规则 |
+| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 23 节规则需求、事实所有权和零代码漂移已验收；第 24 节进入 Strategy 读取缓存与 M1 基线 |
 | 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 计划中：第 31～35 节先形成跨工作台统一访问控制，再交付真实运营后台 |
 | 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
 | 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |
@@ -248,8 +250,9 @@ make verify
 `M0` 到 `M7` 不等待最终章节才展示成果，每个里程碑都要求可启动、可操作、有测试并有文档证据。
 
 ```text
-M0 工程联调 → M1 抽奖 MVP → M2 营销活动 MVP → M3 权益中心
-           → M4 增长闭环 → M5 分布式平台 → M6 MCP Gateway → M7 生产验收
+M0 工程联调 → M1 Lottery 读取/临时选择基线 → M2 营销活动 MVP
+           → M3 权益中心 → M4 增长闭环 → M5 分布式平台
+           → M6 MCP Gateway → M7 生产验收
 ```
 
 ## 仓库结构
@@ -280,6 +283,7 @@ GrowthOS-Go/
 | [AI Operator 工作流](docs/product/ai-operator-workflow-v1.md) | AI 计划、Tool、审批、失败与审计边界 |
 | [领域事件地图](docs/product/domain-event-map-v1.md) | 命令、事件、策略、失败和补偿 |
 | [限界上下文地图](docs/product/bounded-context-map-v1.md) | 业务语言、事实所有权和上下文协作 |
+| [Lottery 规则需求基线](docs/product/lottery-rule-requirements-v1.md) | 规则阶段、权威事实、失败语义、版本边界与渐进实现停止线 |
 | [非功能需求基线](docs/product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复与降级目标 |
 | [前端架构](docs/frontend/frontend-architecture.md) | 页面边界、路由、Mock 和运行方式 |
 | [运行配置](docs/configuration.md) | `GROWTHOS_` 变量、默认值、校验和秘密边界 |

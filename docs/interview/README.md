@@ -93,3 +93,4 @@
 - [第 20 节：加权随机、无偏区间与安全边界](lessons/lesson-20.md)
 - [第 21 节：临时 Lottery API、HTTP 契约与真实纵向验收](lessons/lesson-21.md)
 - [第 22 节：React Lottery 临时选择页与可信工作台](lessons/lesson-22.md)
+- [第 23 节：Lottery 规则需求、事实所有权与渐进式规则系统](lessons/lesson-23.md)

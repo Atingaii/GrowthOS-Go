@@ -26,5 +26,6 @@
 | 第 20 节 | [加权 Award 选择已实现但仍无业务接口](lesson-20.md) | 已验收 |
 | 第 21 节 | [development/test 临时 Lottery Selection API](lesson-21.md) | 已验收 |
 | 第 22 节 | [React 消费临时 Lottery Selection](lesson-22.md) | 已联调 |
+| 第 23 节 | [Lottery 规则需求与零 API 变化](lesson-23.md) | 已验收 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。
