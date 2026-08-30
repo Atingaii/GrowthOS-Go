@@ -145,11 +145,18 @@ func TestNewUserEligibilityServiceClassifiesFactReadFailuresWithoutCallingClock(
 			if !errors.Is(err, test.want) || decision != (domain.NewUserEligibilityDecision{}) {
 				t.Fatalf("Evaluate() = %#v, %v; want zero and %v", decision, err, test.want)
 			}
-			if test.wantCause && !errors.Is(err, secret) {
-				t.Fatal("safe application error lost the trusted diagnostic cause")
+			var readError *RegistrationFactReadError
+			if !errors.As(err, &readError) {
+				t.Fatalf("error type = %T, want *RegistrationFactReadError", err)
 			}
-			if errors.Is(test.readerErr, context.DeadlineExceeded) && !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatal("provider timeout classification lost its trusted context cause")
+			if test.wantCause && !registrationDiagnosticContains(readError, secret) {
+				t.Fatal("safe application error lost the explicit diagnostic cause")
+			}
+			if errors.Is(err, secret) || errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal("diagnostic cause leaked into the public errors.Is tree")
+			}
+			if errors.Is(test.readerErr, context.DeadlineExceeded) && !errors.Is(readError.Cause(), context.DeadlineExceeded) {
+				t.Fatal("provider timeout classification lost its explicit diagnostic cause")
 			}
 			if strings.Contains(err.Error(), "secret") {
 				t.Fatalf("public error rendered secret cause: %q", err.Error())
@@ -509,4 +516,19 @@ func applicationTestFact(
 
 func applicationTestInstant() time.Time {
 	return time.Date(2026, 8, 30, 8, 0, 0, 0, time.UTC)
+}
+
+func registrationDiagnosticContains(readError *RegistrationFactReadError, target error) bool {
+	for readError != nil {
+		cause := readError.Cause()
+		if errors.Is(cause, target) {
+			return true
+		}
+		nested, ok := cause.(*RegistrationFactReadError)
+		if !ok {
+			return false
+		}
+		readError = nested
+	}
+	return false
 }

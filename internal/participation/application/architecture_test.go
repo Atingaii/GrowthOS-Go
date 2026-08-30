@@ -13,13 +13,16 @@ import (
 
 const moduleImportPrefix = "github.com/Atingaii/GrowthOS-Go/"
 
-func TestLesson25ParticipationArchitectureKeepsConcreteEligibilityBoundary(t *testing.T) {
+func TestLesson26ParticipationArchitectureKeepsBoundedEligibilityChain(t *testing.T) {
 	forbiddenTypes := map[string]struct{}{
 		"Rule":              {},
 		"RuleChain":         {},
 		"RuleEngine":        {},
+		"RuleTree":          {},
 		"Specification":     {},
 		"EvaluationContext": {},
+		"RulePriority":      {},
+		"DSL":               {},
 	}
 	packages := []struct {
 		name                 string
@@ -69,11 +72,28 @@ func TestLesson25ParticipationArchitectureKeepsConcreteEligibilityBoundary(t *te
 					}
 					for _, specification := range general.Specs {
 						typeSpecification := specification.(*ast.TypeSpec)
+						if typeSpecification.TypeParams != nil && len(typeSpecification.TypeParams.List) > 0 {
+							t.Errorf("%s prematurely declares generic type %s", path, typeSpecification.Name.Name)
+						}
 						if _, forbidden := forbiddenTypes[typeSpecification.Name.Name]; forbidden {
 							t.Errorf("%s prematurely declares generic type %s", path, typeSpecification.Name.Name)
 						}
 					}
 				}
+				ast.Inspect(file, func(node ast.Node) bool {
+					mapType, ok := node.(*ast.MapType)
+					if !ok {
+						return true
+					}
+					key, keyIsString := mapType.Key.(*ast.Ident)
+					value, valueIsIdent := mapType.Value.(*ast.Ident)
+					_, valueIsInterface := mapType.Value.(*ast.InterfaceType)
+					if keyIsString && key.Name == "string" &&
+						((valueIsIdent && value.Name == "any") || valueIsInterface) {
+						t.Errorf("%s prematurely declares an untyped string fact bag", path)
+					}
+					return true
+				})
 			}
 			if parsedProductionFiles == 0 {
 				t.Fatalf("no production Go files found in %s", checkedPackage.directory)

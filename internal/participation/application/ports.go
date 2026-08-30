@@ -17,8 +17,19 @@ type RegistrationFactReader interface {
 	) (domain.RegistrationFactSnapshot, error)
 }
 
-// Clock supplies one controlled server evaluation instant after a successful
-// fact read. Browser and request-supplied timestamps cannot satisfy this port.
+// RiskScreeningFactReader is the Participation-owned view of a controlled risk
+// authority. It returns only an immutable screening snapshot; adapters must not
+// refresh an old verdict by stamping the local retrieval time onto it.
+type RiskScreeningFactReader interface {
+	FindRiskScreeningFact(
+		ctx context.Context,
+		participantRef domain.ParticipantRef,
+	) (domain.RiskScreeningFactSnapshot, error)
+}
+
+// Clock supplies a controlled server instant. The standalone Lesson 25 service
+// captures it after its successful read; the Lesson 26 chain captures it once
+// before both lazy reads. Browser and request timestamps cannot satisfy it.
 type Clock interface {
 	Now() time.Time
 }

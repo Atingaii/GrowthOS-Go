@@ -1,7 +1,8 @@
 // Package application coordinates Participation use cases through
 // consumer-owned ports.
 //
-// Lesson 25 exposes one concrete new-user eligibility service. It does not
-// define a generic rule interface, own an external user directory, or compose
-// the decision into the unauthenticated Lottery demonstration route.
+// Lesson 26 composes concrete new-user and risk-admission prerequisites through
+// one fixed, ordered, short-circuiting gate plan. It does not define a generic
+// rule platform, own either external fact source, or attach eligibility to the
+// unauthenticated Lottery demonstration route.
 package application

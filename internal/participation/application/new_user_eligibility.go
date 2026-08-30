@@ -74,21 +74,55 @@ func (service *NewUserEligibilityService) Evaluate(
 		return domain.NewUserEligibilityDecision{}, err
 	}
 
-	fact, err := service.facts.FindRegistrationFact(ctx, participantRef)
+	fact, err := readRegistrationFact(ctx, service.facts, participantRef)
+	if err != nil {
+		return domain.NewUserEligibilityDecision{}, err
+	}
+
+	instant, err := captureEvaluationInstant(service.clock)
 	if contextError := ctx.Err(); contextError != nil {
 		return domain.NewUserEligibilityDecision{}, contextError
 	}
 	if err != nil {
-		return domain.NewUserEligibilityDecision{}, classifyRegistrationFactReadError(err)
+		return domain.NewUserEligibilityDecision{}, err
 	}
+	return evaluateRegistrationFactAt(
+		ctx,
+		participantRef,
+		policy,
+		fact,
+		instant,
+		service.maxFactAge,
+	)
+}
 
-	evaluatedAt := canonicalApplicationInstant(service.clock.Now())
+func readRegistrationFact(
+	ctx context.Context,
+	reader RegistrationFactReader,
+	participantRef domain.ParticipantRef,
+) (domain.RegistrationFactSnapshot, error) {
+	fact, err := reader.FindRegistrationFact(ctx, participantRef)
 	if contextError := ctx.Err(); contextError != nil {
-		return domain.NewUserEligibilityDecision{}, contextError
+		return domain.RegistrationFactSnapshot{}, contextError
 	}
-	if evaluatedAt.IsZero() {
-		return domain.NewUserEligibilityDecision{}, ErrEligibilityClockInvalid
+	if err != nil {
+		return domain.RegistrationFactSnapshot{}, classifyRegistrationFactReadError(err)
 	}
+	return fact, nil
+}
+
+func evaluateRegistrationFactAt(
+	ctx context.Context,
+	participantRef domain.ParticipantRef,
+	policy domain.NewUserPolicy,
+	fact domain.RegistrationFactSnapshot,
+	instant evaluationInstant,
+	maxFactAge time.Duration,
+) (domain.NewUserEligibilityDecision, error) {
+	if err := instant.validate(); err != nil {
+		return domain.NewUserEligibilityDecision{}, err
+	}
+	evaluatedAt := instant.time()
 	if err := fact.Validate(); err != nil {
 		return domain.NewUserEligibilityDecision{}, fmt.Errorf(
 			"%w: %w",
@@ -102,7 +136,7 @@ func (service *NewUserEligibilityService) Evaluate(
 	if fact.RegisteredAt().After(evaluatedAt) || fact.ObservedAt().After(evaluatedAt) {
 		return domain.NewUserEligibilityDecision{}, ErrRegistrationFactInvalid
 	}
-	if evaluatedAt.Sub(fact.ObservedAt()) > service.maxFactAge {
+	if evaluatedAt.Sub(fact.ObservedAt()) > maxFactAge {
 		return domain.NewUserEligibilityDecision{}, ErrRegistrationFactStale
 	}
 	if err := ctx.Err(); err != nil {
