@@ -6,7 +6,6 @@ import { McpLayout } from "../layouts/McpLayout";
 import { AgentLayout } from "../layouts/AgentLayout";
 import { AuthLayout } from "../layouts/AuthLayout";
 
-import { UserHomePage } from "../pages/user/home/UserHomePage";
 import { GrowthFeedPage } from "../pages/user/growth-feed/GrowthFeedPage";
 import { CampaignsListPage } from "../pages/user/campaigns/CampaignsListPage";
 import { CampaignDetailPage } from "../pages/user/campaigns/CampaignDetailPage";
@@ -15,7 +14,6 @@ import { PointsPage } from "../pages/user/points/PointsPage";
 import { CouponsPage } from "../pages/user/coupons/CouponsPage";
 import { UserProfilePage } from "../pages/user/profile/UserProfilePage";
 
-import { AdminDashboardPage } from "../pages/admin/dashboard/AdminDashboardPage";
 import { AdminCampaignsPage } from "../pages/admin/campaigns/AdminCampaignsPage";
 import { GenericAdminModulePage } from "../pages/admin/GenericAdminModulePage";
 
@@ -50,13 +48,23 @@ import {
   History,
 } from "lucide-react";
 
+const loadUserHomePage = async () => {
+  const { UserHomePage } = await import("../pages/user/home/UserHomePage");
+  return { Component: UserHomePage };
+};
+
+const loadAdminDashboardPage = async () => {
+  const { AdminDashboardPage } = await import("../pages/admin/dashboard/AdminDashboardPage");
+  return { Component: AdminDashboardPage };
+};
+
 export const router = createBrowserRouter([
   {
     path: "/",
     Component: UserLayout,
     children: [
-      { index: true, Component: UserHomePage },
-      { path: "home", Component: UserHomePage },
+      { index: true, lazy: loadUserHomePage },
+      { path: "home", lazy: loadUserHomePage },
       { path: "feed", Component: GrowthFeedPage },
       { path: "campaigns", Component: CampaignsListPage },
       { path: "campaigns/:id", Component: CampaignDetailPage },
@@ -71,8 +79,8 @@ export const router = createBrowserRouter([
     path: "/admin",
     Component: AdminLayout,
     children: [
-      { index: true, Component: AdminDashboardPage },
-      { path: "dashboard", Component: AdminDashboardPage },
+      { index: true, lazy: loadAdminDashboardPage },
+      { path: "dashboard", lazy: loadAdminDashboardPage },
       { path: "campaigns", Component: AdminCampaignsPage },
       {
         path: "strategies",
