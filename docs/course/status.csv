@@ -23,7 +23,7 @@
 22,3,实现第一个 React 抽奖页,已完成,docs/course/part-03/lesson-22-react-lottery-page.md,docs/qa/lessons/lesson-22.md
 23,3,需求升级抽奖策略需要规则,已完成,docs/course/part-03/lesson-23-lottery-strategy-rule-requirements.md,docs/qa/lessons/lesson-23.md
 24,3,第一次 Redis 缓存,已完成,docs/course/part-03/lesson-24-redis-strategy-cache.md,docs/qa/lessons/lesson-24.md
-25,4,需求升级不是所有用户都能抽,计划中,,
+25,4,需求升级不是所有用户都能抽,已完成,docs/course/part-04/lesson-25-user-eligibility.md,docs/qa/lessons/lesson-25.md
 26,4,责任链实现前置规则,计划中,,
 27,4,责任链为什么开始不够用了,计划中,,
 28,4,规则树第一次数据库升级,计划中,,

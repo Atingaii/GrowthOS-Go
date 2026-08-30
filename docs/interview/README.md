@@ -95,3 +95,4 @@
 - [第 22 节：React Lottery 临时选择页与可信工作台](lessons/lesson-22.md)
 - [第 23 节：Lottery 规则需求、事实所有权与渐进式规则系统](lessons/lesson-23.md)
 - [第 24 节：Redis Strategy 缓存、故障降级与证据边界](lessons/lesson-24.md)
+- [第 25 节：权威注册事实、资格决定与渐进式规则演进](lessons/lesson-25.md)

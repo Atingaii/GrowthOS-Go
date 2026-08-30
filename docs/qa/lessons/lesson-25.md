@@ -6,9 +6,9 @@
 - **上一节：** [第 24 节 QA](lesson-24.md)
 - **设计推导：** [第 25 节设计手记](../../design-thinking/lessons/lesson-25.md)
 - **基准提交：** `35f94b98c99dd4a8b6540388325b74af472e4ad1`（第 24 节已验收 tip）
-- **实现证据提交：** `475804b`（domain、application 与架构停止线）
+- **实现证据提交：** `475804b`（domain、application 与架构停止线）；`c96b393`（手工 zero/partial service 构造防御加固）
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** domain/application 定向测试、Participation race 与全仓 Go 测试已实际通过；最终 `make verify`、Compose/浏览器验收尚未执行，本节也尚无 adapter、HTTP 或 UI 入口
+- **当前记录状态：** domain/application 定向测试、10 秒 fuzz、Participation 与全仓 race、最终 `make verify`、文档/负向差异均已实际通过；本节没有 adapter、HTTP/UI 或 runtime/schema 变化，因此未执行也不声称 Compose/浏览器资格 E2E
 
 > 本节验收的是一个可执行但尚未对外组合的 Participation 资格切片。它能从权威注册事实形成确定的 `eligible` / `ineligible` 决定，并把事实未知、过期、不可用、损坏和调用取消保留为“无法形成决定”。它不验收“真实用户已经不能绕过抽奖”：当前还没有真实会话、事实 adapter、Activity、正式 Participation 或受资格门控的 Lottery API。
 
@@ -57,7 +57,7 @@
 | Lottery/API/Web 零漂移 | 基准到实现提交的 path-scoped negative diff | 已证 | 抽奖入口已经执行资格检查 |
 | 全仓 Go 行为无现有测试回归 | `go test -count=1 ./...` | 已证于当前 Go 测试集 | 前端、Compose、真实 MySQL/Redis 或浏览器无回归 |
 | 文档链接与结构 | `make doc-check` | 本文落盘后已实际通过 | 文档语义与代码必然一致 |
-| 完整仓库质量门禁 | 尚未执行最终 `make verify` | 未证 | 不能登记课程为最终验收完成 |
+| 完整仓库质量门禁 | 最终 `make verify` + 全仓 `go test -race -count=1 ./...` | 已证于当前源码/文档和现有测试集 | 不能推出真实用户目录、Compose 资格链或生产 SLO 已验收 |
 
 最重要的禁止推导是：**“资格 evaluator 存在”不等于“现有 Lottery API 已受资格保护”。** 当前 `cmd/growth-api` 没有装配 Participation，`internal/participation` 也没有 adapter，浏览器页面没有主体或资格状态。
 
@@ -309,14 +309,15 @@ make doc-check
 | 全仓 Go 测试 | exit 0 | 0 package | 当前 Go 测试集无回归 |
 | `make doc-check` | exit 0，`documentation checks passed` | 0 | Markdown 链接、ADR 登记、课程注册结构和文档治理检查 |
 
-### 12.2 最终交付前仍需执行
+### 12.2 最终仓库门禁
 
 ```bash
 make verify
+go test -race -count=1 ./...
 git diff --check
 ```
 
-最终 `make verify` 会额外执行 fmt-check、vet、全仓 Go test、doc-check 与 Web verify。本文形成时没有声称它已经通过。由于本节没有 adapter/API/Compose 变更，不应为了“看起来完整”新增虚假 Docker E2E；若父级最终验收选择复跑既有 Compose 回归，必须把命令、环境、结果与清理单独记录，不能倒填成本切片已经有资格端到端证据。
+三条命令均已 exit 0。`make verify` 实际完成 `go vet`、全仓 Go test、doc-check、19 个 Vitest 文件/152 个前端测试、TypeScript typecheck 和 Vite production build；全仓 race 覆盖 22 个 Go package 并全部通过。它们证明当前仓库已有测试没有回归，不证明第 25 节存在尚未实现的 fact adapter、HTTP、Compose 或浏览器资格路径。由于本节没有 runtime/schema/transport 变化，不为“看起来完整”新增虚假 Docker E2E；未来真实 adapter 或公开消费者出现时必须另补 contract/integration/Compose/browser 证据。
 
 ## 13. 精确负向断言
 
@@ -340,9 +341,9 @@ git diff --check
 
 ## 14. 清理与环境影响
 
-本轮文档/定向验证没有启动 Docker、没有创建 Compose project、容器、volume、network、builder、临时 Secret、下载图片或浏览器 trace；没有生成 `web/dist`、coverage、fuzz crash corpus 或任务专用临时目录，因此没有可删除的任务专用运行资源。
+本轮没有启动 Docker，也没有创建 Compose project、容器、volume、network、builder、临时 Secret、下载图片、浏览器 trace、coverage 文件、fuzz crash corpus 或任务专用临时目录。
 
-Go 命令可能更新共享且可复用的 module/build/test cache；它们不是只服务本任务的 disposable artifact，予以保留。仓库内没有新增验证产物，源代码、文档、依赖与已有开发数据均未清理。
+冻结前已先确认 `web/dist` 原本不存在；两次 `make verify` 的 Vite build 会生成该目录。最终门禁完成后，逐项解析其中 6 个静态文件并使用精确绝对路径删除整个任务生成目录，再次确认路径不存在。Go fuzz/module/build/test cache 是共享且可复用的开发缓存，不是只服务本任务的交付产物，予以保留；源代码、文档、依赖和已有开发数据均未清理。
 
 ## 15. 剩余风险与下一责任
 
@@ -357,13 +358,12 @@ Go 命令可能更新共享且可复用的 module/build/test cache；它们不�
 | 无决定持久化 | 无法回放正式参与依据 | 正式 Participation/Draw 设计时决定 snapshot/audit |
 | 每次 read 后再决定 | 事实可能在决定后变化 | 正式消费时定义事务、lease、revision 或重检 |
 | architecture test 是名称 allow/deny | 可被换名规避 | code review + 第二规则反推最小抽象 |
-| 未执行最终 `make verify` | 章节尚不能冻结 tip | 父级文档与索引合并后在最终源码 tip 复验 |
 
 ## 16. 阶段性验收结论
 
 在当前证据范围内，可以准确地说：
 
-> GrowthOS-Go 已建立首个可执行 Participation 新用户资格切片：外部事实所有者通过 consumer-owned port 提供最小注册快照；具体、带版本的含边界 policy 由纯 evaluator 求值；application service 以一次 server clock 控制 future/freshness，区分确定业务拒绝与事实未知、过期、不可用、损坏及取消；领域与应用的依赖方向、并发和“不提前建规则引擎”的停止线都有自动化证据。
+> GrowthOS-Go 已建立首个可执行 Participation 新用户资格切片：定义面向外部事实所有者的 consumer-owned port 契约；给定受控最小注册快照时，具体、带版本的含边界 policy 由纯 evaluator 求值；application service 以一次 server clock 控制 future/freshness，区分确定业务拒绝与事实未知、过期、不可用、损坏及取消；领域与应用的依赖方向、并发，以及对跨上下文 import 和五个已知过早规则抽象名称的停止线都有自动化证据。真实 provider 权威性仍等待 adapter 章节验证。
 
 仍然不能说：
 
@@ -374,6 +374,5 @@ Go 命令可能更新共享且可复用的 module/build/test cache；它们不�
 - 已实现责任链、规则树或决策引擎；
 - 已完成浏览器、Compose 或越权 E2E；
 - 已解决正式参与的幂等、额度、TOCTOU 或审计；
-- 最终 `make verify` 已通过并可以冻结第 25 节。
 
-因此本文是对当前 domain/application slice 的真实 QA 记录；课程最终完成状态必须等待剩余文档、索引和最终质量门禁在同一 tip 上复验。
+因此本文是对当前 domain/application slice 的真实 QA 记录；课程正文、API、QA、设计手记、面试问答和全局索引已经在同一分支完成，最终质量门禁已通过，第 25 节可以冻结。这个完成状态只属于本文明确的内部能力边界，不会把未来 adapter、在线资格门控或权限系统提前写成已交付。

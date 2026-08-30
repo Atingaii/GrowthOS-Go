@@ -524,6 +524,9 @@ internal/participation/application/architecture_test.go
 | 4 | `b718267` | 实现 fact reader、clock、freshness、取消与错误分类 | `go test -race ./internal/participation/application` |
 | 5 | `475804b` | 用源码架构测试固定“不提前引擎化”的停止线 | `go test ./internal/participation/application -run Architecture` |
 | 6 | `c96b393` | 根据交叉审查补齐手工 zero/partial service 的失败关闭证据 | `go test -race ./internal/participation/application` |
+| 7 | `bf15a1b` | 交付课程正文与公开 HTTP 零变化记录 | `go run ./cmd/doccheck` |
+| 8 | `4987bdb` | 交付 24 道带官方来源与真实面经题型边界的面试问答 | `go run ./cmd/doccheck` |
+| 9 | `399948a` | 交付 QA、10 秒 fuzz 证据与第一性原理设计手记 | `go run ./cmd/doccheck` |
 
 章节最终冻结 tip 还会包含 QA、设计手记、面试问答、索引和门禁记录。上表中的任一中间提交都不能单独冒充完整章节验收版本。
 

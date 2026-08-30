@@ -26,6 +26,7 @@
 | 第 22 节：真实 React Lottery 页面 | `codex/lesson-22-react-lottery-page` | 第 21 节累计检查点 `9e3ed50` | transport/API `cbb87d6`～`428ae0d`；Compose 快照 `9cc2d07`；工作台迭代 `3b22628`～`06a4a38`；文档内容 `72e285f`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 真实 ephemeral API 消费、完整 uint64 string、竞态/取消边界、Credits 风格共享工作台、响应式与可访问性验收 |
 | 第 23 节：Lottery 规则需求与边界 | `codex/lesson-23-lottery-strategy-rules` | 第 22 节最终检查点 `1f95779` | 需求/ADR `09a45c2`；课程与配套文档 `479947b`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 决定所有者与事实提供方分离、决策/选择/副作用三分法、失败/版本边界、零运行时代码漂移与渐进式规则路线 |
 | 第 24 节：Lottery Strategy Redis 缓存 | `codex/lesson-24-redis-strategy-cache` | 第 23 节最终检查点 `27a552b` | 配置/Redis/cache/composition `272d028`～`68fa59b`；Compose/负载/验收加固 `17e7010`～`d33723c`；文档内容以同名远端最终 tip 为准 | 本地与 `origin` | MySQL 事实源、cache-aside、严格投影、同 key fill、fail-open、最小 ACL、故障恢复与 M1 source-load 证据 |
+| 第 25 节：Participation 新用户资格 | `codex/lesson-25-user-eligibility` | 第 24 节最终检查点 `35f94b9` | 需求/ADR `ea2cacd`～`b59bc1e`；domain `959c32a`；application `b718267`；架构/构造加固 `475804b`、`c96b393`；课程/API `bf15a1b`；面试 `4987bdb`；QA/设计 `399948a`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 权威注册事实、含边界 cutoff、freshness、确定决定/技术失败、取消竞态、无 adapter/API/RuleEngine 的渐进停止线 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -51,14 +52,16 @@
 
 第 24 节从第 23 节最终检查点 `27a552b` 线性创建。`272d028`～`765bb00` 依次建立可选配置、默认按需连接且无启动 PING 的 Redis client、TTL 停止线、ADR 与严格 cache-aside；`68fa59b` 装配生命周期和低基数观测；`17e7010`～`8804f87` 接入 internal network、最小 ACL、bodyless POST 基线并根据审查收紧 channel/acknowledgement；`40f1acf` 依据 2 GiB Docker Desktop OOM 事实限制后端编译资源；`d33723c` 最后用 warm/direct/Redis-down 三组同口径负载和 MySQL counter 证明真实路径。`0f70f51` 登记 ADR，`9d44eb1` 与 `5a0baeb` 同步运行/产品当前态，`d621aae` 交付课程、API、QA、1400 行设计手记、24 道面试问答与 Runbook，`13a3210` 登记全局索引与章节状态；`b9e79e2` 再根据最终交叉审查固定 Redis DB 0、校准 MinIdle/ACL/readiness/TTL 证据并补 depth guard 边界测试。最终门禁以同名远端分支冻结 tip 为准。
 
+第 25 节从第 24 节最终检查点 `35f94b9` 线性创建。`ea2cacd` 与 `b59bc1e` 先固定权威注册事实、freshness、含边界 cutoff 和低基数观测边界；`959c32a` 只实现持久化/传输无关的 Participation domain；`b718267` 再用 consumer-owned fact port、一次受控 Clock 和安全类型化错误形成 application 用例；`475804b` 以 AST 测试守住“无通用 Rule/RuleEngine、无跨上下文依赖”的停止线；`c96b393` 根据交叉审查补齐手工 zero/partial service 的失败关闭测试；`bf15a1b`、`4987bdb`、`399948a` 依次交付课程/API、面试问答和 QA/设计手记。全局当前态与最终门禁以同名远端最终 tip 为准。本节没有事实 adapter、Migration、Redis、HTTP/React、真实 Principal、Lottery 编排或 Compose 验收；按上述提交顺序阅读，可以把“事实与政策—纯领域决定—应用失败语义—架构停止线—设计复盘”分开学习。
+
 ## 稳定章节分支与累计快照
 
 课程同时保留两类用途不同的分支：
 
 | 类型 | 分支规则 | 是否移动 | 当前事实 |
 | --- | --- | --- | --- |
-| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 24 节 cache-aside、配套文档、故障矩阵与 M1 门禁均推送后，冻结同名远端 tip |
-| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 24 节最终检查点和门禁通过后快进至该节稳定分支 tip |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 25 节 Participation 资格内核、配套文档和完整门禁均推送后，冻结同名远端 tip |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 25 节最终检查点和门禁通过后快进至该节稳定分支 tip |
 
 学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
@@ -103,6 +106,7 @@ git switch codex/lesson-21-lottery-api
 git switch codex/lesson-22-react-lottery-page
 git switch codex/lesson-23-lottery-strategy-rules
 git switch codex/lesson-24-redis-strategy-cache
+git switch codex/lesson-25-user-eligibility
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
@@ -121,6 +125,7 @@ git switch --track origin/codex/lesson-21-lottery-api
 git switch --track origin/codex/lesson-22-react-lottery-page
 git switch --track origin/codex/lesson-23-lottery-strategy-rules
 git switch --track origin/codex/lesson-24-redis-strategy-cache
+git switch --track origin/codex/lesson-25-user-eligibility
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -153,11 +158,13 @@ git diff --stat 1f95779..codex/lesson-23-lottery-strategy-rules
 git diff 1f95779..codex/lesson-23-lottery-strategy-rules
 git diff --stat 27a552b..codex/lesson-24-redis-strategy-cache
 git diff 27a552b..codex/lesson-24-redis-strategy-cache
+git diff --stat 35f94b9..codex/lesson-25-user-eligibility
+git diff 35f94b9..codex/lesson-25-user-eligibility
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23 节直接基于 `1f95779`，需求与 ADR 为 `09a45c2`，课程和配套文档为 `479947b`。第 24 节直接基于 `27a552b`，配置/Redis/cache/composition 为 `272d028`～`68fa59b`，Compose/负载/验收加固为 `17e7010`～`d33723c`，ADR/当前态/课程/索引为 `0f70f51`、`9d44eb1`、`5a0baeb`、`d621aae`、`13a3210`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23 节直接基于 `1f95779`，需求与 ADR 为 `09a45c2`，课程和配套文档为 `479947b`。第 24 节直接基于 `27a552b`，配置/Redis/cache/composition 为 `272d028`～`68fa59b`，Compose/负载/验收加固为 `17e7010`～`d33723c`，ADR/当前态/课程/索引为 `0f70f51`、`9d44eb1`、`5a0baeb`、`d621aae`、`13a3210`。第 25 节直接基于 `35f94b9`，需求/ADR、domain、application、停止线与审查加固依次为 `ea2cacd`～`c96b393`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 

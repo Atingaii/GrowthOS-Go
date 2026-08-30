@@ -30,6 +30,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 22 节验收](lessons/lesson-22.md) | React ephemeral Lottery 真实联调、失败/竞态边界、共享工作台、Mock 诚实性、桌面/移动视觉与交互 | 通过 |
 | [第 23 节验收](lessons/lesson-23.md) | Lottery 规则需求、事实所有权、失败语义、精确文档白名单与运行时零漂移 | 通过 |
 | [第 24 节验收](lessons/lesson-24.md) | Strategy Redis 读取投影、严格 codec、ACL、故障恢复、source-load 与 M1 本地基线 | 通过 |
+| [第 25 节验收](lessons/lesson-25.md) | 权威注册事实、含边界新用户政策、freshness、失败分类、取消竞态与渐进式架构停止线 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |

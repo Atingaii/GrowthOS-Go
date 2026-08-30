@@ -35,7 +35,7 @@
 
 ## 当前进度
 
-当前已完成第 1～24 节，共 24 节；第二部分 M0 与第三部分 M1 均已验收。第三部分已经完成最小 Lottery 领域对象、第一组业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API、真实 React 消费者、规则事实所有权停止线，以及第一个以 MySQL 为事实源的 Redis Strategy 读取投影。完成数与证据路径以 [status.csv](status.csv) 为准。
+当前已完成第 1～25 节，共 25 节；第二部分 M0 与第三部分 M1 均已验收。第三部分已经完成最小 Lottery 领域对象、第一组业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API、真实 React 消费者、规则事实所有权停止线，以及第一个以 MySQL 为事实源的 Redis Strategy 读取投影。第四部分由第 25 节开始：Participation 已拥有第一条基于权威注册事实、显式 freshness 与含边界 cutoff 的可执行资格规则，但尚未接入事实 adapter、公开 API、Lottery 或真实主体。完成数与证据路径以 [status.csv](status.csv) 为准。
 
 - [第 1 节：为什么要做 AI 原生大营销增长平台](part-01/lesson-01-why-ai-native-growth-platform.md) 已完成。
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
@@ -61,10 +61,11 @@
 - [第 22 节：实现第一个真实 React 抽奖页](part-03/lesson-22-react-lottery-page.md) 已完成并验收；配套 [API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和 [面试问答](../interview/lessons/lesson-22.md)已登记。
 - [第 23 节：需求升级抽奖策略需要规则](part-03/lesson-23-lottery-strategy-rule-requirements.md) 已完成并验收；配套[需求基线](../product/lottery-rule-requirements-v1.md)、[API](../api/lessons/lesson-23.md)、[QA](../qa/lessons/lesson-23.md)、[设计手记](../design-thinking/lessons/lesson-23.md)、[面试问答](../interview/lessons/lesson-23.md)和 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)已登记。
 - [第 24 节：第一次 Redis 缓存](part-03/lesson-24-redis-strategy-cache.md) 已完成并验收；配套 [API](../api/lessons/lesson-24.md)、[QA](../qa/lessons/lesson-24.md)、[设计手记](../design-thinking/lessons/lesson-24.md)、[面试问答](../interview/lessons/lesson-24.md)、[运维手册](../runbooks/redis-strategy-cache.md)和 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)已登记。
+- [第 25 节：需求升级——不是所有用户都能抽](part-04/lesson-25-user-eligibility.md) 已完成并验收；配套[规则基线](../product/new-user-eligibility-v1.md)、[API](../api/lessons/lesson-25.md)、[QA](../qa/lessons/lesson-25.md)、[设计手记](../design-thinking/lessons/lesson-25.md)、[面试问答](../interview/lessons/lesson-25.md)和 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)已登记。
 - 第 11～23 节依次建立 Go/MySQL/React/Compose 基线、Lottery 领域/仓储/选择/API/React 纵向链和规则所有权停止线；第 24 节只在 application-owned `StrategyReader` 外增加 Lottery cache-aside decorator。MySQL 仍是唯一事实源，Redis value 经严格 v1 codec 与领域恢复；2 MiB/1000 Award、TTL≤5m+jitter、同 key fill、poison 修复、fail-open、最小 ACL 与低基数观测分别由适合它们的单元/边界测试或隔离 Compose 证据覆盖。服务器实际剩余 TTL、真实 2 MiB Redis value 和 Redis/MySQL 同时停止未被冒充为已执行场景，精确边界见第 24 节 QA。
-- 当前真实 Lottery API 及其 React 消费者仍只产生并展示不持久化的 ephemeral selection；`reward` 只是奖励候选，`no_reward` 是正常候选结果。Redis 不缓存资格、权限、库存、随机选择或 Draw/Result，也不进入 API readiness。正式 Draw/Result、认证、对象级授权、幂等、参与资格、库存、积分扣减和发奖均未实现；INV-03 仍未满足。
+- 当前真实 Lottery API 及其 React 消费者仍只产生并展示不持久化的 ephemeral selection；`reward` 只是奖励候选，`no_reward` 是正常候选结果。Redis 不缓存资格、权限、库存、随机选择或 Draw/Result，也不进入 API readiness。第 25 节资格代码仍是未装配的 Participation domain/application 内核；正式 Draw/Result、认证、对象级授权、幂等、完整资格组合与 Lottery 前置门控、库存、积分扣减和发奖均未实现；INV-03 仍未满足。
 - M0 健康探针基线与 M1 Strategy 缓存本地基线均已形成。M1 三组 50 RPS×10s 均 500/500 成功：warm-cache MySQL prepared execute 为 0，cache-disabled 与 Redis-down 均为 1000；它只证明当前本机的命中/直连/fail-open 路径，不外推为业务 SLO、生产容量或通用缓存收益。第 45、61、77、85、93、101 节继续形成后续里程碑。
-- 下一节是第 25 节“最简单资格规则”，先建立真实资格事实与拒绝语义；第 26 节在至少两个具体规则消费者出现后再反推最小决策执行原语。第 31～35 节按“公共模型 → 会话 → 服务端强制 → 前端感知 → 越权验收”演进，并在第 36 节首个真实运营后台复用。权限能力服务于用户端、运营端、MCP 和 Agent，而不是为每套界面各建一套角色开关。
+- 下一节是第 26 节“责任链实现前置规则”：先增加第二条由真实需求驱动的 Participation 前置判断，再从两个具体消费者反推最小线性短路协议，不提前制造通用规则平台。第 31～35 节仍按“公共模型 → 会话 → 服务端强制 → 前端感知 → 越权验收”演进，并在第 36 节首个真实运营后台复用。权限能力服务于用户端、运营端、MCP 和 Agent，而不是为每套界面各建一套角色开关。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 
 ## 课程演进规则

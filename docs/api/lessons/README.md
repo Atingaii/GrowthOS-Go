@@ -28,5 +28,6 @@
 | 第 22 节 | [React 消费临时 Lottery Selection](lesson-22.md) | 已联调 |
 | 第 23 节 | [Lottery 规则需求与零 API 变化](lesson-23.md) | 已验收 |
 | 第 24 节 | [Strategy Redis 缓存与零公开 API 变化](lesson-24.md) | 已验收 |
+| 第 25 节 | [Participation 新用户资格与零公开 API 变化](lesson-25.md) | 已验收 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。
