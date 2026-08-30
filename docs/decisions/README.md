@@ -25,3 +25,5 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0018](ADR-0018-ephemeral-lottery-selection-api.md) | 已接受 | 以默认关闭的 development/test ephemeral route 组合只读快照与加权选择，并明确拒绝把临时结果冒充正式 Draw |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。
+
+课程从 96 节扩展为 101 节只调整尚未实施能力的学习顺序，不改变既有 ADR 的结论、生效时间或其历史章节引用；涉及长期访问控制边界的新决定将在对应实现章节另建 ADR。

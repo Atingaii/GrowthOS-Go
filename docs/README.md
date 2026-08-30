@@ -14,7 +14,8 @@
 | 领域边界 | [限界上下文地图 v1](product/bounded-context-map-v1.md) | 业务语言、职责、事实所有权和协作关系 |
 | 质量目标 | [非功能需求基线 v1](product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复、安全和降级目标 |
 | 系统设计 | [GrowthOS 系统设计 V0](product/system-design-v0.md) | 产品架构、系统上下文、用例、领域关系与近期运行形态 |
-| 课程实施 | [96 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
+| 课程实施 | [101 节路线](course/README.md) | 章节顺序、当前进度和演进约束 |
+| 路线修订 | [课程路线修订记录](course/route-revisions.md) | 结构性新增、编号迁移、历史保护与安排理由 |
 | 学习分支 | [课程分支检查点](course/branch-checkpoints.md) | 按章节切换、比较和核查实现分支 |
 | 运行配置 | [配置参考](configuration.md) | `GROWTHOS_` 环境变量、默认值、校验与秘密边界 |
 | 数据库运维 | [MySQL Migration 运维手册](runbooks/mysql-migrations.md) | 身份隔离、前向发布、故障停止条件与清理 |
@@ -32,11 +33,11 @@
 
 ## 当前基线
 
-- 当前完成：第 1～21 节，共 21 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、两张业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择，以及 development/test 专用的首个 ephemeral Lottery API；下一节是第 22 节接入真实 React 抽奖页。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供 Strategy/Award 聚合、consumer-owned bounded random port 与零分配线性加权 Selector，`internal/lottery/application` 提供仓储端口和 `EphemeralSelectionService`，MySQL/crypto/HTTP adapters 已在 composition root 中装配。`POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 默认关闭，仅 development/test 可显式启用，只读 Strategy 并返回不持久化的选择。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，当前运行身份只可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
+- 当前完成：第 1～22 节，共 22 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、两张业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API，以及真实消费该 API 的 React `/lottery` 页面和共享工作台壳层。下一节仍按业务主线实现第 23 节“需求升级抽奖策略需要规则”。公共访问控制被正式安排在第 31～35 节：先有规则、Activity 与真实受保护资源，再依次建立跨用户端、运营端、MCP 和 Agent 的统一权限模型、会话认证、服务端强制、前端权限感知与越权验收，并在第 36 节首个真实运营后台复用。当前尚未实现认证或授权。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供 Strategy/Award 聚合、consumer-owned bounded random port 与零分配线性加权 Selector，`internal/lottery/application` 提供仓储端口和 `EphemeralSelectionService`，MySQL/crypto/HTTP adapters 已在 composition root 中装配。`POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 默认关闭，仅 development/test 可显式启用，只读 Strategy 并返回不持久化的选择；React `/lottery` 已通过专用 adapter、decoder 和请求状态 Hook 真实消费它。共享 `WorkspaceShell` 统一四类工作台的侧栏、顶栏、搜索、主题和移动抽屉，但不承担身份或授权。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，当前运行身份只可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：正式 Lottery Draw/Result API 与持久化、认证、对象级授权、幂等、参与资格、库存、发奖、真实 Lottery 前端、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现。后端 ephemeral route 已存在，但 React `/lottery` 仍使用 `Math.random()` Mock；Compose 中 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，INV-03 仍无最终结果事实可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验；CSPRNG 选择也不能替代幂等、库存、运营治理或公平合规。
+- 当前明确未做：正式 Lottery Draw/Result API 与持久化、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现。React `/lottery` 已真实调用后端，但它只展示不可恢复的 ephemeral Award 选择；活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 工作台仍是明确标注的 Mock 快照或浏览器本地交互。Compose 中 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，INV-03 仍无最终结果事实可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验；CSPRNG 选择也不能替代幂等、库存、运营治理或公平合规。
 
-第 21 节完整证据链：[课程正文](course/part-03/lesson-21-lottery-api.md)、[API 契约](api/lessons/lesson-21.md)、[QA](qa/lessons/lesson-21.md)、[第一性原理手记](design-thinking/lessons/lesson-21.md)、[面试问答](interview/lessons/lesson-21.md)与 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)。隔离 Compose acceptance 的 64 个多 Award 请求最多并行 16 个，不是 64 并发、64 RPS 或生产容量结论。
+第 22 节完整证据链：[课程正文](course/part-03/lesson-22-react-lottery-page.md)、[API 契约](api/lessons/lesson-22.md)、[QA](qa/lessons/lesson-22.md)、[第一性原理手记](design-thinking/lessons/lesson-22.md)和[面试问答](interview/lessons/lesson-22.md)。第 21 节后端边界仍由 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；真实 React 联调没有把它升级成正式 Draw。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

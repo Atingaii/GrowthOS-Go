@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,9 +81,79 @@ func TestRequiresLearningRecords(t *testing.T) {
 	if requiresLearningRecords(14) {
 		t.Fatal("lesson 14 is an explicitly tracked historical backfill")
 	}
-	for _, lesson := range []int{13, 15, 16, 96} {
+	for _, lesson := range []int{13, 15, 16, 96, 101} {
 		if !requiresLearningRecords(lesson) {
 			t.Fatalf("lesson %d must require learning records", lesson)
+		}
+	}
+}
+
+func TestExpectedCoursePartBoundaries(t *testing.T) {
+	testCases := []struct {
+		lesson int
+		part   int
+	}{
+		{lesson: 1, part: 1},
+		{lesson: 8, part: 1},
+		{lesson: 9, part: 2},
+		{lesson: 16, part: 2},
+		{lesson: 17, part: 3},
+		{lesson: 24, part: 3},
+		{lesson: 25, part: 4},
+		{lesson: 37, part: 4},
+		{lesson: 38, part: 5},
+		{lesson: 45, part: 5},
+		{lesson: 46, part: 6},
+		{lesson: 53, part: 6},
+		{lesson: 54, part: 7},
+		{lesson: 61, part: 7},
+		{lesson: 62, part: 8},
+		{lesson: 69, part: 8},
+		{lesson: 70, part: 9},
+		{lesson: 77, part: 9},
+		{lesson: 78, part: 10},
+		{lesson: 85, part: 10},
+		{lesson: 86, part: 11},
+		{lesson: 93, part: 11},
+		{lesson: 94, part: 12},
+		{lesson: 101, part: 12},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("lesson_%d", testCase.lesson), func(t *testing.T) {
+			part, ok := expectedCoursePart(testCase.lesson)
+			if !ok {
+				t.Fatalf("lesson %d has no registered part", testCase.lesson)
+			}
+			if part != testCase.part {
+				t.Fatalf("lesson %d part = %d, want %d", testCase.lesson, part, testCase.part)
+			}
+		})
+	}
+
+	for _, lesson := range []int{0, 102} {
+		if part, ok := expectedCoursePart(lesson); ok {
+			t.Fatalf("out-of-range lesson %d unexpectedly belongs to part %d", lesson, part)
+		}
+	}
+}
+
+func TestCoursePartRangesAreContinuous(t *testing.T) {
+	if problems := validateCoursePartRanges(); len(problems) > 0 {
+		for _, problem := range problems {
+			t.Error(problem)
+		}
+	}
+
+	for lesson := 1; lesson <= courseLessonCount; lesson++ {
+		matches := 0
+		for _, partRange := range coursePartRanges {
+			if lesson >= partRange.start && lesson <= partRange.end {
+				matches++
+			}
+		}
+		if matches != 1 {
+			t.Errorf("lesson %d belongs to %d ranges; want exactly one", lesson, matches)
 		}
 	}
 }

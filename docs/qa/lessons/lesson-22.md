@@ -31,7 +31,7 @@
 8. Admin、MCP、Agent 页面复用相同壳层；未接入的写动作保持禁用或明确说明只在浏览器内演示；
 9. 搜索、主题、全宽、通知样例、桌面侧栏与移动抽屉都具有真实可观察行为，不再使用无处理函数的装饰按钮；
 10. 真实浏览器已覆盖 1719 × 862 桌面视口与 390 × 844 移动视口，并对 Linux DO 参考和实现做同视口拼接人工比对；
-11. 最新前端门禁为 19 个 test file、152 个 test 全部通过，TypeScript typecheck 与生产 build 通过；最终文档 checkpoint 仍由主线程重跑，命令退出码是最终事实来源；
+11. 最终检查点执行 `make verify` exit 0：Go vet/全量测试、文档检查、19 个前端 test file/152 个 test、TypeScript typecheck 与生产 build 全部通过；
 12. 性能复核把 Home、Admin dashboard 与 Recharts 共享层做 route lazy split，生产 build 已无单 chunk 大于 500 kB 的 warning；最终设计审查未保留 P0/P1/P2。
 
 ## 2. 验收对象与环境
@@ -247,20 +247,21 @@ pnpm run build
 
 | 门禁 | 当前结果 | 备注 |
 | --- | --- | --- |
-| Vitest | 19 个 test file、152 个 test 全部通过 | 最终 checkpoint 仍须重跑，若后续有预期测试增删，以最终命令为准 |
+| 全仓门禁 | `make verify` exit 0 | 包含 Go vet/全量测试、`doccheck` 与完整前端门禁 |
+| Vitest | 19 个 test file、152 个 test 全部通过 | 最终检查点实测数量 |
 | TypeScript | `tsc --noEmit` exit 0 | 包含 API decoder、Hook 与页面类型 |
 | Production build | Vite build exit 0 | route lazy split 后无单 chunk > 500 kB warning |
 | 真实浏览器 | 1719 × 862 与 390 × 844 通过 | 覆盖桌面/移动、交互和主要路由 |
 | 视觉比较 | 同视口完整画面与关键区域人工检视通过 | 临时图片不入库 |
 
-最终合并前主线程仍须重新执行：
+最终检查点于 2026-08-30 在第 22 节工作树执行：
 
 ```bash
-make web-verify
+make verify
 git diff --check
 ```
 
-若最终用例数与本轮不同，只要测试清单是预期变化且所有命令 exit 0，应以最终 checkpoint 输出更新验收事实，而不是为了匹配旧数字删除测试。
+两条命令均 exit 0；`doccheck` 同时验证 101 节注册表、显式分部范围、已完成章节 API/QA/设计手记/面试问答与本地 Markdown 链接。最终前端产物仍为 19 个 test file、152 个 test，build 无单 chunk 大于 500 kB warning。
 
 ## 10. 本轮暴露并修复的问题
 
@@ -277,7 +278,9 @@ git diff --check
 
 ## 11. 清理与证据保留
 
-本轮视觉 QA 曾生成一次性浏览器截图、同视口拼接图和聚焦比较输入。它们只用于人工检视，最终不会进入 Git，也不会成为文档链接；主线程完成最终复核后会按已解析的精确路径删除这些临时输出。
+本轮视觉 QA 曾生成一次性浏览器截图、同视口拼接图和聚焦比较输入。它们只用于人工检视，没有进入 Git，也没有成为文档链接；最终复核后已删除仓库内 `.playwright-cli/`、`output/`、`web/dist/`，以及本轮专用的 `/tmp/growthos-l22-browser-secrets.nhMVtK` 与 `/tmp/linuxdo-credit-ui.s3RaVy`。
+
+隔离 Compose project `growthosl22browserfa17592b0bc29accfaa16441` 的 6 个容器、3 个网络、2 个 volume 与 4 个本轮 acceptance image tag 已按精确 project/tag 删除；长期 `growthos` Compose 栈、用户其他 Docker project、依赖缓存和已有业务数据没有被改动。仓库跟踪的 `deploy/compose/compose.lesson21-acceptance.yaml` 是可复用验收资产，复核后保留。
 
 需要长期保留的证据是：
 

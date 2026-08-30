@@ -2,16 +2,16 @@
 
 ## 定位
 
-`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。第 17～20 节加入 Lottery 领域对象、两张业务表、Strategy Repository、加权 Selector 与生产随机源，第 21 节又把它们装配成一个 development/test 专用的后端 ephemeral API；但前端尚未增加 Lottery API module 或运行时 decoder，因此业务页面继续按后续章节逐步接入。
+`web/` 是统一的 React 单页应用。第 14 节完成框架、路由和基础组件，第 15 节完成系统探针首个真实前后端切片；第 17～21 节建立 Lottery 领域、持久化、选择与 development/test ephemeral API，第 22 节再通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 接入真实 React `/lottery` 页面。同时，四类工作台以同一个 `WorkspaceShell` 统一侧栏、顶栏、搜索、主题、内容几何和移动抽屉，视觉语言采用高密度、扁平、细边框的数据工作台，而不是把业务页面包装成营销落地页。
 
 ## 工作台
 
 | 工作台 | 路由 | 当前内容 |
 | --- | --- | --- |
-| 用户端 | `/`、`/feed`、`/campaigns`、`/lottery`、`/points`、`/coupons` | 使用 Mock 数据呈现增长触达与用户权益；后端已有 ephemeral Lottery API，但 `/lottery` 仍以 `Math.random()` 决定结果，未调用它 |
-| 运营端 | `/admin/*` | 活动、策略、奖品、账户、实验、分析、任务和审计入口 |
-| MCP Gateway | `/mcp/*` | 服务、Tools、权限和审计控制台入口 |
-| AI Operator | `/agent/*` | 工作区、任务、审批和历史入口 |
+| 用户端 | `/`、`/feed`、`/campaigns`、`/lottery`、`/points`、`/coupons`、`/profile` | `/lottery` 真实消费 ephemeral API；其余页面是带快照时间和能力边界的 Mock/本地交互 |
+| 运营端 | `/admin/*` | 活动、策略、奖品、账户、实验、分析、任务和审计入口；数据为明确演示快照，未接入写链路 |
+| MCP Gateway | `/mcp/*` | 服务、Tools、权限和审计控制台入口；当前为本地节点/风险样例，不是实时 Gateway telemetry |
+| AI Operator | `/agent/*` | 工作区、任务、审批和历史入口；仅可创建浏览器内演示任务，不调用 Agent、MCP Tool 或后端写接口 |
 | 系统状态 | `/system/status` | 真实读取 `GET /health` 与 `GET /ready`，区分正常、依赖降级和 API 状态未知 |
 
 ## 目录边界
@@ -19,17 +19,17 @@
 ```text
 web/src/
 ├── api/           # 同源 HTTP client、运行时契约解码与按能力组织的 API 函数
-├── layouts/       # 四类工作台布局
+├── layouts/       # 四类工作台的导航配置与 WorkspaceShell 组合
 ├── pages/         # 按工作台和领域组织的路由页面
 │   └── system/status/ # 系统探针页面、状态 hook 与对应测试
-├── components/    # 公共、业务和图表组件
+├── components/    # 公共、业务和图表组件；layout/WorkspaceShell 统一工作台壳层
 ├── routes/        # 路由注册
-├── mocks/         # 除系统探针外的当前业务演示数据，后续按领域替换为 API 适配
+├── mocks/         # 除系统探针与 Lottery selection 外的当前演示快照，后续按领域替换
 ├── stores/        # 用户、主题、布局和环境状态
 └── types/         # 业务类型与 API 契约
 ```
 
-`src/api/httpClient.ts` 只接受同源绝对路径，并统一处理 JSON、超时、调用方取消、请求关联和浏览器侧耗时；错误显式区分 `http`、`gateway`、`network`、`timeout`、`cancelled` 与 `contract`。`src/api/systemApi.ts` 对探针响应做运行时解码，避免把 TypeScript 静态类型误当成网络边界验证。`src/pages/system/status/useSystemStatus.ts` 并行获取两类探针，并在卸载、刷新与竞态时取消或丢弃过期结果。
+`src/api/httpClient.ts` 只接受同源绝对路径，并统一处理 JSON、无 body POST、超时、调用方取消、请求关联和浏览器侧耗时；错误显式区分 `http`、`gateway`、`network`、`timeout`、`cancelled` 与 `contract`。`src/api/systemApi.ts` 对探针响应做运行时解码；`src/api/lotteryApi.ts` 校验 canonical uint64 string、固定 demo header 和 ephemeral success DTO。`src/pages/system/status/useSystemStatus.ts` 管理并行探针；`src/pages/user/lottery/useEphemeralLotterySelection.ts` 以同步 pending guard、`AbortController` 和 generation guard 管理一次 selection，且不自动重试。
 
 ## 运行方式
 
@@ -49,12 +49,12 @@ pnpm preview
 
 ## 当前事实与后续演进
 
-当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取完成了真实 React 联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`。仓库已有 Strategy/Award、两张表、Create/FindByID Repository、WeightedSelector/CryptoSource，以及 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 后端路由；但 `web/src/api` 尚无 Lottery adapter，`/lottery` 仍使用客户端 `Math.random()` 演示。页面部分文案提到后端概率、Redis 锁等未来能力，不代表它已经调用真正的 Repository/Selector，也不代表正式 Draw、Redis 锁、库存或发奖已实现。
+当前真实 React 联调有两条：`/system/status` 读取 `GET /health` 与由 MySQL 支撑的 `/ready`；`/lottery` 调用 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`，并把服务端 `reward`、`no_reward` 与各类失败保持为不同状态。Lottery 页面不维护前端候选、概率、库存或随机决定，不在失败后透明重试；返回值仍只是页面刷新后消失的临时候选，不是 Draw、中奖记录或已发放权益。
 
-第 22 节接入第一个真实 React 抽奖页时，必须显式替换或隔离对应 Mock，通过同源 API 获取服务端决定的结果，并保留 `reward`、`no_reward` 与系统错误的不同语义。在此之前，不把前端 `LotteryPrize` 展示类型反向用作 Go 领域或数据库契约，也不把表的行级 `updated_at` 当成前端聚合版本、ETag 或缓存失效标记。
+活动、Feed、积分、优惠券、个人资料、Admin、MCP 和 Agent 页面继续使用统一 `MOCK_SNAPSHOT_LABEL` 标注的演示快照或浏览器内状态。筛选、路由、复制、主题、搜索和本地任务等交互可以真实工作，但不代表存在相应后端查询/写入、实时账务或生产控制面。四类工作台当前也只是信息架构：没有登录认证、RBAC、租户隔离、对象级授权或服务端拒绝路径。路线不会在第 23 节因页面诉求临时插入一套前端角色开关：第 23～30 节先形成 Lottery 规则、缓存、资格决策与 Activity 等真实受保护资源，第 31～35 节再依次建立公共访问控制模型、真实会话、服务端强制、前端权限感知和越权端到端验收，第 36 节首个真实运营后台必须复用这套能力。前端裁剪只改善体验，服务端拒绝才构成授权边界。
 
-第 21 节后端能力的准确边界见[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。它默认关闭、仅 development/test 可启用，而且不提供认证、幂等或持久 Draw；第 22 节不能在客户端偷偷重试后把新 selection 冒充同一次结果。
+第 21 节后端能力仍由[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；第 22 节前端实现与边界见[课程](../course/part-03/lesson-22-react-lottery-page.md)、[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)。
 
-第 15 节已做正常、MySQL 不可用和 API 离线三种状态的真实浏览器关联验收，并核对刷新、请求关联与可访问性。该验收只证明当前环境中的联调和展示契约，不构成性能、持续可用性或生产就绪声明。
+第 15 节已做正常、MySQL 不可用和 API 离线三种系统探针场景的真实浏览器关联验收。第 22 节又覆盖 Lottery 请求状态、共享壳层交互，以及 1719 × 862 桌面和 390 × 844 移动视口；这些证据只证明当前环境中的联调、交互和展示契约，不构成性能、持续可用性、权限隔离或生产就绪声明。
 
 每节新增或调整前端 API 时，必须同步写入 [章节 API 记录](../api/lessons/README.md)。

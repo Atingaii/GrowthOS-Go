@@ -171,9 +171,9 @@ There was no authenticated reference screenshot for the same mobile state. Mobil
 
 ## 7. Quality gates and residual findings
 
-At documentation time:
+At the final lesson checkpoint:
 
-- all 19 Vitest files and all 152 tests passed; the final checkpoint rerun remains authoritative;
+- all 19 Vitest files and all 152 tests passed in the authoritative `make verify` rerun;
 - `tsc --noEmit` passed;
 - Vite production build passed without the previous >500 kB single-chunk warning;
 - real-browser desktop and mobile passes completed;

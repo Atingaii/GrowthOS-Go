@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="docs/README.md">文档中心</a> ·
-  <a href="docs/course/README.md">96 节路线</a> ·
+  <a href="docs/course/README.md">101 节路线</a> ·
   <a href="docs/product/product-brief.md">产品定义</a> ·
   <a href="docs/configuration.md">配置参考</a> ·
   <a href="docs/frontend/frontend-architecture.md">前端架构</a> ·
@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-21%20lessons%20completed-2563EB?style=flat-square" alt="已完成 21 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-22%20lessons%20completed-2563EB?style=flat-square" alt="已完成 22 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 96 节演进式路线持续建设。当前已完成第 1～21 节，共 21 节：M0 Compose 开发环境已验收，第 17～20 节依次建立 Lottery `Strategy` / `Award` 领域模型、两张 MySQL 表、Strategy 仓储与无偏加权选择，第 21 节把只读快照和选择器装配成 development/test 专用的 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`。该路由默认关闭、禁止在 staging/production 开启，并且只返回不持久化的临时选择。当前仍没有正式 Draw/Result、认证、幂等、参与资格、库存、发奖、真实 React Lottery 联调或 Redis 业务缓存；一个可调用的 ephemeral API 仍不等于在线抽奖闭环。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～22 节，共 22 节：M0 Compose 开发环境已验收，第 17～21 节依次建立 Lottery `Strategy` / `Award` 领域模型、两张 MySQL 表、Strategy 仓储、无偏加权选择和 development/test 专用 ephemeral API；第 22 节再由 React `/lottery` 通过同源、无请求体且不自动重试的 POST 真实消费该 API。服务端仍只返回不持久化的临时 Award 选择，页面也只表达“候选被选中”。当前没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖或 Redis 业务缓存；其余用户、Admin、MCP 与 Agent 工作台仍是明确标注的 Mock 快照或浏览器本地交互。一个可调用且可见的 ephemeral selection 仍不等于在线抽奖闭环。
 
 ## 项目简介
 
@@ -151,9 +151,11 @@ curl --request POST \
 
 第 21 节学习资料：[课程正文](docs/course/part-03/lesson-21-lottery-api.md)、[API 契约](docs/api/lessons/lesson-21.md)、[QA 证据](docs/qa/lessons/lesson-21.md)、[第一性原理手记](docs/design-thinking/lessons/lesson-21.md)、[面试问答](docs/interview/lessons/lesson-21.md)与 [ADR-0018](docs/decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
 
+第 22 节为这条后端能力增加真实 React 消费者：`lotteryApi` 校验完整 `uint64` 十进制 string 和响应 DTO，`useEphemeralLotterySelection` 管理 pending 抑制、取消与旧响应隔离，页面明确区分 `reward`、`no_reward`、HTTP 拒绝、网关/网络失败、timeout、取消和契约漂移。它没有增加 Go 路由，也没有把临时选择升级成正式 Draw。学习资料见[课程正文](docs/course/part-03/lesson-22-react-lottery-page.md)、[API 契约](docs/api/lessons/lesson-22.md)、[QA 证据](docs/qa/lessons/lesson-22.md)、[第一性原理手记](docs/design-thinking/lessons/lesson-22.md)和[面试问答](docs/interview/lessons/lesson-22.md)。
+
 ### React 前端框架
 
-`web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架，包含响应式布局、明暗主题、路由、集中 Mock 数据与基础可视化。第 15 节新增统一 HTTP Client、运行时契约解码、系统探针 API 与系统状态页：该页面真实消费 Go 的 `GET /health` 和 `GET /ready`。第 21 节虽已有后端 ephemeral Lottery API，但尚未增加前端 `lotteryApi` 模块；`/lottery` 仍使用客户端 `Math.random()` Mock，不能描述为已经联调。
+`web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛桌面侧栏、移动抽屉、顶栏、搜索、主题、通知样例、内容宽度和可访问交互，并重构为高密度、扁平的工作台信息架构。真实前端链路目前只有两类：`/system/status` 消费 Go 的 `GET /health` 与 `GET /ready`；`/lottery` 通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 消费 development/test ephemeral selection API。活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用带时间标签的 Mock 快照或浏览器内本地状态，不是实时后端数据。工作台分组也不是身份或权限系统；当前没有登录认证、RBAC、租户/对象级数据范围或服务端授权强制。
 
 ```bash
 git clone git@github.com:Atingaii/GrowthOS-Go.git
@@ -168,7 +170,7 @@ cd web && pnpm run dev
 
 ### Docker Compose M0 开发环境
 
-第 21 节继续沿用不会占用宿主机 MySQL/Redis 端口的本地路径。需要 Docker Desktop 与 Compose 插件；仓库只发布 Web 的回环端口 `127.0.0.1:8088`，API、MySQL、Redis、Migration 与授权作业不发布宿主机端口。首次启动会在被 Git 忽略的目录生成本地 Secret 文件：
+第 22 节前端联调继续沿用不会占用宿主机 MySQL/Redis 端口的本地路径。需要 Docker Desktop 与 Compose 插件；仓库只发布 Web 的回环端口 `127.0.0.1:8088`，API、MySQL、Redis、Migration 与授权作业不发布宿主机端口。首次启动会在被 Git 忽略的目录生成本地 Secret 文件：
 
 ```bash
 make compose-up
@@ -212,7 +214,7 @@ make verify
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
 | 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award、Create/FindByID 仓储、无偏加权 Selector、crypto random adapter，以及 development/test 专用 ephemeral selection API | 正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
-| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、同源 Fetch Client、运行时契约解码、真实系统状态页；Lottery 后端 API 已存在，但 `/lottery` 仍为 `Math.random()` Mock | 用户端、运营端、MCP 与 AI Operator 逐域真实联调 |
+| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时契约解码；系统状态页和 ephemeral Lottery 页面已真实联调，其余工作台为明确 Mock/本地状态 | 第 23～24 节先闭合 Lottery 规则与缓存；第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
 | 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、latest 2 嵌入式前向 Migration；`lottery_strategy` / `lottery_strategy_award` 两张业务表；手写 SQL 以事务创建和 RR 快照读取聚合；当前运行应用仅有两表 `SELECT` 且无 `schema_migrations` 权限；Compose 含隔离且易失的 Redis 环境占位 | Draw/Result、库存与发奖事实、更新/版本化、Redis 缓存、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
@@ -222,22 +224,24 @@ make verify
 
 ## 课程路线
 
-整个项目拆为 12 个阶段、96 节。完整标题和每节证据以 [`docs/course/status.csv`](docs/course/status.csv) 为唯一状态源。
+整个项目拆为 12 个阶段、101 节。前两部分与第三部分仍保持原来的八节节奏；第四部分为承载公共访问控制能力扩展为 13 节，后续部分继续按八节推进。完整标题和每节证据以 [`docs/course/status.csv`](docs/course/status.csv) 为唯一状态源。
 
 | 阶段 | 章节 | 主题 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
-| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 21 节 development/test ephemeral Lottery API 已验收，第 22 节下一步接入真实 React 页面 |
-| 4 | 25～32 | 规则系统与营销活动 | 计划中 |
-| 5 | 33～40 | 活动账户、订单与库存 | 计划中 |
-| 6 | 41～48 | MQ、最终一致性与补偿 | 计划中 |
-| 7 | 49～56 | 积分、优惠券、返利与权益中心 | 计划中 |
-| 8 | 57～64 | Growth Feed 与用户行为 | 计划中 |
-| 9 | 65～72 | Feed 推荐、实验与增长分析 | 计划中 |
-| 10 | 73～80 | 模块化单体到分布式 | 计划中 |
-| 11 | 81～88 | AI MCP Gateway | 计划中 |
-| 12 | 89～96 | AI Agent、可观测、压测与上线 | 计划中 |
+| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 22 节真实 React ephemeral Lottery 页面与共享工作台已验收；第 23 节按原主线进入抽奖策略规则 |
+| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 计划中：第 31～35 节先形成跨工作台统一访问控制，再交付真实运营后台 |
+| 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
+| 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |
+| 7 | 54～61 | 积分、优惠券、返利与权益中心 | 计划中 |
+| 8 | 62～69 | Growth Feed 与用户行为 | 计划中 |
+| 9 | 70～77 | Feed 推荐、实验与增长分析 | 计划中 |
+| 10 | 78～85 | 模块化单体到分布式 | 计划中 |
+| 11 | 86～93 | AI MCP Gateway | 计划中 |
+| 12 | 94～101 | AI Agent、可观测、压测与上线 | 计划中 |
+
+> 访问控制不是看到 UI 后临时补一组菜单判断，而是所有操作者和工作台共享的平台能力。路线保留第 23～30 节的 Lottery 规则与 Activity 建模，让主体、资源、动作和数据范围先有真实业务对象；随后在第 31～35 节依次完成公共权限模型与威胁边界、真实会话认证、服务端 RBAC 强制执行、前端按权限裁剪和越权端到端验收，并在第 36 节首个真实运营后台复用这套能力。当前四类工作台仍只是信息架构分区，没有认证或授权证据。
 
 ### 可部署里程碑
 

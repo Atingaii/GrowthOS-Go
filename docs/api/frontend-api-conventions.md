@@ -7,7 +7,7 @@
 ```text
 页面/组件
   ↓
-领域 API 模块（当前前端仅有 system；后端 lottery route 已存在但尚无前端模块）
+领域 API 模块（当前已有 system 与 lottery）
   ↓
 统一 HTTP Client
   ↓
@@ -18,11 +18,13 @@ Vite 开发/预览代理，或 Compose Nginx 入口
 Go Gin API
 ```
 
-第 15 节已实现的真实前端链路只覆盖系统状态页：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 在宿主开发模式下代理到 Go API。第 16 节增加 Compose Nginx 入口，动态解析 API 容器、隐藏上游同名请求 ID 后统一回写最终 `X-Request-ID`。第 21 节后端已经实现 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`，但前端尚无 `lotteryApi`、DTO decoder 或页面状态管理，`/lottery` 仍是 `Math.random()` Mock。页面组件不得因为 route 已存在就直接拼接 `fetch` 绕过本约定。
+第 15 节实现系统状态链路：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 在宿主开发模式下代理到 Go API。第 16 节增加 Compose Nginx 入口，动态解析 API 容器、隐藏上游同名请求 ID 后统一回写最终 `X-Request-ID`。第 21 节后端实现 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`；第 22 节再增加 `lotteryApi`、成功响应运行时 decoder、bodyless POST transport 与请求状态 Hook，使 `/lottery` 真实调用该路由。页面组件仍不得直接拼接 `fetch` 绕过这些边界。
 
-该后端 route 默认关闭且仅 development/test 可启用，返回的是不持久化、不可幂等重放的临时选择。前端接入前必须按[第 21 节 API 契约](lessons/lesson-21.md)实现 decimal-string ID decoder，并区分 reward、no_reward、HTTP error、gateway error 与取消；不能把它包装成正式 Draw 成功。其设计和证据见[课程](../course/part-03/lesson-21-lottery-api.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
+该后端 route 默认关闭且仅 development/test 可启用，返回的是不持久化、不可幂等重放的临时选择。第 22 节实现保持 Strategy/Award ID 为 canonical decimal string，区分 `reward`、`no_reward`、HTTP、gateway、network、timeout、cancelled 与 contract drift，不自动重试，也不把响应包装成正式 Draw 成功。当前没有登录认证、RBAC、租户/对象级授权或服务端用户资格校验；`credentials: "same-origin"` 只是传输设置，不是鉴权证据。边界见第 21 节[后端契约](lessons/lesson-21.md)与 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)，前端实现与证据见第 22 节[课程](../course/part-03/lesson-22-react-lottery-page.md)、[API 记录](lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)。
 
 统一 Client 只接受以单个 `/` 开头、且不含反斜杠的同源绝对路径，请求使用 `same-origin` credentials/mode、`redirect: "error"` 与 `cache: "no-store"`。响应必须是可解析 JSON，并通过对应 API 模块的运行时 decoder；成功响应保留浏览器侧耗时和可用的 `X-Request-ID`，错误输出只使用公开 envelope 或前端稳定文案。
+
+除系统探针与 Lottery ephemeral selection 外，活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 工作台仍使用显式 Mock 快照或浏览器本地状态。它们不应创建指向不存在后端能力的 API 模块，也不能把页面可点击等同于服务端写入、实时数据或权限已经落地。
 
 ## 失败分类
 

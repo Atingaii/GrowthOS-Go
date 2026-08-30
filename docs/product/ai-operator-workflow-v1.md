@@ -210,5 +210,5 @@ AI Operator 页面应同时显示：
 - 第 5 节从任务提出、计划生成、审批和执行中提取业务事件；
 - 第 6 节需要区分 Agent、MCP、Approval、Audit 与 Marketing 的职责；
 - 第 7 节已在[非功能需求基线 v1](non-functional-requirements-v1.md)中定义 Tool 网关开销、审批有效期、任务恢复和审计完整性的候选目标，具体 Tool 端到端超时仍随真实接口登记；
-- 第 81～93 节实现协议、Gateway、Agent、审批和 Guardrail 时必须遵守本工作流；
+- 第 86～101 节实现协议、Gateway、Agent、审批和 Guardrail 时必须遵守本工作流；
 - 后续数据库不能只存最终聊天文本，必须能够表达计划、审批和每次 Tool 调用事实。

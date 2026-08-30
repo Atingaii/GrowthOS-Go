@@ -17,6 +17,34 @@ import (
 
 var markdownLink = regexp.MustCompile(`!?\[[^]]*\]\(([^)]+)\)`)
 
+const courseLessonCount = 101
+
+type coursePartRange struct {
+	part  int
+	start int
+	end   int
+}
+
+// coursePartRanges is the authoritative course boundary registry. Part 4 is
+// intentionally wider because lessons 31-35 insert the access-control
+// foundation before the first real operator write surface. Later parts keep
+// their original eight-lesson shape with the former lessons 31-96 shifted by
+// five positions.
+var coursePartRanges = []coursePartRange{
+	{part: 1, start: 1, end: 8},
+	{part: 2, start: 9, end: 16},
+	{part: 3, start: 17, end: 24},
+	{part: 4, start: 25, end: 37},
+	{part: 5, start: 38, end: 45},
+	{part: 6, start: 46, end: 53},
+	{part: 7, start: 54, end: 61},
+	{part: 8, start: 62, end: 69},
+	{part: 9, start: 70, end: 77},
+	{part: 10, start: 78, end: 85},
+	{part: 11, start: 86, end: 93},
+	{part: 12, start: 94, end: 101},
+}
+
 func main() {
 	root, err := findRepositoryRoot()
 	if err != nil {
@@ -64,6 +92,7 @@ func checkRequiredFiles(root string) []error {
 		"docs/api/lessons/README.md",
 		"docs/architecture/repository-map.md",
 		"docs/course/README.md",
+		"docs/course/route-revisions.md",
 		"docs/course/status.csv",
 		"docs/decisions/README.md",
 		"docs/design-thinking/README.md",
@@ -154,6 +183,10 @@ func checkADRIndex(root string) []error {
 }
 
 func checkCourseStatus(root string) []error {
+	if problems := validateCoursePartRanges(); len(problems) > 0 {
+		return problems
+	}
+
 	path := filepath.Join(root, "docs", "course", "status.csv")
 	file, err := os.Open(path)
 	if err != nil {
@@ -166,8 +199,12 @@ func checkCourseStatus(root string) []error {
 	if err != nil {
 		return []error{fmt.Errorf("parse docs/course/status.csv: %w", err)}
 	}
-	if len(records) != 97 {
-		return []error{fmt.Errorf("course registry must contain one header and 96 lessons; got %d rows", len(records))}
+	if len(records) != courseLessonCount+1 {
+		return []error{fmt.Errorf(
+			"course registry must contain one header and %d lessons; got %d rows",
+			courseLessonCount,
+			len(records),
+		)}
 	}
 	expectedHeader := []string{"章节", "阶段", "标题", "状态", "正文", "QA证据"}
 	if len(records[0]) != len(expectedHeader) {
@@ -191,7 +228,11 @@ func checkCourseStatus(root string) []error {
 		if err != nil || lesson != i+1 {
 			problems = append(problems, fmt.Errorf("course registry row %d must be lesson %d", row, i+1))
 		}
-		expectedPart := ((i + 1 - 1) / 8) + 1
+		expectedPart, ok := expectedCoursePart(lesson)
+		if !ok {
+			problems = append(problems, fmt.Errorf("lesson %d is outside the registered course ranges", lesson))
+			continue
+		}
 		part, err := strconv.Atoi(record[1])
 		if err != nil || part != expectedPart {
 			problems = append(problems, fmt.Errorf("lesson %d must belong to part %d", lesson, expectedPart))
@@ -212,6 +253,56 @@ func checkCourseStatus(root string) []error {
 				problems = append(problems, fmt.Errorf("completed lesson %d references missing %s", lesson, registeredPath))
 			}
 		}
+	}
+	return problems
+}
+
+func expectedCoursePart(lesson int) (int, bool) {
+	for _, partRange := range coursePartRanges {
+		if lesson >= partRange.start && lesson <= partRange.end {
+			return partRange.part, true
+		}
+	}
+	return 0, false
+}
+
+func validateCoursePartRanges() []error {
+	var problems []error
+	expectedStart := 1
+	for index, partRange := range coursePartRanges {
+		expectedPart := index + 1
+		if partRange.part != expectedPart {
+			problems = append(problems, fmt.Errorf(
+				"course part range %d must register part %d; got part %d",
+				index+1,
+				expectedPart,
+				partRange.part,
+			))
+		}
+		if partRange.start != expectedStart {
+			problems = append(problems, fmt.Errorf(
+				"course part %d must start at lesson %d; got %d",
+				partRange.part,
+				expectedStart,
+				partRange.start,
+			))
+		}
+		if partRange.end < partRange.start {
+			problems = append(problems, fmt.Errorf(
+				"course part %d ends before it starts: %d-%d",
+				partRange.part,
+				partRange.start,
+				partRange.end,
+			))
+		}
+		expectedStart = partRange.end + 1
+	}
+	if expectedStart != courseLessonCount+1 {
+		problems = append(problems, fmt.Errorf(
+			"course part ranges must end at lesson %d; next lesson is %d",
+			courseLessonCount,
+			expectedStart,
+		))
 	}
 	return problems
 }
