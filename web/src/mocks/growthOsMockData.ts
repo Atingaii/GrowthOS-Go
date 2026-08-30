@@ -2,7 +2,6 @@ import {
   UserProfile,
   Campaign,
   GrowthFeedItem,
-  LotteryPrize,
   Coupon,
   PointTransaction,
   McpServer,
@@ -119,15 +118,6 @@ export const mockFeedItems: GrowthFeedItem[] = [
     comments: 45,
     campaignLink: '/campaigns/cmp_001'
   }
-];
-
-export const mockLotteryPrizes: LotteryPrize[] = [
-  { id: '1', name: '5,000 Points', type: 'points', icon: 'Coins', amount: '5000', probability: 0.05, color: '#f59e0b' },
-  { id: '2', name: '$50 Coupon', type: 'coupon', icon: 'Ticket', amount: '$50', probability: 0.1, color: '#3b82f6' },
-  { id: '3', name: '100 Points', type: 'points', icon: 'Sparkles', amount: '100', probability: 0.4, color: '#10b981' },
-  { id: '4', name: 'MacBook M3 Pro', type: 'physical', icon: 'Gift', amount: '1 Unit', probability: 0.001, color: '#ec4899' },
-  { id: '5', name: '$10 Rebate', type: 'coupon', icon: 'Tag', amount: '$10', probability: 0.2, color: '#8b5cf6' },
-  { id: '6', name: 'Try Again', type: 'empty', icon: 'Smile', amount: '0', probability: 0.249, color: '#64748b' },
 ];
 
 export const mockCoupons: Coupon[] = [

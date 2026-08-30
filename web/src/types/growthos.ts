@@ -42,16 +42,6 @@ export interface GrowthFeedItem {
   campaignLink?: string;
 }
 
-export interface LotteryPrize {
-  id: string;
-  name: string;
-  type: 'points' | 'coupon' | 'physical' | 'empty';
-  icon: string;
-  amount: string;
-  probability: number;
-  color: string;
-}
-
 export interface Coupon {
   id: string;
   code: string;
