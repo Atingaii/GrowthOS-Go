@@ -330,7 +330,7 @@ func applyAndVerifyRuleGraphSchemaV5(
 		_ = runner.Close()
 		t.Fatalf("read rule graph migration status: %v", err)
 	}
-	if status.State != dbmigration.StatusClean || status.Version != 5 || status.Latest != 5 {
+	if status.State != dbmigration.StatusClean || status.Version != 11 || status.Latest != 11 {
 		_ = runner.Close()
 		t.Fatalf("migration status = %+v, want clean exact v5", status)
 	}

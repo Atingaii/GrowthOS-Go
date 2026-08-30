@@ -4,9 +4,9 @@ package migrations
 
 import "embed"
 
-// Files contains the migration policy and the sql subtree. Lesson 18 adds the
-// first business schema as two single-DDL migrations: Strategy followed by its
-// strategy-scoped Awards.
+// Files contains the migration policy and the sql subtree. Business schema is
+// forward-only: Strategy/Award, Strategy routing graph, immutable Strategy
+// snapshots, then Marketing Activity publication state currently end at v11.
 //
 //go:embed README.md sql
 var Files embed.FS

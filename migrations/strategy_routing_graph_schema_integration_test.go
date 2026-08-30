@@ -58,9 +58,9 @@ func TestStrategyRoutingGraphSchemaMySQLIntegration(t *testing.T) {
 		_ = runner.Close()
 		t.Fatalf("read migration status: %v", err)
 	}
-	if status.State != dbmigration.StatusClean || status.Version != 5 || status.Latest != 5 {
+	if status.State != dbmigration.StatusClean || status.Version != 11 || status.Latest != 11 {
 		_ = runner.Close()
-		t.Fatalf("migration status = %+v, want clean at exact current version 5", status)
+		t.Fatalf("migration status = %+v, want clean at exact current version 11", status)
 	}
 	if err := runner.Close(); err != nil {
 		t.Fatalf("close migration runner: %v", err)
