@@ -135,6 +135,7 @@
 | 18 | `54f4769` | 对齐 README、产品边界与 Repository 当前态 |
 | 19 | `e4531bf` | 对齐本地 Compose 与 Migration 运维手册 |
 | 20 | `4057f5d` | 登记课程、API、QA、设计与面试索引及章节状态 |
+| 21 | `3f21b96` | 回填最终 verify/race/fuzz/coverage/frontend、停止线与精确清理证据 |
 
 可复核线性切片：
 
@@ -566,6 +567,6 @@ test -z "$(git diff --no-index --check /dev/null \
 - [x] final candidate `make verify` 与全仓 race；
 - [x] final graph fuzz、atomic coverage 与前端门禁；
 - [x] `809d436..HEAD` diff/stop-line/线性历史/clean-worktree；
-- [ ] 冻结提交 push 后同名远端 SHA、累计分支 fast-forward 和 main 不变复核。
+- [x] 冻结提交 push 后同名远端 SHA、累计分支 fast-forward 和 main 不变复核。
 
-最终 accepted tip 只以根代理提交并推送后的同名远端实际 SHA 为准。本文不虚构尚未生成的 SHA，也不把 disposable test identity 的成功外推为生产权限系统已经完成。
+冻结证据提交 `3f21b96` 推送后，已实际核对本地 HEAD、同名远端分支与 `codex/complete-implementation` 三者相等，`main` / `origin/main` 仍为 `3ec52a2`。本段是唯一后续的远端引用记录；它推送后再次将章节分支和累计分支对齐到本文所在的实际 tip。最终 accepted tip 仍以同名远端引用为准，不在会改变自身 SHA 的文档中虚构自身 SHA，也不把 disposable test identity 的成功外推为生产权限系统已经完成。
