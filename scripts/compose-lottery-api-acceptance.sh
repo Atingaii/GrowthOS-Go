@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-# Destructive-to-self acceptance for the current Lesson 28 schema/API build
-# and the Lesson 24 Strategy cache. Every run gets
+# Destructive-to-self acceptance for the current Lesson 30 schema build and
+# the still-ephemeral Lesson 24 Lottery API/cache behavior. Every run gets
 # a new Compose project, Docker-assigned loopback port, secret set, and volumes.
 # The long-lived `growthos` project is only snapshotted to prove that its
 # containers, volumes, and networks were not replaced or removed.
@@ -772,7 +772,7 @@ for completed_service in migrate mysql-grants; do
         fail "$completed_service did not complete successfully"
     fi
 done
-ok 'all Compose services reached their expected states on the lesson-28 schema and lesson-24 cache snapshot'
+ok 'all Compose services reached their expected states on the lesson-30 schema and lesson-24 cache snapshot'
 
 if ! docker network inspect \
     "${compose_project}_edge" \
@@ -927,10 +927,10 @@ migration_state=$(compose exec -T mysql sh -c '
         --batch --silent --skip-column-names \
         --execute="SELECT CONCAT(version, CHAR(58), dirty) FROM schema_migrations"
 ') || fail 'could not inspect migration state'
-if [ "$migration_state" != '5:0' ]; then
-    fail "migration state is $migration_state instead of clean version 5"
+if [ "$migration_state" != '11:0' ]; then
+    fail "migration state is $migration_state instead of clean version 11"
 fi
-ok 'schema migration state is clean version 5'
+ok 'schema migration state is clean version 11'
 
 # shellcheck disable=SC2016
 actual_app_grants=$(compose exec -T mysql sh -c '
@@ -958,17 +958,22 @@ if [ -n "$mandatory_roles" ]; then
 fi
 ok 'growthos_app has the exact direct grants and no mandatory-role expansion'
 
-for denied_graph_table in \
+for denied_unassembled_table in \
     lottery_strategy_routing_graph \
     lottery_strategy_routing_node \
-    lottery_strategy_routing_edge; do
+    lottery_strategy_routing_edge \
+    lottery_strategy_snapshot \
+    lottery_strategy_snapshot_award \
+    marketing_activity \
+    marketing_activity_publication \
+    marketing_activity_publication_strategy; do
     # shellcheck disable=SC2016
     if compose exec -T mysql sh -c '
         export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
         mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
             --execute="SELECT 1 FROM $1 LIMIT 0"
-    ' sh "$denied_graph_table" >/dev/null 2>&1; then
-        fail "growthos_app unexpectedly read $denied_graph_table"
+    ' sh "$denied_unassembled_table" >/dev/null 2>&1; then
+        fail "growthos_app unexpectedly read $denied_unassembled_table"
     fi
 done
 # The SELECT source is empty, so this proves INSERT denial without creating a
@@ -985,7 +990,7 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has routing-graph INSERT permission'
 fi
-ok 'growthos_app cannot read or insert the unassembled routing-graph tables'
+ok 'growthos_app cannot read unassembled graph, snapshot, or Activity tables and cannot insert graph data'
 
 # Fixture writes use the migration/fixture identity, never the product API
 # identity. All inserts are in one transaction, so an intermediate SQL failure
@@ -1193,12 +1198,12 @@ assert_multi_strategy_selection() {
 }
 
 request GET /health 200 - - -
-if ! jq -e '.status == "ok" and .version == "lesson-28" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/health did not identify the lesson-28 build'
+if ! jq -e '.status == "ok" and .version == "lesson-30" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/health did not identify the lesson-30 build'
 fi
 request GET /ready 200 - - -
-if ! jq -e '.status == "ready" and .version == "lesson-28" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/ready did not identify the ready lesson-28 build'
+if ! jq -e '.status == "ready" and .version == "lesson-30" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/ready did not identify the ready lesson-30 build'
 fi
 ok 'health and readiness succeeded through the web proxy'
 
@@ -1585,7 +1590,7 @@ migration_state_after=$(compose exec -T mysql sh -c '
         --batch --silent --skip-column-names \
         --execute="SELECT CONCAT(version, CHAR(58), dirty) FROM schema_migrations"
 ') || fail 'could not recheck migration state'
-if [ "$migration_state_after" != '5:0' ]; then
+if [ "$migration_state_after" != '11:0' ]; then
     fail 'migration state drifted during HTTP acceptance'
 fi
 # shellcheck disable=SC2016
@@ -1609,4 +1614,4 @@ if [ "$published_container_ids_after" != "$web_container_id" ]; then
     fail 'the disposable web port lost its unique ownership during HTTP acceptance'
 fi
 ok 'post-traffic migration, grants, and loopback port checks remained exact'
-ok "lesson-28 schema plus lesson-24 cache isolated Compose acceptance passed for $compose_project"
+ok "lesson-30 schema plus lesson-24 cache isolated Compose acceptance passed for $compose_project"

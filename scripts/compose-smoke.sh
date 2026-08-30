@@ -161,17 +161,17 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-28' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-28"
+if [ "$inspected_value" != 'growthos/migrate:lesson-30' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-30"
 fi
-ok 'migrate image identifies the lesson-28 routing-graph schema build'
+ok 'migrate image identifies the lesson-30 publication schema build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-28' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-28"
+if [ "$inspected_value" != 'growthos/api:lesson-30' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-30"
 fi
-ok 'api image identifies the lesson-28 build with an unassembled routing-graph adapter'
+ok 'api image identifies the lesson-30 build with unassembled publication adapters'
 
 resolve_container web
 inspect_value '{{.Config.Image}}' image
@@ -197,10 +197,10 @@ if ! migration_state=$(compose exec -T mysql sh -c '
 '); then
     fail 'could not inspect the migration version through the migration identity'
 fi
-if [ "$migration_state" != '5:0' ]; then
-    fail "migration state is $migration_state instead of clean version 5"
+if [ "$migration_state" != '11:0' ]; then
+    fail "migration state is $migration_state instead of clean version 11"
 fi
-ok 'schema migrations are clean at version 5'
+ok 'schema migrations are clean at version 11'
 
 # shellcheck disable=SC2016
 if ! name_constraint_state=$(compose exec -T mysql sh -c '
@@ -276,17 +276,22 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has access to schema_migrations'
 fi
-for denied_graph_table in \
+for denied_unassembled_table in \
     lottery_strategy_routing_graph \
     lottery_strategy_routing_node \
-    lottery_strategy_routing_edge; do
+    lottery_strategy_routing_edge \
+    lottery_strategy_snapshot \
+    lottery_strategy_snapshot_award \
+    marketing_activity \
+    marketing_activity_publication \
+    marketing_activity_publication_strategy; do
     # shellcheck disable=SC2016
     if compose exec -T mysql sh -c '
         export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
         mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
             --execute="SELECT 1 FROM $1 LIMIT 0"
-    ' sh "$denied_graph_table" >/dev/null 2>&1; then
-        fail "growthos_app unexpectedly has SELECT permission on $denied_graph_table"
+    ' sh "$denied_unassembled_table" >/dev/null 2>&1; then
+        fail "growthos_app unexpectedly has SELECT permission on $denied_unassembled_table"
     fi
 done
 # A zero-row write probe cannot mutate data even if an INSERT grant regresses.
@@ -302,7 +307,7 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has routing-graph INSERT permission'
 fi
-ok 'growthos_app cannot read or insert the unassembled routing-graph tables'
+ok 'growthos_app cannot read unassembled graph, snapshot, or Activity tables and cannot insert graph data'
 # shellcheck disable=SC2016
 if compose exec -T mysql sh -c '
     export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
@@ -535,10 +540,10 @@ assert_json_response() {
 
 request /health 200 application/json
 assert_json_response /health
-if ! jq -e '.status == "ok" and .version == "lesson-28"' "$response_body" >/dev/null 2>&1; then
-    fail '/health did not identify the lesson-28 API build'
+if ! jq -e '.status == "ok" and .version == "lesson-30"' "$response_body" >/dev/null 2>&1; then
+    fail '/health did not identify the lesson-30 API build'
 fi
-ok '/health returned HTTP 200, JSON, and the lesson-28 build through the web proxy'
+ok '/health returned HTTP 200, JSON, and the lesson-30 build through the web proxy'
 
 request /ready 200 application/json
 assert_json_response /ready
