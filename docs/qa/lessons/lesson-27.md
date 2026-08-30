@@ -6,9 +6,9 @@
 - **上一节：** [第 26 节 QA](lesson-26.md)
 - **API 记录：** [第 27 节 API 记录](../../api/lessons/lesson-27.md)
 - **基准提交：** `47fc94d`（第 26 节已验收 tip）
-- **已知实现与加固序列：** `2d7728a`、`57a3216`、`076e399`、`b307f1a`、`42caed9`、`2dc49b1`、`8ebc94a`、`544f4af`、`d57b963`、`5460bde`、`331c8c7`、`6db36dd`、`59499fb`、`a04d89d`
+- **已知实现与加固序列：** `2d7728a`、`57a3216`、`076e399`、`b307f1a`、`42caed9`、`2dc49b1`、`8ebc94a`、`544f4af`、`d57b963`、`5460bde`、`331c8c7`、`6db36dd`、`59499fb`、`a04d89d`、`9ead6e1`、`aaa4a8f`
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** domain/application/architecture、课程、API、QA、设计与面试材料已经形成。根代理在证据候选 `a04d89d` 对应内容上实际复跑 domain/application、Lottery 全量 race、20 轮 shuffle、10 秒 fuzz、atomic coverage、全仓 race、`make verify`、doccheck、章节 diff-check 与 runtime negative diff，结果均通过；coverage profile 与两次前端构建目录均已精确枚举后删除。最终索引/证据提交形成干净工作树后仍须对 accepted tip 再跑一次 clean-worktree gate，并以远端实际 SHA 冻结，本文不预写尚未生成的最终 SHA
+- **当前记录状态：** domain/application/architecture、课程、API、QA、设计与面试材料已经形成。根代理在证据候选 `a04d89d` 对应内容上实际复跑 domain/application、Lottery 全量 race、20 轮 shuffle、10 秒 fuzz、atomic coverage、全仓 race、`make verify`、doccheck、章节 diff-check 与 runtime negative diff，结果均通过；随后在包含 QA 与全局索引的干净提交 `aaa4a8f` 上再次完成 clean-worktree `make verify`、全仓 race、章节 diff-check、runtime negative diff、线性历史和清理复核。本记录随最后一笔冻结证据提交推送，以同名远端实际 SHA 为 accepted tip；push 后的远端一致性与实际 tip 文档/差异/清洁复核由根代理在最终交接中报告，本文不预写由 Git 尚未生成的 SHA
 
 > 本节验收的是 Lottery 内部一个具体、代码拥有的会员等级到 Strategy ID 的路由切片。它证明 `premium` 和 `standard` 需要不同出口、显式基线分支与可审查 path，因而不能继续伪装成 Participation 的线性 `continue/reject` chain。它没有真实会员 adapter、公开路由、Activity 绑定、Strategy 加载、随机选择、正式 Draw、认证或授权。
 
@@ -472,7 +472,9 @@ git diff --name-only 47fc94d..HEAD -- \
   internal/platform internal/participation
 ```
 
-- **当前状态：** 待本 QA、索引和状态台账先形成候选提交；通过后再补一笔只含最终证据的冻结提交。冻结后根代理还会对实际 accepted tip 再跑 doccheck/diff/clean 检查，避免把提交前结果冒充远端 tip 结果。
+- **实际候选：** `aaa4a8fd63c4b94a8d1ead38d1067655f2b43e48`。命令开始前和 `web/dist` 清理后两次 `git status --porcelain` 均为空；`make verify`、全仓 race、章节 diff-check、祖先/无 merge 检查均 exit 0，runtime negative diff 无输出。
+- **构建清理：** clean gate 生成与前述一致的 8 个 `web/dist` 节点，逐项列出后 depth-first 精确删除，删除后目录不存在且工作树恢复为空。
+- **冻结边界：** 本次只验证包含所有实现、正文、QA 候选与索引的提交；当前证据更新提交后还会对远端实际 accepted tip 复跑 doccheck、章节 diff-check、negative diff、clean status 与远端一致性，避免把候选 SHA 冒充最终 SHA。
 
 ## 15. 为什么没有 Adapter、API、Compose 或浏览器 E2E
 
@@ -574,7 +576,7 @@ git diff --name-only 47fc94d..HEAD -- \
 - [x] 完整候选内容上的 `make verify`、全仓 race、章节/worktree diff-check 与 runtime negative diff；
 - [x] coverage/web build artifact 均已精确枚举与清理；
 - [x] 当前 shell 无 `VAULT`，已如实记录未执行个人 Obsidian 同步；
-- [ ] clean-worktree accepted-tip 门禁；
-- [ ] 根代理提交、推送并以远端实际 tip 冻结本节。
+- [x] 干净候选 `aaa4a8f` 的 clean-worktree `make verify`、全仓 race、diff、线性历史与清理门禁；
+- [x] 根代理以本次最终证据提交推送并按同名远端实际 tip 冻结本节；具体 SHA 不在提交前猜测。
 
 最终 accepted tip 必须以根代理提交并推送后的同名远端分支实际 tip 为准，本文不虚构尚未生成的 SHA，也不把待复跑门禁提前写成通过。

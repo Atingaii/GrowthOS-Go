@@ -28,7 +28,7 @@
 | 第 24 节：Lottery Strategy Redis 缓存 | `codex/lesson-24-redis-strategy-cache` | 第 23 节最终检查点 `27a552b` | 配置/Redis/cache/composition `272d028`～`68fa59b`；Compose/负载/验收加固 `17e7010`～`d33723c`；文档内容以同名远端最终 tip 为准 | 本地与 `origin` | MySQL 事实源、cache-aside、严格投影、同 key fill、fail-open、最小 ACL、故障恢复与 M1 source-load 证据 |
 | 第 25 节：Participation 新用户资格 | `codex/lesson-25-user-eligibility` | 第 24 节最终检查点 `35f94b9` | 需求/ADR `ea2cacd`～`b59bc1e`；domain `959c32a`；application `b718267`；架构/构造加固 `475804b`、`c96b393`；课程/API `bf15a1b`；面试 `4987bdb`；QA/设计 `399948a`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 权威注册事实、含边界 cutoff、freshness、确定决定/技术失败、取消竞态、无 adapter/API/RuleEngine 的渐进停止线 |
 | 第 26 节：Participation 前置资格链 | `codex/lesson-26-responsibility-chain` | 第 25 节最终检查点 `8b2f3a6` | 产品基线 `974a61b`；ADR `5271963`；风险准入 `ad25dbe`；固定链 `f77e17f`；课程/API `61282ba`；面试 `d43bbff`；设计 `d87343e`；产品证据/格式修复 `eac4b92`；架构当前态 `ff1f24f`；索引/状态 `833abd0`；partial-chain 反证 `c46410e`；完整章节以包含本 QA/台账的远端冻结 tip 为准 | 本次最终证据提交并推送后冻结于本地与 `origin` | 第二条真实风险准入规则、一次 shared as-of、固定顺序、短路、取消、最小 trace 与无通用 RuleEngine 的停止线 |
-| 第 27 节：责任链为什么开始不够用了 | `codex/lesson-27-responsibility-chain-limits` | 第 26 节最终检查点 `47fc94d` | 产品基线 `2d7728a`；ADR `57a3216`；domain `076e399`；stable branch/explicit switch `b307f1a`；application `42caed9`；架构 guard `2dc49b1`；decision evidence `8ebc94a`；revision claim `544f4af`；课程 `a6d2d49`；API `5ecb061`；面试 `f2e5e07`；设计 `d57b963`；架构当前态 `5460bde`；QA 计划 `331c8c7`；revision 语义 `6db36dd`；递归 guard `59499fb`；停止线证据 `a04d89d`；完整章节以包含索引和 clean-worktree 门禁证据的远端冻结 tip 为准 | 待最终证据提交并推送后冻结于本地与 `origin` | Lottery 会员事实防腐投影、premium override、standard baseline default、单一 as-of、一跳 path 与线性 gate chain 多出口边界 |
+| 第 27 节：责任链为什么开始不够用了 | `codex/lesson-27-responsibility-chain-limits` | 第 26 节最终检查点 `47fc94d` | 产品基线 `2d7728a`；ADR `57a3216`；domain `076e399`；stable branch/explicit switch `b307f1a`；application `42caed9`；架构 guard `2dc49b1`；decision evidence `8ebc94a`；revision claim `544f4af`；课程 `a6d2d49`；API `5ecb061`；面试 `f2e5e07`；设计 `d57b963`；架构当前态 `5460bde`；QA 计划 `331c8c7`；revision 语义 `6db36dd`；递归 guard `59499fb`；停止线证据 `a04d89d`；候选门禁 `9ead6e1`；索引 `aaa4a8f`；完整章节以同名远端实际冻结 tip 为准 | 本地与 `origin` | Lottery 会员事实防腐投影、premium override、standard baseline default、单一 as-of、一跳 path 与线性 gate chain 多出口边界 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -58,17 +58,17 @@
 
 第 26 节从第 25 节最终检查点 `8b2f3a6` 线性创建。`974a61b` 先说明为何选择既有需求中的风险准入作为第二条真实 Participation 规则，并固定事实所有权、顺序与短路边界；`5271963` 比较次数、Activity、权限、事实预取、双时钟和通用 Rule 接口等方案后，接受固定两节点链；`ad25dbe` 落地最小风险事实、具体 policy/decision、consumer-owned reader 与单一安全错误分类；`f77e17f` 再从新用户和风险两条具体规则共同证明的需求中抽出一次 shared as-of、固定 `new-user -> risk` 顺序、失败/取消短路与只含实际执行节点的 trace。`61282ba`、`d43bbff`、`d87343e` 依次交付课程/API、面试问答与第一性原理设计手记；`eac4b92` 同步产品证据并关闭两个 EOF 格式缺陷；`ff1f24f` 更新架构所有权当前态；`833abd0` 登记章节状态与全局索引；`c46410e` 根据终审补齐 7 组手工 zero/partial chain 的失败关闭与依赖零调用反证。最终 doccheck、`make verify`、全仓 race、20 轮 Participation shuffle、diff-check、runtime negative diff 和构建产物清理均已有 QA 实测证据；根代理提交并推送本 QA/台账后，以 `origin/codex/lesson-26-responsibility-chain` 的实际冻结 tip 作为完整学习检查点，不预写尚未生成的最终 SHA。
 
-第 27 节从第 26 节最终检查点 `47fc94d` 线性创建。`2d7728a` 与 `57a3216` 先把 premium override、standard baseline default、unknown 失败关闭、事实/决定所有权和第 28～35 节停止线冻结为新增产品决定；`076e399` 只实现 Lottery 会员事实、具体 policy、纯 Route 与一跳 path；`b307f1a` 根据交叉审查把稳定 branch literal 与显式 tier switch 变成可执行契约；`42caed9` 增加 consumer-owned reader、单一 Clock/freshness、取消优先和安全 Cause；`2dc49b1` 守住 Lottery/Participation 与无通用 Engine 的边界；`8ebc94a` 再校验 decision/branch/reason/path 内部一致；`544f4af` 诚实校准 revision 字符串尚未绑定唯一内容。课程、API、31 道问答、设计手记、架构当前态和 QA 计划依次由 `a6d2d49`、`5ecb061`、`f2e5e07`、`d57b963`、`5460bde`、`331c8c7` 交付；`6db36dd`、`59499fb`、`a04d89d` 再根据终审校准 revision 确定性、递归扫描泛型函数并对齐停止线证据。全局索引与 clean-worktree 门禁仍以同名远端冻结 tip 为准。本节没有 membership adapter、DB/schema、Redis、HTTP/React、Strategy load/Selector、Activity、权限或浏览器 E2E。
+第 27 节从第 26 节最终检查点 `47fc94d` 线性创建。`2d7728a` 与 `57a3216` 先把 premium override、standard baseline default、unknown 失败关闭、事实/决定所有权和第 28～35 节停止线冻结为新增产品决定；`076e399` 只实现 Lottery 会员事实、具体 policy、纯 Route 与一跳 path；`b307f1a` 根据交叉审查把稳定 branch literal 与显式 tier switch 变成可执行契约；`42caed9` 增加 consumer-owned reader、单一 Clock/freshness、取消优先和安全 Cause；`2dc49b1` 守住 Lottery/Participation 与无通用 Engine 的边界；`8ebc94a` 再校验 decision/branch/reason/path 内部一致；`544f4af` 诚实校准 revision 字符串尚未绑定唯一内容。课程、API、31 道问答、设计手记、架构当前态和 QA 计划依次由 `a6d2d49`、`5ecb061`、`f2e5e07`、`d57b963`、`5460bde`、`331c8c7` 交付；`6db36dd`、`59499fb`、`a04d89d` 再根据终审校准 revision 确定性、递归扫描泛型函数并对齐停止线证据；`9ead6e1` 与 `aaa4a8f` 登记候选门禁和全局索引，最终 clean-worktree 证据以同名远端冻结 tip 为准。本节没有 membership adapter、DB/schema、Redis、HTTP/React、Strategy load/Selector、Activity、权限或浏览器 E2E。
 
 ## 稳定章节分支与累计快照
 
-课程长期保留稳定章节分支与累计快照；本节技术与文档门禁已经通过，但最终 QA/台账还需要形成一次冻结提交并推送，因此 Git 状态与验收事实分开记录：
+课程长期保留稳定章节分支与累计快照；本节技术、文档和候选 clean-worktree 门禁已经通过，最终 QA/台账由本次冻结提交推送，累计分支随后只做 fast-forward，因此 Git 内容证据与远端引用移动分开记录：
 
 | 类型 | 分支规则 | 是否移动 | 当前事实 |
 | --- | --- | --- | --- |
-| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 27 节在“包含最终 QA/台账的冻结提交”推送成功后，以同名远端实际 tip 冻结；最终 SHA 由 Git 产生，不在提交前猜测 |
-| 本次待冻结分支 | `codex/lesson-27-responsibility-chain-limits` | 只再接受配套文档、索引和最终证据提交 | 实现与主要正文已推送；根代理复跑最终门禁、提交 QA/台账并验收 push 后完成冻结 |
-| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 当前为第 26 节最终检查点 `47fc94d`；第 27 节冻结后再 fast-forward 到同一远端 tip |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 27 节以包含最终 QA/台账的同名远端实际 tip 冻结；最终 SHA 由 Git 产生，不在提交前猜测 |
+| 本次冻结分支 | `codex/lesson-27-responsibility-chain-limits` | 验收后保持稳定 | 实现、配套文档、索引、候选 clean-worktree 门禁和最终证据均已形成；以 push 后同名远端实际 tip 为准 |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 27 节冻结 push 验收后由根代理 fast-forward 到同一实际 tip；具体 SHA 以远端引用核查为准，不在提交前猜测 |
 
 学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
