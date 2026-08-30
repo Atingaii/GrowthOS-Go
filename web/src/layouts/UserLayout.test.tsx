@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { useAppStore } from "../stores/appStore";
@@ -119,10 +119,30 @@ describe("UserLayout workspace shell", () => {
     expect(screen.queryByRole("dialog", { name: "搜索 GrowthOS 页面" })).toBeNull();
   });
 
+  it("returns keyboard focus to the search trigger after Escape", async () => {
+    renderUserRoute("/home");
+
+    const trigger = screen.getAllByRole("button", { name: "搜索页面与功能" })[0];
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("textbox", { name: "搜索页面与功能" })).toBe(document.activeElement);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "搜索 GrowthOS 页面" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
   it("names the topbar actions and synchronizes both theme directions", () => {
     renderUserRoute();
 
-    expect(screen.getByRole("button", { name: "查看通知（有未读）" })).toBeTruthy();
+    const notificationButton = screen.getByRole("button", {
+      name: "查看演示通知（1 条未读样例）",
+    });
+    fireEvent.click(notificationButton);
+    const notificationPanel = screen.getByRole("region", { name: "演示通知" });
+    expect(within(notificationPanel).getByText("仅为本地界面样例，不读取服务端。")).toBeTruthy();
+    fireEvent.click(within(notificationPanel).getByRole("button", { name: "标记样例已读" }));
+    expect(screen.getByRole("button", { name: "查看演示通知" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "打开设置" }).getAttribute("href")).toBe("/profile");
     expect(screen.getByRole("link", { name: "进入活动中心" }).getAttribute("href")).toBe(
       "/campaigns",

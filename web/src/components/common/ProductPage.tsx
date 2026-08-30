@@ -101,11 +101,18 @@ interface SurfaceProps {
   children: ReactNode;
   className?: string;
   as?: "div" | "section" | "article";
+  "aria-label"?: string;
 }
 
-export function Surface({ children, className, as: Component = "div" }: SurfaceProps) {
+export function Surface({
+  children,
+  className,
+  as: Component = "div",
+  "aria-label": ariaLabel,
+}: SurfaceProps) {
   return (
     <Component
+      aria-label={ariaLabel}
       className={cn(
         "rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
         className,

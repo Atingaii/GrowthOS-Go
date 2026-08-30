@@ -68,6 +68,33 @@ function isNavigationItemActive(pathname: string, item: WorkspaceNavigationItem)
   return pathname === item.path || pathname.startsWith(`${item.path}/`);
 }
 
+const focusableSelector =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function keepFocusInside(event: React.KeyboardEvent<HTMLElement>, container: HTMLElement | null) {
+  if (event.key !== "Tab" || !container) {
+    return;
+  }
+
+  const focusableElements = [...container.querySelectorAll<HTMLElement>(focusableSelector)].filter(
+    (element) => !element.hasAttribute("hidden") && element.getClientRects().length > 0,
+  );
+  const first = focusableElements.at(0);
+  const last = focusableElements.at(-1);
+  if (!first || !last) {
+    event.preventDefault();
+    return;
+  }
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 interface SidebarNavigationProps {
   collapsed: boolean;
   navigation: WorkspaceNavigationSection[];
@@ -196,6 +223,7 @@ interface SearchPaletteProps {
 function SearchPalette({ items, onClose }: SearchPaletteProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) {
@@ -222,9 +250,11 @@ function SearchPalette({ items, onClose }: SearchPaletteProps) {
       }}
     >
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-search-title"
+        onKeyDown={(event) => keepFocusInside(event, dialogRef.current)}
         className="w-full max-w-xl overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl shadow-zinc-950/10 dark:border-zinc-800 dark:bg-zinc-950"
       >
         <h2 id="workspace-search-title" className="sr-only">
@@ -296,31 +326,63 @@ export function WorkspaceShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fullWidth, setFullWidth] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationRead, setNotificationRead] = useState(false);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileDialogRef = useRef<HTMLElement>(null);
+  const searchTriggerRef = useRef<HTMLElement | null>(null);
+  const searchOpenRef = useRef(false);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null);
+  const notificationPanelRef = useRef<HTMLElement>(null);
   const mobileWasOpen = useRef(false);
   const searchableItems = useMemo(() => {
     const uniqueItems = new Map<string, WorkspaceNavigationItem>();
     for (const item of [...navigation.flatMap((section) => section.items), ...workspaceSwitches]) {
-      uniqueItems.set(`${item.path}-${item.label}`, item);
+      if (!uniqueItems.has(item.path)) {
+        uniqueItems.set(item.path, item);
+      }
     }
     return [...uniqueItems.values()];
   }, [navigation]);
 
+  const openSearch = (trigger: HTMLElement | null) => {
+    searchTriggerRef.current = trigger === document.body ? null : trigger;
+    searchOpenRef.current = true;
+    setSearchOpen(true);
+  };
+
+  const closeSearch = () => {
+    searchOpenRef.current = false;
+    setSearchOpen(false);
+    window.requestAnimationFrame(() => searchTriggerRef.current?.focus());
+  };
+
   useEffect(() => {
     setMobileOpen(false);
+    searchOpenRef.current = false;
     setSearchOpen(false);
+    setNotificationOpen(false);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }, [location.pathname]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         event.preventDefault();
-        setSearchOpen((open) => !open);
+        if (searchOpenRef.current) {
+          closeSearch();
+        } else {
+          openSearch(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+        }
       }
       if (event.key === "Escape") {
-        setSearchOpen(false);
+        if (searchOpenRef.current) {
+          closeSearch();
+        }
         setMobileOpen(false);
+        setNotificationOpen(false);
       }
     };
     window.addEventListener("keydown", handleShortcut);
@@ -343,6 +405,25 @@ export function WorkspaceShell({
       mobileMenuButtonRef.current?.focus();
     }
   }, [mobileOpen]);
+
+  useEffect(() => {
+    if (!notificationOpen) {
+      return;
+    }
+
+    const closeOnOutsidePointer = (event: MouseEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !notificationPanelRef.current?.contains(target) &&
+        !notificationButtonRef.current?.contains(target)
+      ) {
+        setNotificationOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    return () => document.removeEventListener("mousedown", closeOnOutsidePointer);
+  }, [notificationOpen]);
 
   return (
     <div className="min-h-screen bg-white text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
@@ -392,10 +473,12 @@ export function WorkspaceShell({
           }}
         >
           <aside
+            ref={mobileDialogRef}
             id="mobile-workspace-navigation"
             role="dialog"
             aria-modal="true"
             aria-label={`${productLabel} 移动导航`}
+            onKeyDown={(event) => keepFocusInside(event, mobileDialogRef.current)}
             className="h-full w-[min(84vw,292px)] border-r border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
           >
             <div className="absolute left-[min(84vw,292px)] top-3 ml-3">
@@ -428,7 +511,7 @@ export function WorkspaceShell({
       >
         <header className="sticky top-0 z-40 h-[72px] border-b border-zinc-100 bg-white/95 backdrop-blur-md dark:border-zinc-900 dark:bg-zinc-950/95">
           <div
-            className={`mx-auto flex h-full items-center gap-3 px-4 transition-[max-width,padding] sm:px-6 md:px-8 lg:px-12 ${
+            className={`relative mx-auto flex h-full items-center gap-3 px-4 transition-[max-width,padding] sm:px-6 md:px-8 lg:px-12 ${
               fullWidth ? "max-w-none" : "max-w-[1320px]"
             }`}
           >
@@ -445,12 +528,17 @@ export function WorkspaceShell({
             </button>
 
             <Link to="/home" className="shrink-0 md:hidden" aria-label="GrowthOS 首页">
-              <GrowthOSLogo />
+              <span className="sm:hidden">
+                <GrowthOSLogo iconOnly />
+              </span>
+              <span className="hidden sm:inline-flex">
+                <GrowthOSLogo />
+              </span>
             </Link>
 
             <button
               type="button"
-              onClick={() => setSearchOpen(true)}
+              onClick={(event) => openSearch(event.currentTarget)}
               className="hidden h-8 w-64 items-center gap-2.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-left text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 md:flex"
               aria-label="搜索页面与功能"
             >
@@ -464,34 +552,40 @@ export function WorkspaceShell({
             <div className="ml-auto flex items-center gap-0.5">
               <button
                 type="button"
-                onClick={() => setSearchOpen(true)}
+                onClick={(event) => openSearch(event.currentTarget)}
                 aria-label="搜索页面与功能"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 dark:hover:bg-zinc-900 dark:hover:text-zinc-100 md:hidden"
               >
                 <Search className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
               <button
+                ref={notificationButtonRef}
                 type="button"
-                aria-label="查看通知（有未读）"
+                onClick={() => setNotificationOpen((open) => !open)}
+                aria-label={notificationRead ? "查看演示通知" : "查看演示通知（1 条未读样例）"}
+                aria-expanded={notificationOpen}
+                aria-controls="workspace-notification-panel"
                 className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
               >
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
-                <span
-                  className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500"
-                  aria-hidden="true"
-                />
+                {!notificationRead ? (
+                  <span
+                    className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </button>
               <Link
                 to="/profile"
                 aria-label="打开设置"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+                className="hidden h-10 w-10 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 dark:hover:bg-zinc-900 dark:hover:text-zinc-100 sm:inline-flex"
               >
                 <Settings className="h-[18px] w-[18px]" aria-hidden="true" />
               </Link>
               <Link
                 to={primaryAction.path}
                 aria-label={primaryAction.label}
-                className="mx-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm transition-colors hover:bg-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 dark:ring-offset-zinc-950"
+                className="mx-1 hidden h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm transition-colors hover:bg-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 dark:ring-offset-zinc-950 sm:inline-flex"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
               </Link>
@@ -522,6 +616,51 @@ export function WorkspaceShell({
                 )}
               </button>
             </div>
+
+            {notificationOpen ? (
+              <section
+                ref={notificationPanelRef}
+                id="workspace-notification-panel"
+                role="region"
+                aria-label="演示通知"
+                className="absolute right-4 top-[60px] z-50 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl shadow-zinc-950/10 dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">通知</h2>
+                    <p className="mt-0.5 text-[11px] text-zinc-400">
+                      仅为本地界面样例，不读取服务端。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={notificationRead}
+                    onClick={() => setNotificationRead(true)}
+                    className="rounded-md px-2 py-1 text-[11px] font-medium text-violet-600 hover:bg-violet-50 disabled:cursor-default disabled:text-zinc-400 dark:text-violet-300 dark:hover:bg-violet-500/10"
+                  >
+                    {notificationRead ? "已读" : "标记样例已读"}
+                  </button>
+                </div>
+                <div className="p-2">
+                  <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                        Lesson 22 页面可供核查
+                      </span>
+                      {!notificationRead ? (
+                        <span
+                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500"
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
+                      该消息只更新浏览器内状态；刷新后恢复，不代表后台任务或真实通知。
+                    </p>
+                  </div>
+                </div>
+              </section>
+            ) : null}
           </div>
         </header>
 
@@ -536,9 +675,7 @@ export function WorkspaceShell({
         </main>
       </div>
 
-      {searchOpen ? (
-        <SearchPalette items={searchableItems} onClose={() => setSearchOpen(false)} />
-      ) : null}
+      {searchOpen ? <SearchPalette items={searchableItems} onClose={closeSearch} /> : null}
     </div>
   );
 }
