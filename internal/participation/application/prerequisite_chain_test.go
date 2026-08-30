@@ -427,6 +427,94 @@ func TestEligibilityPrerequisiteChainRejectsInvalidConfigurationBeforeIO(t *test
 		})
 	}
 
+	var typedNilManualRisk *chainRiskReader
+	manualChainTests := []struct {
+		name   string
+		mutate func(*EligibilityPrerequisiteChain)
+	}{
+		{
+			name: "zero value",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				*chain = EligibilityPrerequisiteChain{}
+			},
+		},
+		{
+			name: "only registration reader",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				*chain = EligibilityPrerequisiteChain{
+					registrationFacts:      chain.registrationFacts,
+					maxRegistrationFactAge: time.Minute,
+				}
+			},
+		},
+		{
+			name: "only risk reader",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				*chain = EligibilityPrerequisiteChain{
+					riskScreeningFacts:  chain.riskScreeningFacts,
+					maxRiskScreeningAge: time.Minute,
+				}
+			},
+		},
+		{
+			name: "missing clock",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				chain.clock = nil
+			},
+		},
+		{
+			name: "typed nil risk reader field",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				chain.riskScreeningFacts = typedNilManualRisk
+			},
+		},
+		{
+			name: "zero registration age",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				chain.maxRegistrationFactAge = 0
+			},
+		},
+		{
+			name: "negative risk age",
+			mutate: func(chain *EligibilityPrerequisiteChain) {
+				chain.maxRiskScreeningAge = -time.Nanosecond
+			},
+		},
+	}
+	for _, test := range manualChainTests {
+		t.Run("manual "+test.name, func(t *testing.T) {
+			registrationReader := &chainRegistrationReader{fact: validRegistration}
+			riskReader := &chainRiskReader{fact: validRisk}
+			clock := &chainClock{now: asOf}
+			chain := &EligibilityPrerequisiteChain{
+				registrationFacts:      registrationReader,
+				riskScreeningFacts:     riskReader,
+				clock:                  clock,
+				maxRegistrationFactAge: time.Minute,
+				maxRiskScreeningAge:    time.Minute,
+			}
+			test.mutate(chain)
+
+			evaluation, err := chain.Evaluate(
+				context.Background(),
+				42,
+				validRuleSet,
+				validNewPolicy,
+				validRiskPolicy,
+			)
+			if !errors.Is(err, ErrPrerequisiteChainNotConfigured) {
+				t.Fatalf("Evaluate() error = %v, want not configured", err)
+			}
+			assertZeroPrerequisiteEvaluation(t, evaluation)
+			if registrationReader.Calls() != 0 || riskReader.Calls() != 0 || clock.Calls() != 0 {
+				t.Fatalf(
+					"invalid manual chain reached dependencies: registration %d risk %d clock %d",
+					registrationReader.Calls(), riskReader.Calls(), clock.Calls(),
+				)
+			}
+		})
+	}
+
 	argumentTests := []struct {
 		name       string
 		ctx        context.Context
