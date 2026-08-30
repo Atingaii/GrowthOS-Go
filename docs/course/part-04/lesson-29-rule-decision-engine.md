@@ -746,7 +746,7 @@ go test -count=1 ./...
 go test -race -count=1 ./...
 ```
 
-10 秒 fuzz 完成 2,569,203 次执行，新增 1 个 interesting input（总数 41）；Lottery domain/application atomic coverage 为 93.6%/88.3%，合并 92.1%；Web 为 19/19 files、152/152 tests，typecheck/build 通过；第 28 节 disposable MySQL 8.4.11 六组 Integration 上游回归也通过。它们不证明 runtime 已装配或业务 SLO。
+最终 10 秒 fuzz 完成 2,899,250 次执行，新增 1 个 interesting input（总数 43）；Lottery domain/application atomic coverage 为 93.6%/88.3%，合并 92.1%；Web 为 19/19 files、152/152 tests，typecheck/build 通过；第 28 节 disposable MySQL 8.4.11 六组 Integration 上游回归也通过。它们不证明 runtime 已装配或业务 SLO。
 
 完整文档/索引收口后仍须执行 `make verify`、最终 doccheck/diff、stop-line、历史、产物清理和远端 refs 核查。任何尚未执行的 post-doc/freeze 项都不能预写通过，远端 SHA 与累计分支状态尤其只能以实际 refs 为准。
 

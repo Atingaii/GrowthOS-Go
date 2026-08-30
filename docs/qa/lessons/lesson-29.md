@@ -11,7 +11,7 @@
 - **基准提交：** `90844c1`（第 28 节已验收 tip）
 - **当前实现序列：** `041dc30`、`27bd514`、`0ca25d2`、`51dbd61`、`a173d8b`、`3863b06`、`ab056ba`、`515d776`
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** product/ADR、共享 typed branch、共享 fact session、domain evaluator/decision/path、application exact-graph orchestration、低披露 error 与架构停止线已经形成。定向普通/race/20 轮 shuffle/vet、final-code 10 秒 fuzz、全仓普通/race、atomic coverage、Web test/typecheck/build 与第 28 节真实 MySQL 回归已实际通过；完整文档/索引收口后的 `make verify`、最终 doccheck/diff、线性历史、最终产物清理、远端同名分支与累计分支冻结仍明确保留为 pending
+- **当前记录状态：** product/ADR、共享 typed branch、共享 fact session、domain evaluator/decision/path、application exact-graph orchestration、低披露 error 与架构停止线已经形成。定向普通/race/20 轮 shuffle/vet、最终 10 秒 fuzz、post-doc `make verify`、全仓 race、atomic coverage、Web test/typecheck/build、第 28 节真实 MySQL 回归、doccheck/diff/停止线/线性历史/main 与最终产物清理均已实际通过；只剩最终证据提交后的同名远端 ref 与累计分支冻结需要核对
 
 > 本节验收的是“给定 exact validated immutable graph 和一份权威会员事实时，Lottery 能否在有界 context 内形成唯一完整 Strategy route”。它不验收 Activity 发布、公开 API、真实会员 adapter、Strategy/Award selection、正式 Draw、会话、RBAC、UI 或浏览器闭环。课程标题中的“引擎”不能被用来外推通用 Rule Engine/DSL 已完成。
 
@@ -131,11 +131,11 @@
 | caller/internal/provider priority | cancel/block/deadline/error+value tests | ACTUAL-PASS | context可强制抢占不合作 provider |
 | low-disclosure wrapper | `Error`/`Is`/`Cause` tests | ACTUAL-PASS | 已有 HTTP mapping |
 | 64 worker request isolation | domain/application concurrency tests | ACTUAL-PASS + race定向通过 | 注入的任意真实 adapter都线程安全 |
-| evaluator fuzz target | `FuzzEvaluateStrategyRoutingGraphNeverPanicsLoopsOrReturnsPartialDecision` | ACTUAL-PASS；10 秒、2,569,203 execs、1 new interesting（total 41） | 对所有输入的穷举证明 |
+| evaluator fuzz target | `FuzzEvaluateStrategyRoutingGraphNeverPanicsLoopsOrReturnsPartialDecision` | FINAL-CANDIDATE-PASS；10 秒、2,899,250 execs、1 new interesting（total 43） | 对所有输入的穷举证明 |
 | no generic engine/fact bag | AST architecture guard | ACTUAL-PASS（application定向门禁） | 未来永远不需要扩展 |
 | no runtime/HTTP/Web/Compose wiring | production-source identifier guard | ACTUAL-PASS（application定向门禁） | 生产部署/浏览器已测试 |
 | repository/frontend regression | 全仓普通/race 与 Web test/typecheck/build | ACTUAL-PASS；最终聚合 `make verify` 仍待文档收口后复跑 | 当前可以宣称 accepted tip |
-| remote/cumulative/main refs | push后 exact refs | FINAL-FREEZE-PENDING | 远端已冻结 |
+| remote/cumulative refs | push 后 exact refs | FINAL-FREEZE-PENDING | 远端与累计分支已冻结 |
 
 ## 5. 按提交核查真实演进
 
@@ -361,7 +361,7 @@ go test ./internal/lottery/domain \
 ```
 
 - **状态：** ACTUAL-PASS，exit 0；
-- **结果：** 2,569,203 次执行，新增 1 个 interesting input，总数 41；
+- **结果：** final candidate 为 2,899,250 次执行，新增 1 个 interesting input，总数 43；
 - **边界：** coverage-guided fuzz 不是输入空间穷举，也没有经过 Repository、真实 timer 调度或外部 provider；执行数不能冒充数学证明。
 
 ## 11. 架构停止线验收
@@ -513,21 +513,21 @@ web/dist/assets/index-DtgKhDQL.js
 
 | 验收项 | 命令/证据 | 当前状态 |
 | --- | --- | --- |
-| 独立 evaluator fuzz | 10 秒、2,569,203 execs、1 new / total 41 | ACTUAL-PASS |
+| 独立 evaluator fuzz | 10 秒、2,899,250 execs、1 new / total 43 | FINAL-CANDIDATE-PASS |
 | 全仓普通测试 | `go test -count=1 ./...` | ACTUAL-PASS |
 | 全仓 race | `go test -race -count=1 ./...` | ACTUAL-PASS |
 | atomic coverage | domain 93.6%、application 88.3%、combined 92.1% | ACTUAL-PASS |
 | Web test/typecheck/build | 19/19 files、152/152 tests、typecheck/build | ACTUAL-PASS；build 产物已精确清理 |
 | 第 28 节 MySQL 上游回归 | MySQL 8.4.11 六组 Integration | ACTUAL-PASS；不是 evaluator E2E |
-| post-doc 文档检查 | `go run ./cmd/doccheck` | FINAL-FREEZE-PENDING |
-| post-doc 聚合门禁 | `make verify` | FINAL-FREEZE-PENDING |
-| 章节 whitespace diff | `git diff --check 90844c1..HEAD` | FINAL-FREEZE-PENDING |
-| runtime stop-line diff | 精确检查 cmd/web/http/appconfig/compose/migrations | FINAL-FREEZE-PENDING |
-| 线性历史 | base ancestor + `rev-list --merges` | FINAL-FREEZE-PENDING |
-| clean worktree/artifacts | 枚举并精确清理本任务生成物 | FINAL-FREEZE-PENDING |
+| post-doc 文档检查 | `go run ./cmd/doccheck` | FINAL-CANDIDATE-PASS |
+| post-doc 聚合门禁 | `make verify` | FINAL-CANDIDATE-PASS；19/19 files、152/152 tests、typecheck/build |
+| 章节 whitespace diff | `git diff --check 90844c1..HEAD` | FINAL-CANDIDATE-PASS |
+| runtime stop-line diff | 精确检查 cmd/web/http/appconfig/compose/migrations | FINAL-CANDIDATE-PASS；目标 diff 无输出 |
+| 线性历史 | base ancestor + `rev-list --merges` | FINAL-CANDIDATE-PASS；base 是 ancestor、零 merge commit |
+| task artifacts | 枚举并精确清理 coverage profiles、Web dist 与 disposable MySQL | FINAL-CANDIDATE-PASS |
 | remote lesson branch | local HEAD 与同名 origin ref 相等 | FINAL-FREEZE-PENDING |
 | cumulative branch | `codex/complete-implementation` fast-forward 到 accepted tip | FINAL-FREEZE-PENDING |
-| main 不变 | local/origin main 仍为进入章节前基线 | FINAL-FREEZE-PENDING |
+| main 不变 | local/origin main 均为 `3ec52a2031bef80d3b364dc94d7e8396bc9a1d6b` | FINAL-CANDIDATE-PASS |
 
 ## 14. Final gate建议命令
 
@@ -646,7 +646,7 @@ final `make verify` 会再次生成 `web/dist`；若 coverage/fuzz 或其他复�
 4.清理后重新核对 `git status --short`与目标资源不存在；
 5.在最终 QA回填实际清理事实。
 
-当前只能确认上述已执行批次的产物已清理；post-doc final gate 的第二次清理仍是 FINAL-FREEZE-PENDING。
+post-doc final gate 再次生成的同 6 个 Web dist 文件也已逐个删除并移除空目录；最终 coverage 的三个 profile 与专用 `/tmp/growthos-lesson29-coverage.vvEs7t` 目录已精确删除。当前工作区不存在上述 task-only 产物。
 
 ## 19. 文档同步状态
 
@@ -673,17 +673,17 @@ final `make verify` 会再次生成 `web/dist`；若 coverage/fuzz 或其他复�
 - [x] domain/application 20轮 shuffle已实际 exit 0；
 - [x] domain/application vet已实际 exit 0；
 - [x] application 64-worker 异构 subject/identity/tier/target 隔离测试已通过普通/race/20 轮 shuffle；
-- [x] 独立 evaluator 10秒 fuzz 已实际通过（2,569,203 execs，1 new / total 41）；
+- [x] 独立 evaluator 10秒 fuzz 已实际通过（2,899,250 execs，1 new / total 43）；
 - [x] 全仓普通与全仓 race 已实际通过；
 - [x] atomic coverage 已记录 93.6%/88.3%/92.1%，临时 profile 已清理；
 - [x] Web 19/19 files、152/152 tests、typecheck/build 已通过，首轮 6 个 dist 文件已清理；
 - [x] MySQL 8.4.11 六组 Integration 上游回归已通过且 disposable 资源已清理；
-- [ ] 完整课程/API/QA/设计/面试与索引收口后的 doccheck；
-- [ ] post-doc final candidate `make verify` 聚合复跑；
-- [ ] `90844c1..HEAD` diff/stop-line/线性历史核对；
-- [ ] final gate 再生成的任务自有产物精确清理与 clean worktree；
+- [x] 完整课程/API/QA/设计/面试与索引收口后的 doccheck；
+- [x] post-doc final candidate `make verify` 聚合复跑；
+- [x] `90844c1..HEAD` diff/stop-line/线性历史核对；
+- [x] final gate 再生成的任务自有产物已精确清理；
 - [ ] 冻结提交 push 后同名远端 SHA 核对；
 - [ ] 累计 `codex/complete-implementation` fast-forward；
-- [ ] main/local origin保持不变复核。
+- [x] main/local origin 保持 `3ec52a2031bef80d3b364dc94d7e8396bc9a1d6b` 不变。
 
-在最后七项真实完成前，本节只能称为“实现切片与 pre-freeze 实际证据已形成”，不能称为远端 accepted tip 已冻结。最终 SHA 不能安全预写在产生该 SHA 的提交内容里，应以实际 Git refs 和根任务最终交接记录为准。
+在最后两项真实完成前，本节可以称为“完整候选本地验收通过”，但不能称为远端 accepted tip 与累计学习分支均已冻结。最终 SHA 不能安全预写在产生该 SHA 的提交内容里，应以实际 Git refs 和根任务最终交接记录为准。
