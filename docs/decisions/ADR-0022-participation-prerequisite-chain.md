@@ -172,4 +172,3 @@ application 可以使用私有 step closure/struct 统一 `code + evaluate` 形�
 - [Go Code Review Comments：Interfaces](https://go.dev/wiki/CodeReviewComments#interfaces)
 - [Go blog：Contexts and structs](https://go.dev/blog/context-and-structs)
 - [OASIS XACML 3.0 Standard](https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-en.html)
-

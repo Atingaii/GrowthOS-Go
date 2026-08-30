@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v13 基线
+**状态：** v14 基线
 **更新日期：** 2026-08-30
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)、[第 25 节](../course/part-04/lesson-25-user-eligibility.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)、[第 25 节](../course/part-04/lesson-25-user-eligibility.md)、[第 26 节](../course/part-04/lesson-26-responsibility-chain.md)
 
 ## 一句话定位
 
@@ -50,23 +50,31 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 第 23 节用“活动有效、新用户且有次数、风险允许、按会员等级路由、奖励可分配、仍可能 `no_reward`”这一复合需求检查现有模型，确认业务口中的“抽奖规则”跨越多个决定所有者。Activity 发布态与时间窗决定归 Marketing，用户资格、次数和参与风控决定归 Participation，Strategy 路由、终端选择与正式 Draw/Result 归 Lottery，库存可分配、权益交付与补偿归 Benefit（含内部库存子能力），操作者授权决定归 Governance 的统一访问控制能力；外部会员、风险等系统只是原始事实提供方。业务资格拒绝、合法 `no_reward`、技术失败/结果未知与授权拒绝必须保持不同语义。
 
-第 23 节没有新增 `Rule`、`RuleEngine`、通用上下文、Migration、API、Redis 或前端判断。当时只有一个真实终端选择消费者，提前把规则字段塞进 `Strategy` 会让两表 Repository 只能恢复残缺聚合；第 25 节因此只先建立首个具体资格事实契约和规则，第 26 节出现第二条具体规则后，再由实际消费者反推最小组合接口。完整需求见 [Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)，长期停止线见 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)。
+第 23 节没有新增 `Rule`、`RuleEngine`、通用上下文、Migration、API、Redis 或前端判断。当时只有一个真实终端选择消费者，提前把规则字段塞进 `Strategy` 会让两表 Repository 只能恢复残缺聚合；第 25 节因此只先建立首个具体资格事实契约和规则，第 26 节在第二条真实风险准入规则出现后，才由两个实际消费者共同需要的顺序、继续、拒绝、错误、取消和 trace 语义反推最小线性协议。完整需求见 [Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)，长期停止线见 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)。
 
 第 24 节只加速 Strategy 读取投影：`strategycache.Reader` 装饰 application-owned `StrategyReader`，MySQL 始终是事实源；Redis 保存版本化 JSON v1，不保存用户资格、一次选择、Draw/Result 或 not-found。命中时恢复并重新校验聚合；miss、超时、协议错误和 poison value 在有界预算内回源。成功回源后才 best-effort 写 Redis，SET 失败直接返回已经取得的 source 结果；坏值只删除精确 key，TTL 不超过 5 分钟并带最多 10% jitter。同 key cold fill 合并避免击穿；不同 key 的 fill 不共享执行锁，只在 flight map 登记/移除时短暂共享记账 mutex。Compose 只允许 API/Redis 进入 internal cache 网络；业务 ACL 允许无 key 的 `PING`，并只允许对版本化前缀执行 `GETRANGE/SET/DEL`，默认用户和扫描/管理/channel 命令全部关闭。长期边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。
 
 第 25 节首次把 Participation 的一条具体资格规则落成可执行代码。外部用户目录仍拥有账户注册原始事实；Participation 定义消费方拥有的 `RegistrationFactReader` 端口，以接收带主体引用、注册时刻、观察时刻、来源和修订的受控快照，但本节没有生产 adapter。application 用一次注入的服务端时刻校验主体匹配、未来时间和最大陈旧时间，domain 再按版本化 policy 的含边界 cutoff 形成稳定 `eligible` / `ineligible` 决定。not-found、stale、unavailable、损坏和取消均表示没有形成可信业务决定，不能被伪装成“老用户”；决定不显式建模 ParticipantRef、registered-at 等直接 PII 或用户文案，并保留可能高基数的 revision/source/evaluated-at 供受控追溯。source/revision 不含邮箱、手机号等 PII 仍是未来 adapter contract，必须由 contract test 强制；这些字段也不能直接用作普通指标 label。长期边界见 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)和[新用户资格规则基线 v1](new-user-eligibility-v1.md)。
 
-本节有意不新增用户表、Migration、Redis 资格缓存、外部 provider adapter、HTTP/React 合约、Activity 或 composition-root 装配。`ParticipantRef` 是受控查询引用，不是已认证 Principal；在真实会话出现前，把它塞进 demo header 会制造身份安全假象。当前也只有一条具体规则，没有足够证据抽象通用 `Rule` / `RuleEngine`；第 26 节先增加第二条真实前置判断，再由实际顺序和短路语义反推最小协议。
+第 26 节增加第二条具体 Participation 规则，但仍不复制风控模型。受控风险事实提供方拥有最小 `passed/blocked` screening disposition、source-owned `assessed_at`、source 和 revision；Participation 只拥有固定规则 `participation.risk.screening_admission` 对当前参与场景的准入决定。`passed` 使该节点继续，`blocked` 形成确定业务拒绝；not-found、stale、future、主体不符、损坏、provider unavailable 和未分类读取失败都返回零决定加安全 typed error，不能默认放行或冒充业务拒绝。
+
+两个具体节点共同证明了一个 Participation 专用的固定前置资格链：组合器在任何 reader 前从受控服务端 `Clock` 捕获一次 canonical logical as-of，先懒读取并判断新用户，只有 confirmed eligible 才访问更敏感的风险 reader。新用户拒绝、技术失败或 caller cancellation 都使 risk reader 保持零调用；只有两节点都 confirmed eligible 才形成 `all_prerequisites_satisfied`。确定结果携带独立 `RuleSetRevision`、同一 evaluated-at 和只包含实际执行节点的有序最小 trace；trace 不含 ParticipantRef、原始风险特征、阈值、provider payload 或 raw error，返回的 steps slice 也不能改写内部证据。fact revision 只用于受控追溯，仍禁止进入普通 metrics label。
+
+第 26 节同时收紧事实读取错误边界：普通 `Error()` / `errors.Is` 只暴露一个审核过的 application class，底层 provider cause 通过显式 `Cause()` 留给受信诊断，避免一个错误同时命中互斥语义分类。`Cause()` 不是可直接打印原始错误的许可；未来 observer 仍需字段白名单、脱敏、访问控制和保留期。固定计划使用包内最小 step，没有导出通用 `Rule` / `RuleEngine`、priority、泛型事实袋、规则树或 DSL。
+
+本节有意不新增用户/风险表、Migration、Redis 资格缓存、外部 provider adapter、HTTP/React 合约、Activity、Lottery 调用或 composition-root 装配。`ParticipantRef` 是受控查询引用，不是已认证 Principal；共享 as-of 也不是两个外部 authority 的原子事务快照。当前代码只证明 Participation domain/application 内核的固定顺序、真实短路、失败分类和最小执行证据，不能被描述为在线抽奖已经完成资格门控，也没有对应 Compose 或浏览器 E2E。长期边界见 [ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)和[Participation 前置资格链基线 v1](participation-prerequisite-chain-v1.md)。
 
 数据库只承担它能可靠表达的子集：正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性以及基础名称形态。`*_name_basic` 只拒绝空串和首尾 ASCII U+0020 空格，不等价于领域层完整名称契约；外键不能保证至少一个 Award，单行约束也不能验证跨行总权重是否溢出。两表的 `updated_at` 是行级元数据，不是聚合版本，Award 更新不会自动推进 Strategy 时间戳。
 
-当前 Compose MySQL 运行身份仅可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要创建 fixture 的 Repository 集成测试使用可丢弃 schema 中的隔离 writer 身份。GrowthOS 已有可验证的 Lottery 领域、持久化结构、内部 Repository、Strategy Redis 读取缓存、加权选择器、一个真实后端业务路由及其 React 消费者，以及尚未装配的 Participation 新用户资格内核；但还没有正式 Draw API、真实事实 adapter、认证、RBAC 或持久化结果。除系统状态页和 `/lottery` 外，其他用户、运营、MCP 与 Agent 页面仍是明确标注的 Mock 快照或浏览器本地交互。
+当前 Compose MySQL 运行身份仅可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要创建 fixture 的 Repository 集成测试使用可丢弃 schema 中的隔离 writer 身份。GrowthOS 已有可验证的 Lottery 领域、持久化结构、内部 Repository、Strategy Redis 读取缓存、加权选择器、一个真实后端业务路由及其 React 消费者，以及尚未运行时装配的 Participation 新用户/风险两节点前置资格链；但还没有正式 Draw API、真实事实 adapter、认证、RBAC 或持久化结果。除系统状态页和 `/lottery` 外，其他用户、运营、MCP 与 Agent 页面仍是明确标注的 Mock 快照或浏览器本地交互。
 
-尤其，ephemeral API 返回的 Award 仍是一次瞬时计算结果，不是带 DrawID、幂等键和持久化状态的一次用户抽奖最终事实；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。当前没有认证、对象级授权、完整 Participation 资格组合及其 Lottery 门控、Draw/Result、库存或发奖实现，因此“一次抽奖只能有一个最终结果”仍是待后续章节验证的业务不变量。调用超时后直接重试会形成一次新的临时选择，不能被描述为安全的业务重试。
+尤其，ephemeral API 返回的 Award 仍是一次瞬时计算结果，不是带 DrawID、幂等键和持久化状态的一次用户抽奖最终事实；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。当前没有认证、对象级授权、Activity/次数等完整 Participation 前置条件，也没有把已有的新用户/风险资格链装配进 Lottery；Draw/Result、库存或发奖同样尚未实现，因此“一次抽奖只能有一个最终结果”仍是待后续章节验证的业务不变量。调用超时后直接重试会形成一次新的临时选择，不能被描述为安全的业务重试。
 
 第 21～23 节服务端、React 和规则边界分别见各自课程、QA、设计手记与 ADR。第 24 节缓存事实与取舍见[课程正文](../course/part-03/lesson-24-redis-strategy-cache.md)、[API](../api/lessons/lesson-24.md)、[QA](../qa/lessons/lesson-24.md)、[第一性原理手记](../design-thinking/lessons/lesson-24.md)、[面试问答](../interview/lessons/lesson-24.md)和 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。隔离 acceptance 验证了缓存/直连/Redis-down 三组 50 RPS×10s 均 500/500 成功，warm-cache MySQL prepared execute 为 0，另两组为 1000；这只证明当次本地链路的 source-load 和短窗口延迟，不是生产容量、正式 Draw SLO 或通用缓存收益。调用前后两张 Lottery 业务表 fingerprint 不变也不等于“系统零副作用”。
 
 第 25 节资格事实与错误边界见[课程正文](../course/part-04/lesson-25-user-eligibility.md)、[API 零变化记录](../api/lessons/lesson-25.md)、[QA](../qa/lessons/lesson-25.md)、[第一性原理手记](../design-thinking/lessons/lesson-25.md)、[面试问答](../interview/lessons/lesson-25.md)和 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)。这些证据来自 domain/application 单元、fuzz、并发、取消和架构停止线测试；本节没有 Compose、真实外部目录或浏览器验收，不能外推为在线资格链已经交付。
+
+第 26 节第二条风险规则与固定前置资格链见[规则链基线](participation-prerequisite-chain-v1.md)、[课程正文](../course/part-04/lesson-26-responsibility-chain.md)、[API 零变化记录](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[第一性原理手记](../design-thinking/lessons/lesson-26.md)、[面试问答](../interview/lessons/lesson-26.md)和 [ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)。这些证据验证 Participation 内核中的 source-owned risk snapshot、一次 shared as-of、固定 `new-user -> risk` 顺序、后序零调用短路、零 aggregate 技术失败、单一公开错误 class 与最小 trace；没有真实 fact adapter、公开 API、Lottery/composition 装配、Compose 或浏览器 E2E，不能据此声称线上请求已经受资格保护。
 
 ## 成功信号
 
@@ -78,7 +86,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象、两张持久化表、Strategy Repository、可丢弃读取缓存、经过边界验证的选择器、ephemeral HTTP 纵向链与真实 React 消费者；但页面展示的仍是不可恢复的临时候选选择，不是正式 Draw/Result 或奖励到账事实，抽奖、参与、权益等业务 SLO 仍全部“未测量”。算法微基准、M0 探针、M1 三组本地缓存基线和浏览器 UI 验收分别回答不同局部问题，均不能外推为正式 Draw 能力、端到端业务 SLO 或生产吞吐。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象、两张持久化表、Strategy Repository、可丢弃读取缓存、经过边界验证的选择器、ephemeral HTTP 纵向链与真实 React 消费者，以及未装配的 Participation 两节点资格链；但页面展示的仍是不可恢复的临时候选选择，不是正式 Draw/Result 或奖励到账事实，抽奖、参与、权益等业务 SLO 仍全部“未测量”。算法微基准、M0 探针、M1 三组本地缓存基线、Participation 内核测试和浏览器 UI 验收分别回答不同局部问题，均不能外推为正式 Draw 能力、在线资格门控、端到端业务 SLO 或生产吞吐。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 
