@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError, type ApiResponse } from "../../../api/httpClient";
 import type { EphemeralSelectionResponse } from "../../../api/lotteryApi";
@@ -56,7 +56,11 @@ describe("LotteryPage", () => {
     expect(screen.getByText("Development / Test only")).toBeTruthy();
     expect(screen.getByText("非持久化选择")).toBeTruthy();
     expect(screen.getByText(/不会创建 Draw、扣除积分、预占库存或发放奖励/)).toBeTruthy();
-    expect(screen.getByText(/页面只证明浏览器结果不再由 Mock 决定/)).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "桌面功能边界说明" })).getByText(
+        /页面只证明浏览器结果不再由 Mock 决定/,
+      ),
+    ).toBeTruthy();
 
     const button = screen.getByRole("button", { name: "发起一次临时选择" });
     expect((button as HTMLButtonElement).disabled).toBe(true);

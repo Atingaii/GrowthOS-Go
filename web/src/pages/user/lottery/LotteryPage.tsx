@@ -497,8 +497,24 @@ export function LotteryPage() {
 
         {/* Right Column: Compact Contract Sidebar & Progressive Mobile Disclosure (5 cols) */}
         <aside className="space-y-4 lg:col-span-5">
-          {/* Pipeline Details Card - Native <details> on mobile, always visible on desktop */}
-          <details className="group rounded-3xl border border-stone-800/80 bg-stone-950 p-5 text-stone-100 shadow-sm">
+          {/* Desktop contract rail */}
+          <div
+            role="region"
+            aria-label="桌面真实调用链"
+            className="hidden rounded-3xl border border-stone-800/80 bg-stone-950 p-5 text-stone-100 shadow-sm lg:block"
+          >
+            <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-stone-300">
+              <Cpu className="h-4 w-4 text-blue-400" aria-hidden="true" />
+              真实调用链
+            </div>
+            <SelectionPipelineSteps />
+          </div>
+
+          {/* Mobile contract disclosure */}
+          <details
+            aria-label="移动真实调用链"
+            className="group rounded-3xl border border-stone-800/80 bg-stone-950 p-5 text-stone-100 shadow-sm lg:hidden"
+          >
             <summary className="flex cursor-pointer list-none items-center justify-between font-mono text-xs font-bold uppercase tracking-wider text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 lg:pointer-events-none [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <Cpu className="h-4 w-4 text-blue-400" aria-hidden="true" />
@@ -509,7 +525,7 @@ export function LotteryPage() {
                 aria-hidden="true"
               />
             </summary>
-            <div className="hidden group-open:block lg:block">
+            <div className="hidden group-open:block">
               <SelectionPipelineSteps />
             </div>
           </details>
@@ -530,8 +546,24 @@ export function LotteryPage() {
             </div>
           </div>
 
-          {/* Scope Limitations Card */}
-          <details className="group rounded-3xl border border-stone-200/80 bg-white p-5 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/90">
+          {/* Desktop scope statement */}
+          <div
+            role="region"
+            aria-label="桌面功能边界说明"
+            className="hidden rounded-3xl border border-stone-200/80 bg-white p-5 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/90 lg:block"
+          >
+            <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300">
+              <Timer className="h-4 w-4 text-amber-500" aria-hidden="true" />
+              本节明确没有实现
+            </div>
+            <ScopeLimitations />
+          </div>
+
+          {/* Mobile scope disclosure */}
+          <details
+            aria-label="移动功能边界说明"
+            className="group rounded-3xl border border-stone-200/80 bg-white p-5 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/90 lg:hidden"
+          >
             <summary className="flex cursor-pointer list-none items-center justify-between font-mono text-xs font-bold uppercase tracking-wider text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:text-stone-300 lg:pointer-events-none [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <Timer className="h-4 w-4 text-amber-500" aria-hidden="true" />
@@ -542,7 +574,7 @@ export function LotteryPage() {
                 aria-hidden="true"
               />
             </summary>
-            <div className="hidden group-open:block lg:block">
+            <div className="hidden group-open:block">
               <ScopeLimitations />
             </div>
           </details>
