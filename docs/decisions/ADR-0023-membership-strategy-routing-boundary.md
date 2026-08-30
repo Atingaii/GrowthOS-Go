@@ -26,7 +26,7 @@ ADR-0019 将 Participation 资格与 Lottery Strategy 路由分给不同决定�
 1. 多出口 Route 必须和 Continue/Reject 保持不同领域语义；
 2. 会员事实所有权与 Strategy 路由决定所有权必须分离；
 3. default 必须显式、确定且不能吞掉 unknown/unsupported/依赖失败；
-4. 同一 policy、事实快照和 evaluated-at 必须产生唯一 branch/target；
+4. 同一份完整不可变 policy snapshot（revision + targets）、事实快照和 evaluated-at 必须产生唯一 branch/target；第 27 节不能把尚未注册发布的 revision 字符串单独当内容哈希；
 5. 事实 freshness 使用一个受控服务端 as-of，不信任客户端时钟；
 6. 技术失败、caller cancellation 与确定 Route 不能共享半成品返回值；
 7. path 需要足够解释所选出口，又不能复制会员画像或提前冒充审计系统；
@@ -196,6 +196,7 @@ zero/unknown/unsupported tier、主体不符、空 source/revision、future、st
 - 当前 policy 是显式内核输入，不支持数据库配置、运营审批、灰度或回滚；
 - 没有真实会员 adapter，不能声称外部 authority 已联通；
 - target 只校验非零 ID，不证明 Strategy 存在、可用、已发布或具有版本；
+- policy revision 当前未由 registry/publisher 绑定唯一内容；同一 revision 被调用方配成不同 targets 的风险留到第 28/30 节持久化发布边界治理；
 - 一跳 path 不是通用规则图、持久化审计或 OTel trace；
 - branch 是会员等级派生信息，需要后续访问控制与保留策略；
 - 单一 logical as-of 不消除跨 authority 的 TOCTOU；

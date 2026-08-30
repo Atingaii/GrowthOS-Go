@@ -43,7 +43,7 @@ ineligible -> 终止
 ## 3. 业务不变量
 
 1. **先确认事实，再选择分支。** 未经服务端权威来源确认的会员等级不能参与路由。
-2. **一个输入只选一个出口。** 同一 policy revision、同一事实快照和同一 evaluated-at 只能产生一个 branch 与一个 Strategy target。
+2. **一个输入只选一个出口。** 同一份完整不可变 policy snapshot（revision + 两个 targets）、同一事实快照和同一 evaluated-at 只能产生一个 branch 与一个 Strategy target。第 27 节尚无 registry/publisher，不能声称 revision 字符串本身已全局唯一绑定内容。
 3. **Route 不是资格。** 路由成功不表示 Activity 可参与、Participation 已通过、次数已扣或调用者已获授权。
 4. **Route 不是选择。** 路由成功只得到 Strategy ID，不加载 Strategy、不调用 `WeightedSelector`、不消费随机票据。
 5. **default 不是容错。** 只有 confirmed `standard` 可以进入本版 default；未知、未支持、缺失、过期和依赖失败全部失败关闭。
@@ -277,6 +277,7 @@ trace 不记录 MembershipSubjectRef、原始 tier payload、会员订单/金额
 | 没有真实会员 adapter | 本节只证明领域路由边界 | 接入具体 provider、历史 as-of 或缓存 |
 | 目标只校验非零 ID | 当前 Strategy 无业务 version，repository 接入不属本节 | Activity 发布需绑定可验证目标 |
 | policy 只在内核显式提供 | 尚无运营编辑/发布需求 | 出现无代码编辑、审批、灰度、回滚 |
+| 相同 policy revision 可被调用方配成不同 targets | 当前 revision 只是 snapshot 元数据，尚无 repository/publisher 强制内容唯一 | 第 28/30 节持久化或发布 policy 时必须建立 revision 唯一性/内容绑定 |
 | 只有一跳决策 | 足以证明多出口和 default | 出现多层条件、共享子路径、合流或深度 |
 | branch 泄露会员派生信息 | 当前 trace 不公开、不持久化 | trace 对外展示、持久化或跨租户查询 |
 | logical as-of 非原子快照 | 当前没有跨 authority 事务能力 | 线上错误路由或事实水位不一致事故 |
