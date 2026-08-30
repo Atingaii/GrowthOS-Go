@@ -235,7 +235,6 @@ lottery_strategy_routing_node
 
 lottery_strategy_routing_edge
   PK/unique scoped by graph revision and source branch
-  FK (graph_id, revision) -> graph
   FK source -> node
   FK target -> node
   branch_code
