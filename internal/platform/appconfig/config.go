@@ -146,6 +146,7 @@ type Config struct {
 	Lottery     LotteryConfig
 	Log         LogConfig
 	MySQL       MySQLConfig
+	Redis       RedisConfig
 }
 
 // MigrationConfig is the validated configuration for the migration process.
@@ -172,6 +173,7 @@ type HTTPConfig struct {
 type LotteryConfig struct {
 	EphemeralSelectionEnabled bool
 	SelectionTimeout          time.Duration
+	StrategyCache             StrategyCacheConfig
 }
 
 // LogConfig controls structured logging output.
@@ -213,8 +215,8 @@ type MigrationMySQLConfig struct {
 	StatementTimeout time.Duration
 }
 
-// String, GoString, LogValue, and MarshalJSON deliberately make the four
-// configuration values that can transitively contain a password safe at
+// String, GoString, LogValue, and MarshalJSON deliberately make configuration
+// values that can transitively contain a password safe at
 // common diagnostic and serialization boundaries. Operational logs should
 // select individual non-secret fields explicitly instead of dumping config.
 func (Config) String() string   { return redactedAPIConfig }
@@ -253,8 +255,8 @@ func (MigrationMySQLConfig) MarshalJSON() ([]byte, error) {
 type LookupFunc func(key string) (value string, found bool)
 
 // Default returns the public, non-secret defaults for the growth-api process.
-// Password intentionally has no default, so callers must still use Load before
-// starting the process.
+// The required MySQL password and optional Redis password intentionally have no
+// defaults, so callers must still use Load before starting the process.
 func Default() Config {
 	return Config{
 		Environment: EnvironmentDevelopment,
@@ -269,6 +271,7 @@ func Default() Config {
 		Lottery: LotteryConfig{
 			EphemeralSelectionEnabled: false,
 			SelectionTimeout:          defaultLotterySelectionTimeout,
+			StrategyCache:             defaultStrategyCacheConfig(),
 		},
 		Log: LogConfig{
 			Level:  LogLevelInfo,
@@ -283,6 +286,7 @@ func Default() Config {
 			ConnectionMaxLifetime: defaultMySQLConnMaxLifetime,
 			ConnectionMaxIdleTime: defaultMySQLConnMaxIdleTime,
 		},
+		Redis: defaultRedisConfig(),
 	}
 }
 
@@ -350,6 +354,16 @@ func Load(lookup LookupFunc) (Config, error) {
 		lookup,
 		lotteryEphemeralSelectionVariable,
 		&config.Lottery.EphemeralSelectionEnabled,
+		&problems,
+	)
+	loadStrategyCacheAndRedis(
+		lookup,
+		config.Environment,
+		environmentValid,
+		config.Lottery.SelectionTimeout,
+		lotterySelectionTimeoutValid,
+		&config.Lottery.StrategyCache,
+		&config.Redis,
 		&problems,
 	)
 
