@@ -224,6 +224,31 @@ func TestNewUserEligibilityServiceRejectsInvalidArgumentsAndDependenciesEarly(t 
 	if _, err := nilService.Evaluate(context.Background(), 42, policy); !errors.Is(err, ErrEligibilityNotConfigured) {
 		t.Fatalf("nil service Evaluate() error = %v", err)
 	}
+
+	manuallyConstructedServices := []struct {
+		name    string
+		service *NewUserEligibilityService
+	}{
+		{name: "zero value", service: &NewUserEligibilityService{}},
+		{
+			name: "missing maximum age",
+			service: &NewUserEligibilityService{
+				facts: reader,
+				clock: clock,
+			},
+		},
+	}
+	for _, test := range manuallyConstructedServices {
+		t.Run("manually constructed "+test.name, func(t *testing.T) {
+			if err := test.service.Validate(); !errors.Is(err, ErrEligibilityNotConfigured) {
+				t.Fatalf("Validate() error = %v; want not configured", err)
+			}
+			decision, err := test.service.Evaluate(context.Background(), 42, policy)
+			if !errors.Is(err, ErrEligibilityNotConfigured) || decision != (domain.NewUserEligibilityDecision{}) {
+				t.Fatalf("Evaluate() = %#v, %v; want zero decision and not configured", decision, err)
+			}
+		})
+	}
 }
 
 func TestNewUserEligibilityServiceMakesObservedCancellationWin(t *testing.T) {
