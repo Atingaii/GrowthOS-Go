@@ -80,9 +80,15 @@ func runWithDependencies(
 		return 1
 	}
 
-	components, err := dependencies.OpenRuntime(ctx, config.MySQL)
+	components, err := dependencies.OpenRuntime(ctx, runtimeConfig(config), newStrategyCacheObserver(logger))
+	cacheMissing := nilStrategyCacheRuntime(components.cache)
+	cacheContractInvalid := (config.Lottery.StrategyCache.Enabled && cacheMissing) ||
+		(!config.Lottery.StrategyCache.Enabled && !cacheMissing)
 	if err != nil || nilDatabaseRuntime(components.database) ||
-		components.selection == nil || components.selection.Validate() != nil {
+		cacheContractInvalid || components.selection == nil || components.selection.Validate() != nil {
+		if !nilStrategyCacheRuntime(components.cache) {
+			_ = components.cache.Close()
+		}
 		if !nilDatabaseRuntime(components.database) {
 			// Defend the dependency boundary even when an injected or future
 			// opener violates the conventional nil-on-error contract.
@@ -94,8 +100,13 @@ func runWithDependencies(
 		return 1
 	}
 	database := components.database
+	cache := components.cache
 	databaseClosed := false
+	cacheClosed := false
 	defer func() {
+		if !cacheClosed && !nilStrategyCacheRuntime(cache) {
+			_ = cache.Close()
+		}
 		if !databaseClosed {
 			_ = database.Close()
 		}
@@ -130,6 +141,11 @@ func runWithDependencies(
 		slog.Int64("shutdown_timeout_ms", config.HTTP.ShutdownTimeout.Milliseconds()),
 	)
 	serverErr := server.Run(ctx)
+	var cacheCloseErr error
+	if !nilStrategyCacheRuntime(cache) {
+		cacheCloseErr = cache.Close()
+	}
+	cacheClosed = true
 	databaseCloseErr := database.Close()
 	databaseClosed = true
 	if serverErr != nil {
@@ -138,7 +154,10 @@ func runWithDependencies(
 	if databaseCloseErr != nil {
 		logger.ErrorContext(ctx, "database shutdown failed", slog.String("component", "mysql"))
 	}
-	if serverErr != nil || databaseCloseErr != nil {
+	if cacheCloseErr != nil {
+		logger.ErrorContext(ctx, "cache shutdown failed", slog.String("component", "redis"))
+	}
+	if serverErr != nil || databaseCloseErr != nil || cacheCloseErr != nil {
 		return 1
 	}
 	logger.InfoContext(ctx, "service stopped")

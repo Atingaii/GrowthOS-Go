@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Atingaii/GrowthOS-Go/internal/lottery/adapter/strategycache"
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/application"
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/domain"
 	"github.com/Atingaii/GrowthOS-Go/internal/platform/appconfig"
@@ -113,11 +114,72 @@ func TestRunHonorsErrorLogLevel(t *testing.T) {
 	}
 }
 
+func TestRunOwnsAndClosesEnabledCacheRuntime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cache := newStubCacheRuntime()
+	database := &stubDatabase{}
+	var output bytes.Buffer
+	variables := map[string]string{
+		"GROWTHOS_ENVIRONMENT":                    "test",
+		"GROWTHOS_MYSQL_PASSWORD":                 "unit-test-password",
+		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
+		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
+	}
+	dependencies := runtimeDependencies{
+		OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
+			components := stubRuntime(database)
+			components.cache = cache
+			return components, nil
+		},
+	}
+
+	if exitCode := runWithDependencies(ctx, mapLookup(variables), &output, dependencies); exitCode != 0 {
+		t.Fatalf("run() exit code = %d, want 0; output = %s", exitCode, output.String())
+	}
+	if cache.closeCalls != 1 || database.closeCalls != 1 {
+		t.Fatalf("close calls cache/database = %d/%d, want 1/1", cache.closeCalls, database.closeCalls)
+	}
+}
+
+func TestRunRedactsEnabledCacheShutdownFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	const secret = "redis-close-password=must-not-leak"
+	cache := newStubCacheRuntime()
+	cache.closeErr = errors.New(secret)
+	database := &stubDatabase{}
+	var output bytes.Buffer
+	variables := map[string]string{
+		"GROWTHOS_ENVIRONMENT":                    "test",
+		"GROWTHOS_MYSQL_PASSWORD":                 "unit-test-password",
+		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
+		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
+	}
+	dependencies := runtimeDependencies{
+		OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
+			components := stubRuntime(database)
+			components.cache = cache
+			return components, nil
+		},
+	}
+
+	if exitCode := runWithDependencies(ctx, mapLookup(variables), &output, dependencies); exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if cache.closeCalls != 1 || database.closeCalls != 1 {
+		t.Fatalf("close calls cache/database = %d/%d, want 1/1", cache.closeCalls, database.closeCalls)
+	}
+	if strings.Contains(output.String(), secret) || !strings.Contains(output.String(), `"msg":"cache shutdown failed"`) {
+		t.Fatalf("cache close log was unsafe or missing: %s", output.String())
+	}
+}
+
 func TestRunRejectsMissingDatabaseSecretBeforeOpening(t *testing.T) {
 	var output bytes.Buffer
 	openCalls := 0
 	dependencies := runtimeDependencies{
-		OpenRuntime: func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+		OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			openCalls++
 			return stubRuntime(&stubDatabase{}), nil
 		},
@@ -205,7 +267,7 @@ func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
 		context.Background(),
 		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
 		&output,
-		runtimeDependencies{OpenRuntime: func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			return runtimeComponents{database: database}, nil
 		}},
 	)
@@ -227,7 +289,7 @@ func TestRunRejectsUnconfiguredSelectionServiceAndClosesDatabase(t *testing.T) {
 		context.Background(),
 		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
 		&output,
-		runtimeDependencies{OpenRuntime: func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			return runtimeComponents{
 				database:  database,
 				selection: &application.EphemeralSelectionService{},
@@ -361,6 +423,62 @@ func TestMySQLRuntimeConfigMapsEveryValidatedSetting(t *testing.T) {
 	}
 }
 
+func TestRedisRuntimeConfigMapsEveryValidatedSetting(t *testing.T) {
+	input := appconfig.RedisConfig{
+		Address:               "cache.internal.example:6380",
+		Username:              "growthos_api_test",
+		Password:              "not-logged-redis-password",
+		Database:              7,
+		TLSMode:               appconfig.RedisTLSVerifyIdentity,
+		TLSCAFile:             "/runtime/redis-ca.pem",
+		DialTimeout:           2 * time.Second,
+		ReadTimeout:           3 * time.Second,
+		WriteTimeout:          4 * time.Second,
+		PoolTimeout:           5 * time.Second,
+		PoolSize:              6,
+		MinIdleConnections:    2,
+		ConnectionMaxLifetime: 7 * time.Minute,
+		ConnectionMaxIdleTime: 8 * time.Minute,
+	}
+
+	got := redisRuntimeConfig(input)
+	if got.Address != input.Address || got.Username != input.Username || got.Password != input.Password ||
+		got.Database != input.Database || string(got.TLSMode) != string(input.TLSMode) ||
+		got.TLSCAFile != input.TLSCAFile || got.DialTimeout != input.DialTimeout ||
+		got.ReadTimeout != input.ReadTimeout || got.WriteTimeout != input.WriteTimeout ||
+		got.PoolTimeout != input.PoolTimeout || got.PoolSize != input.PoolSize ||
+		got.MinIdleConnections != input.MinIdleConnections ||
+		got.ConnectionMaxLifetime != input.ConnectionMaxLifetime ||
+		got.ConnectionMaxIdleTime != input.ConnectionMaxIdleTime {
+		t.Fatal("redisRuntimeConfig() did not map every validated field")
+	}
+}
+
+func TestStrategyCacheOptionsMapEnvironmentPolicyAndLifecycle(t *testing.T) {
+	lifecycle, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	observer := &stubStrategyCacheObserver{}
+	config := runtimeConfiguration{
+		Environment: appconfig.EnvironmentStaging,
+		StrategyCache: appconfig.StrategyCacheConfig{
+			Enabled:       true,
+			TTL:           4 * time.Minute,
+			LookupTimeout: 100 * time.Millisecond,
+			WriteTimeout:  120 * time.Millisecond,
+			FillTimeout:   2 * time.Second,
+		},
+	}
+
+	got := strategyCacheOptions(lifecycle, config, observer)
+	if got.Namespace != "growthos:staging" || got.TTL != config.StrategyCache.TTL ||
+		got.LookupTimeout != config.StrategyCache.LookupTimeout ||
+		got.WriteTimeout != config.StrategyCache.WriteTimeout ||
+		got.FillTimeout != config.StrategyCache.FillTimeout ||
+		got.Lifecycle != lifecycle || got.Observer != observer {
+		t.Fatal("strategyCacheOptions() did not map the validated cache policy")
+	}
+}
+
 type stubDatabase struct {
 	pingErr    error
 	closeErr   error
@@ -376,8 +494,8 @@ func (database *stubDatabase) Close() error {
 	return database.closeErr
 }
 
-func stubRuntimeOpener(database databaseRuntime, err error) func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
-	return func(context.Context, appconfig.MySQLConfig) (runtimeComponents, error) {
+func stubRuntimeOpener(database databaseRuntime, err error) func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
+	return func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 		return stubRuntime(database), err
 	}
 }
@@ -401,6 +519,10 @@ type stubAwardSelector struct{}
 func (stubAwardSelector) Select(domain.Strategy) (domain.Award, error) {
 	return domain.Award{}, domain.ErrSelectionStrategyInvalid
 }
+
+type stubStrategyCacheObserver struct{}
+
+func (*stubStrategyCacheObserver) Observe(context.Context, strategycache.Observation) {}
 
 func mapLookup(values map[string]string) func(string) (string, bool) {
 	return func(key string) (string, bool) {

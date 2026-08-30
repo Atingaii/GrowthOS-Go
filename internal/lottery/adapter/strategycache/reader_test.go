@@ -483,6 +483,42 @@ func TestReaderRunsDifferentKeyFillsIndependently(t *testing.T) {
 	}
 }
 
+func TestCacheCoalescesStrategyReadsButNeverSelectionCalls(t *testing.T) {
+	strategy := mustStrategy(t, 42, "Selection strategy", []awardInput{
+		{id: 7, name: "Configured award", weight: 1, outcome: domain.AwardOutcomeReward},
+	})
+	award, found := strategy.Award(7)
+	if !found {
+		t.Fatal("configured award fixture is missing")
+	}
+	var sourceCalls atomic.Int32
+	reader := mustReader(t, readerFunc(func(context.Context, domain.StrategyID) (domain.Strategy, error) {
+		sourceCalls.Add(1)
+		return strategy, nil
+	}), newMemoryStore(), Options{})
+	var selectorCalls atomic.Int32
+	service, err := application.NewEphemeralSelectionService(reader, selectorFunc(func(domain.Strategy) (domain.Award, error) {
+		selectorCalls.Add(1)
+		return award, nil
+	}))
+	if err != nil {
+		t.Fatalf("NewEphemeralSelectionService() error = %v", err)
+	}
+
+	for invocation := 0; invocation < 2; invocation++ {
+		selection, err := service.Select(context.Background(), strategy.ID())
+		if err != nil {
+			t.Fatalf("Select(%d) error = %v", invocation, err)
+		}
+		if selection.Award.ID() != award.ID() {
+			t.Fatalf("Select(%d) AwardID = %d, want %d", invocation, selection.Award.ID(), award.ID())
+		}
+	}
+	if sourceCalls.Load() != 1 || selectorCalls.Load() != 2 {
+		t.Fatalf("source/selector calls = %d/%d, want 1/2", sourceCalls.Load(), selectorCalls.Load())
+	}
+}
+
 func TestReaderCallerCancellationDoesNotPoisonSharedFill(t *testing.T) {
 	strategy := mustStrategy(t, 42, "Shared strategy", []awardInput{
 		{id: 7, name: "Shared award", weight: 3, outcome: domain.AwardOutcomeReward},
@@ -622,6 +658,12 @@ type readerFunc func(context.Context, domain.StrategyID) (domain.Strategy, error
 
 func (f readerFunc) FindByID(ctx context.Context, id domain.StrategyID) (domain.Strategy, error) {
 	return f(ctx, id)
+}
+
+type selectorFunc func(domain.Strategy) (domain.Award, error)
+
+func (f selectorFunc) Select(strategy domain.Strategy) (domain.Award, error) {
+	return f(strategy)
 }
 
 type getCall struct {
