@@ -1,19 +1,19 @@
 services:
   api:
-    image: "${GROWTHOS_LESSON21_ACCEPTANCE_API_IMAGE:?set GROWTHOS_LESSON21_ACCEPTANCE_API_IMAGE}"
+    image: "${GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE}"
     environment:
       # The process default is off and staging/production reject opt-in. Both
       # local Compose files acknowledge this development-only route explicitly.
       GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED: "true"
 
   migrate:
-    image: "${GROWTHOS_LESSON21_ACCEPTANCE_MIGRATE_IMAGE:?set GROWTHOS_LESSON21_ACCEPTANCE_MIGRATE_IMAGE}"
+    image: "${GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE}"
 
   redis:
-    image: "${GROWTHOS_LESSON21_ACCEPTANCE_REDIS_IMAGE:?set GROWTHOS_LESSON21_ACCEPTANCE_REDIS_IMAGE}"
+    image: "${GROWTHOS_LESSON24_ACCEPTANCE_REDIS_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_REDIS_IMAGE}"
 
   web:
-    image: "${GROWTHOS_LESSON21_ACCEPTANCE_WEB_IMAGE:?set GROWTHOS_LESSON21_ACCEPTANCE_WEB_IMAGE}"
+    image: "${GROWTHOS_LESSON24_ACCEPTANCE_WEB_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_WEB_IMAGE}"
     # Let Docker allocate one currently free host port atomically. The
     # acceptance script resolves the allocation and verifies the exact
     # loopback-only binding before issuing requests.
@@ -22,22 +22,22 @@ services:
 
 secrets:
   mysql_root_password:
-    file: "${GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY}/mysql_root_password"
+    file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/mysql_root_password"
   mysql_app_password:
-    file: "${GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY}/mysql_app_password"
+    file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/mysql_app_password"
   mysql_migration_password:
-    file: "${GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY}/mysql_migration_password"
+    file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/mysql_migration_password"
   redis_password:
-    file: "${GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY}/redis_password"
+    file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/redis_password"
 
 volumes:
   mysql_data:
-    name: "${GROWTHOS_LESSON21_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON21_ACCEPTANCE_PROJECT}_mysql_data"
+    name: "${GROWTHOS_LESSON24_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON24_ACCEPTANCE_PROJECT}_mysql_data"
     labels:
-      com.growthos.acceptance: lesson-21
-      com.growthos.acceptance.project: "${GROWTHOS_LESSON21_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON21_ACCEPTANCE_PROJECT}"
+      com.growthos.acceptance: lesson-24
+      com.growthos.acceptance.project: "${GROWTHOS_LESSON24_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON24_ACCEPTANCE_PROJECT}"
   mysql_socket:
-    name: "${GROWTHOS_LESSON21_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON21_ACCEPTANCE_PROJECT}_mysql_socket"
+    name: "${GROWTHOS_LESSON24_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON24_ACCEPTANCE_PROJECT}_mysql_socket"
     labels:
-      com.growthos.acceptance: lesson-21
-      com.growthos.acceptance.project: "${GROWTHOS_LESSON21_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON21_ACCEPTANCE_PROJECT}"
+      com.growthos.acceptance: lesson-24
+      com.growthos.acceptance.project: "${GROWTHOS_LESSON24_ACCEPTANCE_PROJECT:?set GROWTHOS_LESSON24_ACCEPTANCE_PROJECT}"

@@ -40,13 +40,13 @@ services:
     logging: *json-logging
 
   migrate:
-    image: growthos/migrate:lesson-22
+    image: growthos/migrate:lesson-24
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
       target: migrate
       args:
-        VERSION: lesson-22
+        VERSION: lesson-24
     environment:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_LOG_FORMAT: json
@@ -104,19 +104,21 @@ services:
     logging: *json-logging
 
   api:
-    image: growthos/api:lesson-22
+    image: growthos/api:lesson-24
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
       target: api
       args:
-        VERSION: lesson-22
+        VERSION: lesson-24
     environment:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_HTTP_ADDRESS: 0.0.0.0:8080
       GROWTHOS_HTTP_WRITE_TIMEOUT: 10s
       GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED: "true"
       GROWTHOS_LOTTERY_SELECTION_TIMEOUT: 3s
+      GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED: "true"
+      GROWTHOS_LOTTERY_STRATEGY_CACHE_TTL: 5m
       GROWTHOS_LOG_FORMAT: json
       GROWTHOS_MYSQL_ADDRESS: mysql:3306
       GROWTHOS_MYSQL_DATABASE: growthos
@@ -124,8 +126,13 @@ services:
       GROWTHOS_MYSQL_USER: growthos_app
       GROWTHOS_MYSQL_PASSWORD_FILE: /run/secrets/mysql_app_password
       GROWTHOS_MYSQL_PING_TIMEOUT: 2s
+      GROWTHOS_REDIS_ADDRESS: redis:6379
+      GROWTHOS_REDIS_USERNAME: growthos_api
+      GROWTHOS_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      GROWTHOS_REDIS_TLS_MODE: disabled
     secrets:
       - mysql_app_password
+      - redis_password
     depends_on:
       mysql-grants:
         condition: service_completed_successfully
@@ -134,6 +141,7 @@ services:
     networks:
       - edge
       - data
+      - cache
     expose:
       - "8080"
     healthcheck:
@@ -166,7 +174,9 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli --no-auth-warning ping | grep -qx PONG
+        - >-
+          REDISCLI_AUTH="$$(cat /run/secrets/redis_password)"
+          redis-cli --no-auth-warning --user growthos_api ping | grep -qx PONG
       interval: 10s
       timeout: 3s
       retries: 5

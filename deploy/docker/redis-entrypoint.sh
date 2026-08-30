@@ -23,7 +23,12 @@ fi
 
 umask 077
 mkdir -p "$runtime_dir"
-printf 'user default on >%s ~* &* +@all\n' "$password" > "$runtime_dir/users.acl"
+{
+    printf '%s\n' 'user default off'
+    printf 'user growthos_api on >%s ' "$password"
+    printf '%s ' '~growthos:development:lottery:strategy:projection:v1:*'
+    printf '%s\n' '&* +ping +getrange +set +del'
+} > "$runtime_dir/users.acl"
 cat > "$runtime_dir/redis.conf" <<'EOF'
 bind 0.0.0.0
 protected-mode yes
@@ -31,6 +36,8 @@ port 6379
 dir /data
 save ""
 appendonly no
+maxmemory 48mb
+maxmemory-policy allkeys-lru
 aclfile /tmp/growthos-redis/users.acl
 EOF
 

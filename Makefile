@@ -34,7 +34,7 @@ help:
 		'  make compose-down Stop the Compose stack while retaining named volumes' \
 		'  make compose-ps  Show Compose services and health' \
 		'  make compose-smoke Verify normal stack state, HTTP contracts, and port isolation' \
-		'  make compose-lottery-api-acceptance  Run the disposable lesson-21 Lottery API acceptance' \
+		'  make compose-lottery-api-acceptance  Run the disposable current Lottery/cache acceptance' \
 		'  make compose-m0  Run the explicit M0 smoke and load acceptance gate' \
 		'  make verify     Run all local quality gates'
 

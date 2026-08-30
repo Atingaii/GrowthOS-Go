@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-# Destructive-to-self acceptance for the lesson-21 Lottery API. Every run gets
+# Destructive-to-self acceptance for the current Lottery API and the lesson-24
+# Strategy cache. Every run gets
 # a new Compose project, Docker-assigned loopback port, secret set, and volumes.
 # The long-lived `growthos` project is only snapshotted to prove that its
 # containers, volumes, and networks were not replaced or removed.
@@ -52,9 +53,9 @@ esac
 if [ "${#random_suffix}" -ne 24 ]; then
     fail 'openssl did not produce the expected 24-character project suffix'
 fi
-compose_project="growthosl21$random_suffix"
+compose_project="growthosl24$random_suffix"
 case "$compose_project" in
-    growthosl21[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+    growthosl24[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
         ;;
     *)
         fail 'the generated Compose project name failed its exact format check'
@@ -64,7 +65,7 @@ if [ "$compose_project" = "$default_project" ]; then
     fail 'the disposable project must never equal the long-lived growthos project'
 fi
 
-export GROWTHOS_LESSON21_ACCEPTANCE_PROJECT="$compose_project"
+export GROWTHOS_LESSON24_ACCEPTANCE_PROJECT="$compose_project"
 acceptance_api_image="growthos/acceptance-api:$compose_project"
 acceptance_migrate_image="growthos/acceptance-migrate:$compose_project"
 acceptance_redis_image="growthos/acceptance-redis:$compose_project"
@@ -74,10 +75,10 @@ buildx_builder="${compose_project}builder"
 buildkit_image=moby/buildkit:buildx-stable-1
 expected_builder_container="buildx_buildkit_${buildx_builder}0"
 expected_builder_volume="${expected_builder_container}_state"
-export GROWTHOS_LESSON21_ACCEPTANCE_API_IMAGE="$acceptance_api_image"
-export GROWTHOS_LESSON21_ACCEPTANCE_MIGRATE_IMAGE="$acceptance_migrate_image"
-export GROWTHOS_LESSON21_ACCEPTANCE_REDIS_IMAGE="$acceptance_redis_image"
-export GROWTHOS_LESSON21_ACCEPTANCE_WEB_IMAGE="$acceptance_web_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE="$acceptance_api_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE="$acceptance_migrate_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_REDIS_IMAGE="$acceptance_redis_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_WEB_IMAGE="$acceptance_web_image"
 export BUILDX_BUILDER="$buildx_builder"
 
 compose() {
@@ -86,6 +87,24 @@ compose() {
         --file "$base_compose_file" \
         --file "$acceptance_compose_file" \
         "$@"
+}
+
+redis_business() {
+    # shellcheck disable=SC2016
+    compose exec -T redis sh -eu -c '
+        export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
+        exec redis-cli --raw --no-auth-warning --user growthos_api "$@"
+    ' sh "$@"
+}
+
+assert_redis_denied() {
+    denied_label=$1
+    shift
+    denied_output=$(redis_business "$@" 2>&1 || true)
+    case "$denied_output" in
+        *NOPERM*) ;;
+        *) fail "Redis ACL did not reject: $denied_label" ;;
+    esac
 }
 
 snapshot_default_containers() {
@@ -499,7 +518,7 @@ secret_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson21-secrets.XXXXXX")
 secret_directory_identity=$(directory_identity "$secret_directory") || fail 'could not record the temporary secret directory identity'
 response_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson21-responses.XXXXXX")
 response_directory_identity=$(directory_identity "$response_directory") || fail 'could not record the temporary response directory identity'
-export GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY="$secret_directory"
+export GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY="$secret_directory"
 
 # Arm project cleanup before the first command that may create a Docker
 # resource. The generator also receives the unique project, so its old-volume
@@ -621,7 +640,39 @@ for completed_service in migrate mysql-grants; do
         fail "$completed_service did not complete successfully"
     fi
 done
-ok 'all Compose services for the lesson-21 API contract reached their expected healthy/completed states on the lesson-22 snapshot'
+ok 'all Compose services reached their expected states on the lesson-24 cache snapshot'
+
+acl_probe_key=growthos:development:lottery:strategy:projection:v1:0
+acl_outside_key=growthos:development:lottery:result:v1:0
+if [ "$(redis_business ping)" != PONG ] ||
+   [ "$(redis_business set "$acl_probe_key" acceptance EX 30)" != OK ] ||
+   [ "$(redis_business getrange "$acl_probe_key" 0 9)" != acceptance ]; then
+    fail 'growthos_api cannot execute its required Redis command set'
+fi
+assert_redis_denied 'GET inside the cache prefix' get "$acl_probe_key"
+assert_redis_denied 'SET outside the cache prefix' set "$acl_outside_key" forbidden EX 30
+assert_redis_denied SCAN scan 0
+assert_redis_denied CONFIG config get maxmemory
+assert_redis_denied ACL acl users
+assert_redis_denied EVAL eval 'return 1' 0
+# shellcheck disable=SC2016
+default_output=$(compose exec -T redis sh -c '
+    export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
+    redis-cli --raw --no-auth-warning ping 2>&1 || true
+') || fail 'could not test the disabled Redis default user'
+case "$default_output" in
+    *WRONGPASS*|*NOAUTH*) ;;
+    *) fail 'the Redis default user unexpectedly authenticated' ;;
+esac
+# shellcheck disable=SC2016
+if ! compose exec -T redis sh -eu -c '
+    IFS= read -r first_acl_line </tmp/growthos-redis/users.acl
+    [ "$first_acl_line" = "user default off" ]
+'; then
+    fail 'the generated Redis ACL file does not explicitly disable the default user'
+fi
+redis_business del "$acl_probe_key" >/dev/null
+ok 'Redis named-user commands, exact keyspace, denied commands, and disabled default user passed'
 
 resolve_container api
 api_image=$(docker inspect --format '{{.Config.Image}}' "$resolved_container_id")
@@ -904,13 +955,26 @@ assert_error_response() {
     fi
 }
 
+assert_multi_strategy_selection() {
+    if ! jq -e '
+        .selection.durability == "ephemeral" and
+        .selection.strategy_id == "21003" and
+        (
+            .selection.award == {id: "1", name: "Reward", outcome: "reward"} or
+            .selection.award == {id: "2", name: "No reward", outcome: "no_reward"}
+        )
+    ' "$response_body" >/dev/null; then
+        fail "$1 returned an invalid multi-award selection"
+    fi
+}
+
 request GET /health 200 - - -
-if ! jq -e '.status == "ok" and .version == "lesson-22" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/health did not identify the lesson-22 build'
+if ! jq -e '.status == "ok" and .version == "lesson-24" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/health did not identify the lesson-24 build'
 fi
 request GET /ready 200 - - -
-if ! jq -e '.status == "ready" and .version == "lesson-22" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/ready did not identify the ready lesson-22 build'
+if ! jq -e '.status == "ready" and .version == "lesson-24" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/ready did not identify the ready lesson-24 build'
 fi
 ok 'health and readiness succeeded through the web proxy'
 
@@ -955,7 +1019,28 @@ if ! jq -e '
 ' "$response_body" >/dev/null; then
     fail 'MaxUint64 selection did not preserve public identities as decimal JSON strings'
 fi
+max_cache_key=growthos:development:lottery:strategy:projection:v1:18446744073709551615
+cached_max_projection=$(redis_business getrange "$max_cache_key" 0 2097152) ||
+    fail 'could not read the MaxUint64 Strategy projection through the business ACL'
+if ! printf '%s' "$cached_max_projection" | jq -e '
+    .schema == "growthos.lottery.strategy.projection" and
+    .schema_version == 1 and
+    .strategy.id == "18446744073709551615" and
+    .strategy.awards == [{
+        id: "18446744073709551615",
+        name: "Max reward",
+        weight: "18446744073709551615",
+        outcome: "reward"
+    }]
+' >/dev/null; then
+    fail 'the Redis projection did not preserve strict v1 MaxUint64 strings'
+fi
+ok 'the first API miss filled one strict Redis v1 Strategy projection'
 
+no_reward_cache_key=growthos:development:lottery:strategy:projection:v1:21002
+if [ "$(redis_business set "$no_reward_cache_key" '{"schema":"poison"}' EX 60)" != OK ]; then
+    fail 'could not install the exact disposable poison cache fixture'
+fi
 request POST /api/v1/lottery/strategies/21002/ephemeral-selections 200 - - ephemeral-selection
 if ! jq -e '
     .selection.durability == "ephemeral" and
@@ -964,6 +1049,17 @@ if ! jq -e '
 ' "$response_body" >/dev/null; then
     fail 'the no_reward fixture did not return a successful no_reward selection'
 fi
+repaired_projection=$(redis_business getrange "$no_reward_cache_key" 0 2097152) ||
+    fail 'could not read the repaired no_reward projection'
+if ! printf '%s' "$repaired_projection" | jq -e '
+    .schema == "growthos.lottery.strategy.projection" and
+    .schema_version == 1 and
+    .strategy.id == "21002" and
+    (.strategy.awards | length) == 1
+' >/dev/null; then
+    fail 'the API did not replace the poison value with a strict projection'
+fi
+ok 'a poison cache value was deleted, reloaded from MySQL, and repaired'
 request POST /api/v1/lottery/strategies/21002/ephemeral-selections 200 'X-Request-ID: acceptance.client:42' - ephemeral-selection
 if [ "$response_request_id" != 'acceptance.client:42' ]; then
     fail 'the edge and Go process did not preserve one validated client request ID'
@@ -1076,6 +1172,63 @@ while [ "$concurrent_index" -le "$concurrent_requests" ]; do
 done
 ok "$concurrent_requests multi-award requests at concurrency $concurrent_workers returned only configured outcomes"
 
+multi_cache_key=growthos:development:lottery:strategy:projection:v1:21003
+redis_business del "$multi_cache_key" >/dev/null
+resolve_container redis
+if ! compose stop redis; then
+    fail 'could not stop the disposable Redis cache'
+fi
+if [ "$(docker inspect --format '{{.State.Status}}' "$resolved_container_id")" != exited ]; then
+    fail 'disposable Redis did not reach exited state'
+fi
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 200 - - ephemeral-selection
+assert_multi_strategy_selection 'the Redis-outage request'
+request GET /ready 200 - - -
+if ! compose up --detach --wait --wait-timeout 60 redis; then
+    fail 'could not restore the disposable Redis cache'
+fi
+assert_running_healthy redis
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 200 - - ephemeral-selection
+assert_multi_strategy_selection 'the post-Redis-recovery request'
+rebuilt_multi_projection=$(redis_business getrange "$multi_cache_key" 0 2097152) ||
+    fail 'could not read the Strategy projection rebuilt after Redis recovery'
+if ! printf '%s' "$rebuilt_multi_projection" | jq -e '
+    .schema_version == 1 and .strategy.id == "21003" and (.strategy.awards | length) == 2
+' >/dev/null; then
+    fail 'Redis recovery did not rebuild the expected Strategy projection'
+fi
+ok 'Redis outage fell back to MySQL without changing readiness, then recovered and refilled'
+
+resolve_container mysql
+if ! compose stop mysql; then
+    fail 'could not stop the disposable MySQL authority'
+fi
+if [ "$(docker inspect --format '{{.State.Status}}' "$resolved_container_id")" != exited ]; then
+    fail 'disposable MySQL did not reach exited state'
+fi
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 200 - - ephemeral-selection
+assert_multi_strategy_selection 'the warm-cache MySQL-outage request'
+request GET /ready 503 - - -
+assert_error_response dependency_unavailable 'service unavailable'
+request POST /api/v1/lottery/strategies/999998/ephemeral-selections 503 - - ephemeral-selection
+assert_error_response lottery_selection_unavailable 'lottery selection is temporarily unavailable'
+if ! compose up --detach --wait --wait-timeout 120 mysql; then
+    fail 'could not restore the disposable MySQL authority'
+fi
+assert_running_healthy mysql
+request GET /ready 200 - - -
+redis_business del "$multi_cache_key" >/dev/null
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 200 - - ephemeral-selection
+assert_multi_strategy_selection 'the post-MySQL-recovery cold request'
+recovered_mysql_projection=$(redis_business getrange "$multi_cache_key" 0 2097152) ||
+    fail 'could not read the Strategy projection rebuilt after MySQL recovery'
+if ! printf '%s' "$recovered_mysql_projection" | jq -e '
+    .schema_version == 1 and .strategy.id == "21003" and (.strategy.awards | length) == 2
+' >/dev/null; then
+    fail 'MySQL recovery did not rebuild the expected Strategy projection'
+fi
+ok 'warm Redis hit survived MySQL outage; readiness and cold reads failed safely; recovery refilled the cache'
+
 # Stop only the label-resolved disposable API and prove nginx-generated
 # upstream failures retain the same JSON/no-store/correlation contract. Then
 # restore it before the final database and topology checks.
@@ -1141,4 +1294,4 @@ if [ "$published_container_ids_after" != "$web_container_id" ]; then
     fail 'the disposable web port lost its unique ownership during HTTP acceptance'
 fi
 ok 'post-traffic migration, grants, and loopback port checks remained exact'
-ok "lesson-21 isolated Compose acceptance passed for $compose_project"
+ok "lesson-24 isolated Compose acceptance passed for $compose_project"

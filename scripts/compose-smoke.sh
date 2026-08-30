@@ -159,17 +159,17 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-22' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-22"
+if [ "$inspected_value" != 'growthos/migrate:lesson-24' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-24"
 fi
-ok 'migrate image identifies the lesson-22 React Lottery-compatible build'
+ok 'migrate image identifies the lesson-24 schema-compatible build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-22' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-22"
+if [ "$inspected_value" != 'growthos/api:lesson-24' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-24"
 fi
-ok 'api image identifies the lesson-22 React Lottery release snapshot'
+ok 'api image identifies the lesson-24 Redis strategy-cache release snapshot'
 
 resolve_container web
 inspect_value '{{.Config.Image}}' image
@@ -303,6 +303,70 @@ if compose exec -T mysql sh -c '
 fi
 ok 'growthos_app has exactly two-table SELECT and no INSERT, UPDATE, DELETE, or migration-table access'
 
+resolve_container api
+api_container_id=$resolved_container_id
+if ! docker inspect "$api_container_id" | jq -e \
+    --arg edge "${compose_project}_edge" \
+    --arg data "${compose_project}_data" \
+    --arg cache "${compose_project}_cache" '
+        (.[0].NetworkSettings.Networks | keys | sort) == ([$edge, $data, $cache] | sort) and
+        ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))] | sort) ==
+            (["/run/secrets/mysql_app_password", "/run/secrets/redis_password"] | sort)
+    ' >/dev/null; then
+    fail 'api network or Secret mounts differ from the MySQL plus optional-cache ownership contract'
+fi
+
+resolve_container redis
+redis_container_id=$resolved_container_id
+if ! docker inspect "$redis_container_id" | jq -e --arg cache "${compose_project}_cache" '
+    (.[0].NetworkSettings.Networks | keys) == [$cache] and
+    ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))]) ==
+        ["/run/secrets/redis_password"]
+' >/dev/null; then
+    fail 'redis must have only the internal cache network and its own Secret'
+fi
+ok 'api and redis use the exact cache network and least-Secret mounts'
+
+# shellcheck disable=SC2016
+if ! compose exec -T redis sh -eu -c '
+    export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
+    allowed_key=growthos:development:lottery:strategy:projection:v1:0
+    outside_key=growthos:development:lottery:result:v1:0
+    assert_denied() {
+        denied_label=$1
+        shift
+        denied_output=$(redis-cli --raw --no-auth-warning --user growthos_api "$@" 2>&1 || true)
+        case "$denied_output" in
+            *NOPERM*) ;;
+            *) printf "expected NOPERM for %s\n" "$denied_label" >&2; exit 1 ;;
+        esac
+    }
+    [ "$(redis-cli --raw --no-auth-warning --user growthos_api ping)" = PONG ]
+    [ "$(redis-cli --raw --no-auth-warning --user growthos_api set "$allowed_key" smoke EX 30)" = OK ]
+    [ "$(redis-cli --raw --no-auth-warning --user growthos_api getrange "$allowed_key" 0 4)" = smoke ]
+    assert_denied "GET inside the cache prefix" get "$allowed_key"
+    assert_denied "SET outside the cache prefix" set "$outside_key" forbidden EX 30
+    assert_denied SCAN scan 0
+    assert_denied CONFIG config get maxmemory
+    assert_denied ACL acl users
+    assert_denied EVAL eval "return 1" 0
+    default_output=$(redis-cli --raw --no-auth-warning ping 2>&1 || true)
+    case "$default_output" in
+        *WRONGPASS*|*NOAUTH*) ;;
+        *) printf "%s\n" "default user unexpectedly authenticated" >&2; exit 1 ;;
+    esac
+    IFS= read -r first_acl_line </tmp/growthos-redis/users.acl
+    if [ "$first_acl_line" != "user default off" ]; then
+        printf "%s\n" "generated ACL file does not disable the default user" >&2
+        exit 1
+    fi
+    redis-cli --raw --no-auth-warning --user growthos_api del "$allowed_key" >/dev/null
+    unset REDISCLI_AUTH
+'; then
+    fail 'redis business ACL allowlist or negative command/key checks failed'
+fi
+ok 'redis named-user command allowlist, key boundary, and default-user denial are enforced'
+
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-compose-smoke.XXXXXX")
 cleanup() {
     if [ -n "${temporary_directory:-}" ] && [ -d "$temporary_directory" ]; then
@@ -399,10 +463,10 @@ assert_json_response() {
 
 request /health 200 application/json
 assert_json_response /health
-if ! jq -e '.status == "ok" and .version == "lesson-22"' "$response_body" >/dev/null 2>&1; then
-    fail '/health did not identify the lesson-22 API build'
+if ! jq -e '.status == "ok" and .version == "lesson-24"' "$response_body" >/dev/null 2>&1; then
+    fail '/health did not identify the lesson-24 API build'
 fi
-ok '/health returned HTTP 200, JSON, and the lesson-22 build through the web proxy'
+ok '/health returned HTTP 200, JSON, and the lesson-24 build through the web proxy'
 
 request /ready 200 application/json
 assert_json_response /ready
