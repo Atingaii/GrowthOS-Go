@@ -161,17 +161,17 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-24' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-24"
+if [ "$inspected_value" != 'growthos/migrate:lesson-28' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-28"
 fi
-ok 'migrate image identifies the lesson-24 schema-compatible build'
+ok 'migrate image identifies the lesson-28 routing-graph schema build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-24' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-24"
+if [ "$inspected_value" != 'growthos/api:lesson-28' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-28"
 fi
-ok 'api image identifies the lesson-24 Redis strategy-cache release snapshot'
+ok 'api image identifies the lesson-28 build with an unassembled routing-graph adapter'
 
 resolve_container web
 inspect_value '{{.Config.Image}}' image
@@ -197,10 +197,10 @@ if ! migration_state=$(compose exec -T mysql sh -c '
 '); then
     fail 'could not inspect the migration version through the migration identity'
 fi
-if [ "$migration_state" != '2:0' ]; then
-    fail "migration state is $migration_state instead of clean version 2"
+if [ "$migration_state" != '5:0' ]; then
+    fail "migration state is $migration_state instead of clean version 5"
 fi
-ok 'schema migrations are clean at version 2'
+ok 'schema migrations are clean at version 5'
 
 # shellcheck disable=SC2016
 if ! name_constraint_state=$(compose exec -T mysql sh -c '
@@ -275,6 +275,32 @@ if compose exec -T mysql sh -c '
         --execute="SELECT version FROM schema_migrations"
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has access to schema_migrations'
+fi
+for denied_graph_table in \
+    lottery_strategy_routing_graph \
+    lottery_strategy_routing_node \
+    lottery_strategy_routing_edge; do
+    # shellcheck disable=SC2016
+    if compose exec -T mysql sh -c '
+        export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+        mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+            --execute="SELECT 1 FROM $1 LIMIT 0"
+    ' sh "$denied_graph_table" >/dev/null 2>&1; then
+        fail "growthos_app unexpectedly has SELECT permission on $denied_graph_table"
+    fi
+done
+# A zero-row write probe cannot mutate data even if an INSERT grant regresses.
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_app --database=growthos --silent \
+        --execute="
+            INSERT INTO lottery_strategy_routing_graph
+                (graph_id, revision, schema_version, root_node_id)
+            SELECT 1, '\''permission-probe-v1'\'', 1, 1 WHERE FALSE
+        "
+' >/dev/null 2>&1; then
+    fail 'growthos_app unexpectedly has routing-graph INSERT permission'
 fi
 # shellcheck disable=SC2016
 if compose exec -T mysql sh -c '
@@ -508,10 +534,10 @@ assert_json_response() {
 
 request /health 200 application/json
 assert_json_response /health
-if ! jq -e '.status == "ok" and .version == "lesson-24"' "$response_body" >/dev/null 2>&1; then
-    fail '/health did not identify the lesson-24 API build'
+if ! jq -e '.status == "ok" and .version == "lesson-28"' "$response_body" >/dev/null 2>&1; then
+    fail '/health did not identify the lesson-28 API build'
 fi
-ok '/health returned HTTP 200, JSON, and the lesson-24 build through the web proxy'
+ok '/health returned HTTP 200, JSON, and the lesson-28 build through the web proxy'
 
 request /ready 200 application/json
 assert_json_response /ready

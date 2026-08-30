@@ -40,13 +40,13 @@ services:
     logging: *json-logging
 
   migrate:
-    image: growthos/migrate:lesson-24
+    image: growthos/migrate:lesson-28
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
       target: migrate
       args:
-        VERSION: lesson-24
+        VERSION: lesson-28
     environment:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_LOG_FORMAT: json
@@ -104,13 +104,13 @@ services:
     logging: *json-logging
 
   api:
-    image: growthos/api:lesson-24
+    image: growthos/api:lesson-28
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
       target: api
       args:
-        VERSION: lesson-24
+        VERSION: lesson-28
     environment:
       GROWTHOS_ENVIRONMENT: development
       GROWTHOS_HTTP_ADDRESS: 0.0.0.0:8080
