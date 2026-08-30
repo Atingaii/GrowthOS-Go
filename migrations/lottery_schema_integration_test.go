@@ -65,9 +65,9 @@ func TestLotterySchemaMySQLIntegration(t *testing.T) {
 		_ = runner.Close()
 		t.Fatalf("read migration status: %v", err)
 	}
-	if status.State != dbmigration.StatusClean || status.Version < 2 || status.Version != status.Latest {
+	if status.State != dbmigration.StatusClean || status.Version != 5 || status.Latest != 5 {
 		_ = runner.Close()
-		t.Fatalf("migration status = %+v, want clean at latest version >= 2", status)
+		t.Fatalf("migration status = %+v, want clean at exact current version 5", status)
 	}
 	if err := runner.Close(); err != nil {
 		t.Fatalf("close migration runner: %v", err)
