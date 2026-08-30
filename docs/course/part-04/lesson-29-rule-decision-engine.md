@@ -595,7 +595,7 @@ Application service 构造后只持有只读 ports 与配置，不保存上一�
 
 ```text
 graph validation: O(V log V + E log E), V <= 128, E <= 256
-single traversal: O(path length * outgoing scan), path <= 16, v1 outdegree = 2
+single traversal: O(P * (log V + log E + B)), P <= 16, branch scan B <= 2
 visited: <= 17 node identities
 path: <= 16 steps
 successful port calls: graph reader 1 + Clock 1 + membership fact reader 1

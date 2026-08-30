@@ -34,6 +34,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 26 节验收](lessons/lesson-26.md) | 风险准入事实、单一逻辑时刻、确定顺序、真实短路、单类错误诊断与固定资格链停止线 | 通过 |
 | [第 27 节验收](lessons/lesson-27.md) | 权威会员事实、多出口 Strategy 路由、显式 baseline、最小 path、错误取消边界与规则引擎停止线 | 通过 |
 | [第 28 节验收](lessons/lesson-28.md) | 有界不可变 Strategy 路由图、Migration latest v5、三表约束、严格恢复、隔离最小权限测试身份与未装配停止线 | 通过 |
+| [第 29 节验收](lessons/lesson-29.md) | exact Strategy 路由图封闭求值、单一 graph/fact/as-of、完整 path、step/time/cancel 预算、低披露错误与未装配停止线 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |
