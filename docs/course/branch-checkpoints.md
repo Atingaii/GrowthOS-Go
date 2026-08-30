@@ -24,6 +24,7 @@
 | 第 20 节：Lottery 加权选择算法 | `codex/lesson-20-lottery-weighted-algorithm` | 第 19 节最终检查点 `7b67d2c` | 实现 `db679cf`；Go 1.26 随机源语义校准 `f2475fa`；文档内容 `6f08b80`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 完整 `uint64` 无偏区间、整数 bucket 映射、单候选短路、失败关闭、随机源端口与并发边界 |
 | 第 21 节：Lottery 临时选择 API | `codex/lesson-21-lottery-api` | 第 20 节最终检查点 `ea71640` | 实现 `65e9627`；边界/协议/验收加固 `be41d92`～`7c43456`；文档内容 `90129b6`；完整章节以最终分支 tip 为准 | 本地与 `origin` | development/test feature gate、只读纵向链、严格 HTTP/Nginx 契约、SELECT-only、隔离 Compose acceptance 与证据边界 |
 | 第 22 节：真实 React Lottery 页面 | `codex/lesson-22-react-lottery-page` | 第 21 节累计检查点 `9e3ed50` | transport/API `cbb87d6`～`428ae0d`；Compose 快照 `9cc2d07`；工作台迭代 `3b22628`～`06a4a38`；文档内容 `72e285f`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 真实 ephemeral API 消费、完整 uint64 string、竞态/取消边界、Credits 风格共享工作台、响应式与可访问性验收 |
+| 第 23 节：Lottery 规则需求与边界 | `codex/lesson-23-lottery-strategy-rules` | 第 22 节最终检查点 `1f95779` | 需求/ADR `09a45c2`；课程与配套文档 `479947b`；完整章节以最终分支 tip 为准 | 本地与 `origin` | 决定所有者与事实提供方分离、决策/选择/副作用三分法、失败/版本边界、零运行时代码漂移与渐进式规则路线 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -45,14 +46,16 @@
 
 第 22 节从第 21 节累计检查点 `9e3ed50` 开始。`cbb87d6`、`41a7833`、`428ae0d` 依次建立无请求体 JSON transport、严格 Lottery adapter 与 React 请求状态切片；`9cc2d07` 固化可联调 Compose 镜像快照；`3b22628`～`06a4a38` 再按“Lottery 页面收口—共享 WorkspaceShell—用户工作台—operator 工作台—交互/可访问性—路由分包”逐步迭代；`72e285f` 固化课程、API、QA、第一性原理设计手记、31 道带真实面经题型与官方来源的问答及设计验收。最终检查点同步 101 节路线，但不把当前 Mock 工作区写成认证或 RBAC。完整学习版本以 `origin/codex/lesson-22-react-lottery-page` 的最终 tip 为准。
 
+第 23 节从第 22 节最终检查点 `1f95779` 开始。`09a45c2` 先交付 32 条 Lottery 规则需求、上下文边界与 ADR；`479947b` 再补齐课程、零 API 变化记录、QA、1018 行第一性原理设计手记、24 道面试问答及全局索引，并根据交叉审查把正式 Draw/Result 与 Benefit 发放/补偿拆成两个单一决定所有者。本节刻意不创建 Rule 接口、Migration、Redis 调用、HTTP/React 资格判断或权限实现；第 31～35 节的统一访问控制仍按模型、会话、服务端强制、前端权限投影和越权 E2E 顺序演进。完整学习版本以 `origin/codex/lesson-23-lottery-strategy-rules` 的最终 tip 为准。
+
 ## 稳定章节分支与累计快照
 
 课程同时保留两类用途不同的分支：
 
 | 类型 | 分支规则 | 是否移动 | 当前事实 |
 | --- | --- | --- | --- |
-| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 22 节实现、浏览器/设计验收与最终文档均推送后，冻结同名远端 tip |
-| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 22 节最终检查点和门禁通过后快进至该节稳定分支 tip |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 23 节需求/ADR、配套文档与零代码漂移验收均推送后，冻结同名远端 tip |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 23 节最终检查点和门禁通过后快进至该节稳定分支 tip |
 
 学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
@@ -95,6 +98,7 @@ git switch codex/lesson-19-lottery-repository
 git switch codex/lesson-20-lottery-weighted-algorithm
 git switch codex/lesson-21-lottery-api
 git switch codex/lesson-22-react-lottery-page
+git switch codex/lesson-23-lottery-strategy-rules
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
@@ -111,6 +115,7 @@ git switch --track origin/codex/lesson-19-lottery-repository
 git switch --track origin/codex/lesson-20-lottery-weighted-algorithm
 git switch --track origin/codex/lesson-21-lottery-api
 git switch --track origin/codex/lesson-22-react-lottery-page
+git switch --track origin/codex/lesson-23-lottery-strategy-rules
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -139,11 +144,13 @@ git diff --stat ea71640..codex/lesson-21-lottery-api
 git diff ea71640..codex/lesson-21-lottery-api
 git diff --stat 9e3ed50..codex/lesson-22-react-lottery-page
 git diff 9e3ed50..codex/lesson-22-react-lottery-page
+git diff --stat 1f95779..codex/lesson-23-lottery-strategy-rules
+git diff 1f95779..codex/lesson-23-lottery-strategy-rules
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`。第 18 节直接基于 `24e606a`，实现提交为 `7593aaa`，策略内身份加固为 `f74fdf2`，文档内容提交为 `215abd1`。第 19 节直接基于 `4c06e25`，实现提交为 `50ac811`，证据加固为 `2c420c9`，文档内容为 `09556d8`。第 20 节直接基于 `7b67d2c`，实现提交为 `db679cf`，随机源语义校准为 `f2475fa`，文档内容为 `6f08b80`。第 21 节直接基于 `ea71640`，纵向链实现为 `65e9627`，协议、真实入口、隔离验收和清理加固依次为 `be41d92`、`9100221`、`e32ecd4`、`93f5694`、`3d4a44a`、`ef3f266`、`7c43456`，文档内容为 `90129b6`。第 22 节直接基于 `9e3ed50`，前端 transport/API 切片为 `cbb87d6`～`428ae0d`，Compose 快照为 `9cc2d07`，工作台、响应式、可访问性与路由分包迭代为 `3b22628`～`06a4a38`，文档内容为 `72e285f`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13 节直接基于 `ac9ad0e`；实现 `b3f5aa7` 和交叉审查加固 `b734463` 已推送至 `origin/codex/lesson-13-mysql-migrations`。第 15 节的直接起点是累计检查点 `f0cd8e1`，因此比较本节时应以该提交为基线；实现 `7e499cc` 与浏览器契约加固 `2283a70` 已推送。第 16 节直接基于第 15 节最终 tip `03ebe56`，实现提交为 `e746a6f`、`52c3add` 与 `7aa6c9e`，文档内容提交为 `ad8078c`。第 17 节直接基于 `f9cdd3c`，纯领域实现提交为 `0b59217`，文档内容提交为 `792f04e`。第 18 节直接基于 `24e606a`，实现提交为 `7593aaa`，策略内身份加固为 `f74fdf2`，文档内容提交为 `215abd1`。第 19 节直接基于 `4c06e25`，实现提交为 `50ac811`，证据加固为 `2c420c9`，文档内容为 `09556d8`。第 20 节直接基于 `7b67d2c`，实现提交为 `db679cf`，随机源语义校准为 `f2475fa`，文档内容为 `6f08b80`。第 21 节直接基于 `ea71640`，纵向链实现为 `65e9627`，协议、真实入口、隔离验收和清理加固依次为 `be41d92`、`9100221`、`e32ecd4`、`93f5694`、`3d4a44a`、`ef3f266`、`7c43456`，文档内容为 `90129b6`。第 22 节直接基于 `9e3ed50`，前端 transport/API 切片为 `cbb87d6`～`428ae0d`，Compose 快照为 `9cc2d07`，工作台、响应式、可访问性与路由分包迭代为 `3b22628`～`06a4a38`，文档内容为 `72e285f`。第 23 节直接基于 `1f95779`，需求与 ADR 为 `09a45c2`，课程和配套文档为 `479947b`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 

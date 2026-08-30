@@ -6,7 +6,7 @@
 - **API 记录：** [第 23 节 API](../../api/lessons/lesson-23.md)
 - **基准提交：** `1f95779277b1ea882d607a59e0fd2c475f58bd7a`（第 22 节已验收 tip）
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** 文档评审与命令设计已落盘；最终命令结果只能在第 23 节全部提交后由封板验收如实回填
+- **当前记录状态：** 已验收；内容提交 `479947b` 在干净工作树上通过精确白名单、运行时负向 diff 与完整回归，封板提交只登记证据和课程检查点
 
 > 本 QA 验收的是一节“需求升级与边界冻结”交付。通过条件不是出现更多类、表或接口，而是 32 条规则需求连续、每类判断只有一个决定所有者且原始事实提供方明确、失败语义不混淆、后续章节有明确承接，并且相对第 22 节 tip 没有任何运行时代码、API、Migration、Redis、前端或权限实现漂移。概念正反例属于需求评审，不冒充运行时自动化测试。
 
@@ -450,16 +450,16 @@ git diff --check
 make verify
 ```
 
-结果记录模板（不得提前填“通过”）：
+2026-08-30 最终实测记录：
 
 | 命令 | 预期 | 最终实测 | 证据边界 |
 | --- | --- | --- | --- |
-| `make doc-check` | exit 0 | 待封板回填 | 章节注册、完成证据和 Markdown 链接 |
-| `git diff --check` | exit 0 | 待封板回填 | whitespace/conflict marker 基础检查 |
-| `make verify` | exit 0 | 待封板回填 | 既有 Go/Web/文档门禁无回归 |
-| 精确白名单 | 无 unexpected path | 待封板回填 | 章节只修改批准文档/索引 |
-| runtime negative diff | exit 0 | 待封板回填 | 相对 Lesson 22 无 tracked runtime 变化 |
-| LRR ID diff | exit 0 | 待封板回填 | `LRR-001`～`LRR-032` 完整且无重复 |
+| `make doc-check` | exit 0 | exit 0，`documentation checks passed` | 章节注册、完成证据和 Markdown 链接 |
+| `git diff --check` | exit 0 | exit 0，无输出 | whitespace/conflict marker 基础检查 |
+| `make verify` | exit 0 | exit 0；Go vet/test、Web 19 个文件 152 条测试、typecheck 与 production build 全通过 | 既有 Go/Web/文档门禁无回归 |
+| 精确白名单 | 无 unexpected path | `479947b` 上无 unexpected path，工作树干净 | 章节只修改批准文档/索引 |
+| runtime negative diff | exit 0 | 相对 `1f95779` exit 0，无输出 | 相对 Lesson 22 无 tracked runtime 变化 |
+| LRR ID diff | exit 0 | exit 0，32 个编号完整且无重复 | `LRR-001`～`LRR-032` 完整且无重复 |
 
 如果任一命令未执行、因环境跳过或失败，必须如实记录，不能因为本节没有代码就默认通过。
 
@@ -530,7 +530,9 @@ make verify
 
 ## 20. 验收结论
 
-本草稿定义了可执行的最终验收方式，但在第 23 节全部文件提交、工作树干净且命令实际运行前，不提前宣称“已通过”。封板时只有同时满足以下条件才能把课程状态改为“已完成”：
+第 23 节已在内容提交 `479947b` 上完成精确白名单、干净工作树、运行时负向 diff、需求编号、文档和全仓回归验收；Migration 集合仍只有 `000001` 与 `000002`。封板提交只增加本页实测记录与课程检查点，并在提交后再次执行同一组静态门禁。
+
+实际满足：
 
 1. 32 条需求连续且通过内容评审；
 2. 所有权与失败语义正反例无冲突；
@@ -539,6 +541,6 @@ make verify
 5. `make doc-check`、`git diff --check`、`make verify` 实际 exit 0；
 6. 分支提交、远程 tip 与章节检查点一致。
 
-满足后可准确结论为：
+因此可以准确结论为：
 
 > 第 23 节完成 Lottery 规则需求与求值边界冻结，并以精确变更白名单和相对 Lesson 22 tip 的负向 diff 证明没有提前引入规则引擎、API、Migration、Redis、前端或权限运行时实现。
