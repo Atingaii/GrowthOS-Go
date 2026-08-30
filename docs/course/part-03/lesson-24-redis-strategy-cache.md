@@ -140,10 +140,11 @@ HTTP StrategyID
 | 15 | `5a0baeb docs(product): calibrate cache capability boundary` | 校准产品/NFR/限界上下文/前端事实，不把缓存写成事实源、SLO 或浏览器契约 | `git diff --check 9d44eb1..5a0baeb` |
 | 16 | `d621aae docs(course): teach Redis strategy caching` | 交付课程、API、QA、设计手记、24 道面试问答与专用 Runbook | `go run ./cmd/doccheck` |
 | 17 | `13a3210 docs(course): register lesson twenty-four` | 更新课程状态、README、API/QA/设计/面试索引和学习分支检查点 | `go run ./cmd/doccheck` |
+| 18 | `b9e79e2 fix(cache): close lesson twenty-four review gaps` | 根据最终交叉审查固定 Redis DB 0、校准 MinIdle/ACL/readiness/TTL 证据边界，并补 JSON depth guard 测试 | `make verify && go test -race ./...` |
 
 全局索引与最终门禁在后续检查点提交中收口；完整章节始终以 `origin/codex/lesson-24-redis-strategy-cache` 的冻结 tip 为准，不能把上表任一中间提交单独当成完整验收版本。
 
-这段历史刻意保留了三次真实修正：TTL 上限收紧、ACL channel 权限收敛、压测请求补齐 ephemeral acknowledgement。它们展示的是审查与验收怎样让架构逐步变得可信，而不是假装第一版没有偏差。
+这段历史刻意保留真实修正：TTL 上限收紧、ACL channel 权限收敛、压测请求补齐 ephemeral acknowledgement，以及封板审查发现的 Redis DB/MinIdle/证据归因偏差。它们展示的是审查与验收怎样让架构逐步变得可信，而不是假装第一版没有偏差。
 
 逐提交学习命令：
 
