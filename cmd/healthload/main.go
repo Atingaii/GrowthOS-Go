@@ -26,6 +26,8 @@ const (
 	defaultWorkers        = 32
 	defaultTimeout        = 2 * time.Second
 	defaultExpectedStatus = http.StatusOK
+	defaultMethod         = http.MethodGet
+	userAgent             = "growthos-healthload/1"
 
 	maxRate              = 100_000
 	maxDuration          = 24 * time.Hour
@@ -37,6 +39,7 @@ const (
 
 type config struct {
 	URL            string
+	Method         string
 	Rate           int
 	Duration       time.Duration
 	Workers        int
@@ -47,6 +50,7 @@ type config struct {
 
 type report struct {
 	Target           string           `json:"target"`
+	Method           string           `json:"method"`
 	StartedAt        time.Time        `json:"started_at"`
 	FinishedAt       time.Time        `json:"finished_at"`
 	Rate             int              `json:"rate"`
@@ -115,6 +119,7 @@ func parseConfig(args []string) (config, error) {
 	flags := flag.NewFlagSet("healthload", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&cfg.URL, "url", defaultURL, "health endpoint URL")
+	flags.StringVar(&cfg.Method, "method", defaultMethod, "HTTP method (GET or POST)")
 	flags.IntVar(&cfg.Rate, "rate", defaultRate, "scheduled requests per second")
 	flags.DurationVar(&cfg.Duration, "duration", defaultDuration, "load duration")
 	flags.IntVar(&cfg.Workers, "workers", defaultWorkers, "maximum concurrent workers")
@@ -135,6 +140,9 @@ func parseConfig(args []string) (config, error) {
 }
 
 func validateConfig(cfg config) error {
+	if cfg.Method != http.MethodGet && cfg.Method != http.MethodPost {
+		return errors.New("method must be GET or POST")
+	}
 	parsedURL, err := url.ParseRequestURI(cfg.URL)
 	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return errors.New("url must be an absolute http or https URL")
@@ -256,6 +264,7 @@ func runLoad(ctx context.Context, cfg config, client *http.Client) report {
 
 	result := report{
 		Target:         cfg.URL,
+		Method:         cfg.Method,
 		StartedAt:      started.UTC(),
 		Rate:           cfg.Rate,
 		DurationMS:     milliseconds(cfg.Duration),
@@ -330,20 +339,20 @@ func startWorkers(
 		go func() {
 			defer workers.Done()
 			for range jobs {
-				results <- measure(ctx, client, cfg.URL)
+				results <- measure(ctx, client, cfg.Method, cfg.URL)
 			}
 		}()
 	}
 }
 
-func measure(ctx context.Context, client *http.Client, target string) measurement {
+func measure(ctx context.Context, client *http.Client, method, target string) measurement {
 	started := time.Now()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	request, err := http.NewRequestWithContext(ctx, method, target, nil)
 	if err != nil {
 		return measurement{latency: time.Since(started), err: errors.New("create request")}
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("User-Agent", "growthos-healthload/lesson16")
+	request.Header.Set("User-Agent", userAgent)
 
 	response, err := client.Do(request)
 	if err != nil {

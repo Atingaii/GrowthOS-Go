@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,6 +49,9 @@ func TestRunCLISuccess(t *testing.T) {
 	if result.Target != server.URL+"/health" || result.StartedAt.IsZero() || result.FinishedAt.Before(result.StartedAt) {
 		t.Fatalf("report identity/time fields are invalid: %+v", result)
 	}
+	if result.Method != http.MethodGet {
+		t.Fatalf("report method = %q, want %q", result.Method, http.MethodGet)
+	}
 	if result.Scheduled != 4 || result.Completed != 4 || result.Success != 4 {
 		t.Fatalf("request counts = scheduled:%d completed:%d success:%d, want 4/4/4", result.Scheduled, result.Completed, result.Success)
 	}
@@ -62,6 +66,105 @@ func TestRunCLISuccess(t *testing.T) {
 	}
 	if calls.Load() != 4 {
 		t.Fatalf("server calls = %d, want 4", calls.Load())
+	}
+}
+
+func TestRunCLIPOSTUsesConfiguredMethodWithEmptyBody(t *testing.T) {
+	t.Parallel()
+
+	type requestObservation struct {
+		method           string
+		body             []byte
+		contentLength    int64
+		transferEncoding []string
+		accept           string
+		userAgent        string
+		readErr          error
+	}
+
+	var calls atomic.Int64
+	observations := make(chan requestObservation, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls.Add(1)
+		body, err := io.ReadAll(request.Body)
+		observations <- requestObservation{
+			method:           request.Method,
+			body:             body,
+			contentLength:    request.ContentLength,
+			transferEncoding: append([]string(nil), request.TransferEncoding...),
+			accept:           request.Header.Get("Accept"),
+			userAgent:        request.Header.Get("User-Agent"),
+			readErr:          err,
+		}
+		writer.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	exitCode := runCLI(context.Background(), []string{
+		"-url=" + server.URL + "/draw",
+		"-method=POST",
+		"-rate=1",
+		"-duration=1ms",
+		"-workers=1",
+		"-timeout=200ms",
+	}, stdout, stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("runCLI exit code = %d, stderr = %q, stdout = %q", exitCode, stderr.String(), stdout.String())
+	}
+	result := decodeReport(t, stdout.Bytes())
+	if result.Method != http.MethodPost || result.Scheduled != 1 || result.Completed != 1 || result.Success != 1 {
+		t.Fatalf("POST report = %+v", result)
+	}
+
+	observation := <-observations
+	if observation.readErr != nil {
+		t.Fatalf("read request body: %v", observation.readErr)
+	}
+	if observation.method != http.MethodPost {
+		t.Fatalf("request method = %q, want %q", observation.method, http.MethodPost)
+	}
+	if len(observation.body) != 0 || observation.contentLength != 0 || len(observation.transferEncoding) != 0 {
+		t.Fatalf(
+			"POST body metadata = bytes:%d content-length:%d transfer-encoding:%v, want an empty body",
+			len(observation.body),
+			observation.contentLength,
+			observation.transferEncoding,
+		)
+	}
+	if observation.accept != "application/json" {
+		t.Fatalf("Accept = %q, want application/json", observation.accept)
+	}
+	if observation.userAgent != userAgent {
+		t.Fatalf("User-Agent = %q, want %q", observation.userAgent, userAgent)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("server calls = %d, want exactly one without retries", calls.Load())
+	}
+}
+
+func TestMeasurePOSTDoesNotRetryTransportFailure(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		if request.Method != http.MethodPost {
+			t.Fatalf("request method = %q, want %q", request.Method, http.MethodPost)
+		}
+		if request.Body != nil {
+			t.Fatal("POST request body must be nil")
+		}
+		return nil, fmt.Errorf("forced transport failure")
+	})}
+
+	result := measure(context.Background(), client, http.MethodPost, "http://example.test/draw")
+	if result.err == nil {
+		t.Fatal("measure succeeded, want transport failure")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("transport calls = %d, want exactly one without retries", calls.Load())
 	}
 }
 
@@ -170,6 +273,9 @@ func TestParseConfigValidation(t *testing.T) {
 	}{
 		{name: "unknown flag", args: []string{"-unknown=true"}},
 		{name: "positional argument", args: []string{"extra"}},
+		{name: "empty method", args: []string{"-method="}},
+		{name: "lowercase method", args: []string{"-method=post"}},
+		{name: "unsupported method", args: []string{"-method=PUT"}},
 		{name: "relative URL", args: []string{"-url=/health"}},
 		{name: "unsupported scheme", args: []string{"-url=ftp://example.com/health"}},
 		{name: "URL user info", args: []string{"-url=http://user:password@example.com/health"}},
@@ -206,7 +312,7 @@ func TestParseConfigDefaultsAndScheduledCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseConfig defaults: %v", err)
 	}
-	if cfg.URL != defaultURL || cfg.Rate != 100 || cfg.Duration != 5*time.Minute || cfg.Workers != 32 || cfg.Timeout != 2*time.Second || cfg.ExpectedStatus != 200 || cfg.MaxP99 != 0 {
+	if cfg.URL != defaultURL || cfg.Method != http.MethodGet || cfg.Rate != 100 || cfg.Duration != 5*time.Minute || cfg.Workers != 32 || cfg.Timeout != 2*time.Second || cfg.ExpectedStatus != 200 || cfg.MaxP99 != 0 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 
@@ -289,4 +395,10 @@ func decodeReport(t *testing.T, data []byte) report {
 		t.Fatalf("decode report %q: %v", data, err)
 	}
 	return result
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
