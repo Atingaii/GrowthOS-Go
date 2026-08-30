@@ -76,7 +76,7 @@ export const GrowthFunnelIllustration: React.FC<{ className?: string }> = () => 
       {/* Funnel chart */}
       <div aria-hidden="true">
         <ResponsiveContainer width="100%" height={180}>
-          <FunnelChart>
+          <FunnelChart accessibilityLayer={false}>
             <Tooltip content={<FunnelTooltipContent />} />
             <Funnel
               dataKey="value"
