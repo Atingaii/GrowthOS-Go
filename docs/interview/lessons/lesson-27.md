@@ -98,9 +98,9 @@
 
 ## 8. 路由确定性具体指什么，怎样证明？
 
-- **直接回答：** 相同 policy revision、相同 fact snapshot、相同 logical evaluated-at 必须产生相同 rule、branch、reason、target 和 path。实现使用 concrete switch，不读全局状态、不读取随机源；application 每次调用只捕获一次 Clock，domain 将时间规范为 UTC。确定性不表示跨系统原子快照，只表示给定输入下纯求值稳定。
+- **直接回答：** 相同完整 policy snapshot（revision + premium target + baseline target）、相同 fact snapshot、相同 logical evaluated-at 必须产生相同 rule、branch、reason、target 和 path。revision 单独只是关联 token，不能代表内容相同。实现使用 concrete switch，不读全局状态、不读取随机源；application 每次调用只捕获一次 Clock，domain 将时间规范为 UTC。确定性不表示跨系统原子快照，只表示给定完整输入下纯求值稳定。
 - **追问：** “同一用户两次调用可能结果不同，是否违背确定性？”
-  - **追问回答：** 如果 fact revision、policy revision 或 evaluated-at 变化，输入已经不同。真正需要追查的是哪个版本/时刻变化，而不是要求业务永远不变。
+  - **追问回答：** 如果 fact snapshot、policy snapshot 任一字段或 evaluated-at 变化，输入已经不同；当前还必须警惕上层错误复用同一个 policy revision 表示不同 targets。真正需要追查的是哪份完整输入变化，而不是要求业务永远不变。
 - **权衡：** 保存 policy/fact provenance 增加决定字段，却使回放与差异定位成为可能；它仍不伪造不存在的 Strategy version。
 - **代码 / 测试证据：** [纯 RouteMembershipStrategy](../../../internal/lottery/domain/membership_routing.go)、[UTC/重复确定性测试](../../../internal/lottery/domain/membership_routing_test.go)、[单次 Clock 测试](../../../internal/lottery/application/membership_routing_test.go)。
 - **官方来源：** OMG [DMN 1.4](https://www.omg.org/spec/DMN/1.4/PDF)要求命中策略明确决定决策表语义；Go 官方 [time](https://pkg.go.dev/time)定义 `Time` 比较、`Sub` 与 location/monotonic 表示边界。

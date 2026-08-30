@@ -4,8 +4,9 @@ import "fmt"
 
 const maxMembershipRoutingPolicyRevisionBytes = 256
 
-// MembershipRoutingPolicyRevision identifies one immutable Lottery routing
-// policy. It is independent of fact, Strategy, schema, and application versions.
+// MembershipRoutingPolicyRevision is a bounded correlation token carried by one
+// immutable in-memory policy snapshot. The token alone is not a content hash or
+// a registry-backed uniqueness guarantee.
 type MembershipRoutingPolicyRevision string
 
 // MembershipStrategyRoutingPolicy is the first concrete membership route. A
@@ -52,7 +53,7 @@ func (policy MembershipStrategyRoutingPolicy) Validate() error {
 	return nil
 }
 
-// Revision returns the immutable policy revision.
+// Revision returns the snapshot's bounded correlation token.
 func (policy MembershipStrategyRoutingPolicy) Revision() MembershipRoutingPolicyRevision {
 	return policy.revision
 }
