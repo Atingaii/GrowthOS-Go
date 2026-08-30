@@ -160,7 +160,7 @@ R : ValidPolicy × ValidMembershipFact × ValidInstant
 - pre-cancel、clock 后取消、reader 后取消和阻塞 reader 取消；
 - 每次有效请求 Clock/reader 各一次；
 - 64 goroutine 的只读一致结果；
-- AST 级跨上下文 import、generic type、Rule/Tree/Engine 名称和 `map[string]any` 停止线。
+- AST 级跨上下文 import、production generic type/function、Rule/Tree/Engine 名称和 `map[string]any` 停止线。
 
 测试入口：
 
@@ -533,14 +533,14 @@ decision
 - `EvaluationContext`；
 - `RulePriority`；
 - `DSL`；
-- 泛型规则类型；
+- production 泛型类型或函数；
 - `map[string]any` 事实袋。
 
 `TestLesson27MembershipRoutingKeepsContextOwnershipAndEngineStopLine` 使用 Go AST 检查 Lottery/Participation 的生产文件：
 
 - 项目内 import 只能指向被允许的本上下文 domain；
 - 禁止上述通用类型名；
-- 禁止 type parameter；
+- 禁止类型或函数声明上的 type parameter，并用嵌套目录 fixture 证明递归扫描不会漏掉 generic function；
 - 禁止 `map[string]any` 或 `map[string]interface{}`。
 
 这项测试不是说这些技术永远错误，而是防止本节在没有证据时无声扩张。
@@ -1954,7 +1954,7 @@ AST 扫描 Lottery domain/application 和 Participation domain/application 的�
 
 - 只允许本上下文受控 project import；
 - 禁止通用 Rule/Tree/Engine 类型名；
-- 禁止泛型类型；
+- 禁止 production 泛型类型或函数；
 - 禁止 untyped string fact bag。
 
 它能发现源码层漂移，不能证明整个仓库所有 transport/runtime 文件绝无变化；那仍需 Git diff、课程验收和集成检查。

@@ -173,7 +173,7 @@ zero/unknown/unsupported tier、主体不符、空 source/revision、future、st
 - 会员 provider adapter、SQL/Redis repository、Migration 或缓存；
 - HTTP route、DTO、status/header、runtime config、Compose 或 React；
 - Strategy repository lookup、WeightedSelector、随机票据、Draw/Result；
-- generic `Rule`、`RuleTree`、`Engine`、DSL、runtime priority 或 `map[string]any`；
+- production generic type/function、通用 `Rule`、`RuleTree`、`Engine`、DSL、runtime priority 或 `map[string]any`；
 - Activity 聚合、发布绑定与 Strategy/rule graph version；
 - 会话、Principal、RBAC/ABAC、tenant、资源动作、前端权限投影；
 - 在线门控、生产 SLO、持久化审计或浏览器 E2E 声明。

@@ -94,7 +94,7 @@
   - **追问回答：** 开闭原则不要求业务词汇永不修改。对安全关键事实，编译期/构造期显式变更比运行时吞掉未知值更可靠；过早开放只把变更风险从代码审查转移到未验证配置。
 - **权衡：** 封闭词汇降低无代码扩展能力，却获得穷举分支、严格失败和清楚发布面；当运营配置需求真实出现时，再引入 schema/version/发布验证。
 - **代码 / 测试证据：** [MembershipTier 常量与 Validate](../../../internal/lottery/domain/membership_fact.go)、[unsupported/zero 表驱动测试与 fuzz](../../../internal/lottery/domain/membership_fact_test.go)。
-- **官方来源：** Go 官方 [Fuzzing](https://go.dev/doc/security/fuzz/)说明 fuzz 可探索人工遗漏的边界输入；本节用它证明任意非 `standard/premium` 字符串不会被接受。
+- **官方来源：** Go 官方 [Fuzzing](https://go.dev/doc/security/fuzz/)说明 fuzz 可探索人工遗漏的边界输入；本节用有限执行持续探索并守护“非 `standard/premium` 字符串不得被接受”这一不变量，不把限时 fuzz 冒充穷举证明。
 
 ## 8. 路由确定性具体指什么，怎样证明？
 
@@ -279,7 +279,7 @@
 
 ## 28. 你怎样测试本节，而不是只测两个 happy path？
 
-- **直接回答：** domain 覆盖 standard/premium 两出口、literal code、target 收敛仍保留 branch、path 副本、zero/future 零决定、UTC/重复确定性、policy/source/revision 边界和 unsupported-tier fuzz；application 覆盖 Clock→reader 顺序、一次调用、freshness exact/+1ns、subject mismatch、fact+error、provider deadline、payload contract error、pre-cancel/阻塞取消、typed nil、并发一致性；architecture test 禁止跨上下文 import、generic Rule/Tree/Engine/DSL 和 `map[string]any`。
+- **直接回答：** domain 覆盖 standard/premium 两出口、literal code、target 收敛仍保留 branch、path 副本、zero/future 零决定、UTC/重复确定性、policy/source/revision 边界和 unsupported-tier fuzz；application 覆盖 Clock→reader 顺序、一次调用、freshness exact/+1ns、subject mismatch、fact+error、provider deadline、payload contract error、pre-cancel/阻塞取消、typed nil、并发一致性；architecture test 递归检查目标包，禁止跨上下文 import、通用 Rule/Tree/Engine/DSL、production 泛型类型/函数和 `map[string]any`。
 - **追问：** “fuzz seed 通过是否证明所有输入安全？”
   - **追问回答：** 不能。普通 `go test` 只跑 seed corpus；限时 fuzz 也不是穷举。它补充人工边界测试，最终仍需 race、静态检查、集成/E2E 和真实故障演练。
 - **权衡：** 精确 call-count、literal code 和 1ns 测试会冻结重要契约，也会使无语义变化的重构需要更新测试；应只锁对调用方/架构可观察的行为。

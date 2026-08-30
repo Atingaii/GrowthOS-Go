@@ -404,7 +404,7 @@ premium  -> premium_override -> Strategy 200
 - Lottery application 只 import Lottery domain；
 - Participation domain/application 仍不 import Lottery；
 - 不声明 `Rule/RuleTree/RuleEngine/DecisionEngine/EvaluationContext/DSL` 等通用类型；
-- 不声明泛型规则类型；
+- 不声明 production 泛型类型或函数；
 - 不声明 `map[string]any` fact bag。
 
 它是可执行 guard，不是形式化证明；同义词或语义上的过度抽象仍需代码审查。
