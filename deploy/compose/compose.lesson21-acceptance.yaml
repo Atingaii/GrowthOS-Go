@@ -5,6 +5,8 @@ services:
       # The process default is off and staging/production reject opt-in. Both
       # local Compose files acknowledge this development-only route explicitly.
       GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED: "true"
+      GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED: "${GROWTHOS_LESSON24_ACCEPTANCE_CACHE_ENABLED:-true}"
+      GROWTHOS_LOG_LEVEL: debug
 
   migrate:
     image: "${GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE}"

@@ -16,6 +16,9 @@ concurrent_requests=64
 concurrent_workers=16
 connect_timeout=3
 request_timeout=10
+baseline_rate=50
+baseline_duration=10s
+baseline_workers=16
 
 ok() {
     printf 'ok - %s\n' "$1"
@@ -32,7 +35,7 @@ require_command() {
     fi
 }
 
-for required_command in awk curl docker jq mktemp openssl sed sort stat tr wc xargs; do
+for required_command in awk curl docker go jq mktemp openssl sed sort stat tr wc xargs; do
     require_command "$required_command"
 done
 if ! docker compose version >/dev/null 2>&1; then
@@ -79,6 +82,7 @@ export GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE="$acceptance_api_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE="$acceptance_migrate_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_REDIS_IMAGE="$acceptance_redis_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_WEB_IMAGE="$acceptance_web_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_CACHE_ENABLED=true
 export BUILDX_BUILDER="$buildx_builder"
 
 compose() {
@@ -357,6 +361,9 @@ cleanup_temporary_directories() {
             done
             remove_regular_file "$response_directory/gateway-oversize-request" || temporary_cleanup_status=1
             remove_regular_file "$response_directory/image-ownership" || temporary_cleanup_status=1
+            for baseline_scenario in warm-cache direct-mysql redis-down; do
+                remove_regular_file "$response_directory/m1-$baseline_scenario.json" || temporary_cleanup_status=1
+            done
             if ! rmdir "$response_directory"; then
                 printf 'temporary response directory was not empty: %s\n' "$response_directory" >&2
                 temporary_cleanup_status=1
@@ -555,9 +562,18 @@ if [ "$builder_container_name" != "/$expected_builder_container" ] ||
 fi
 cleanup_images=1
 build_status=0
-if ! compose build; then
-    build_status=1
-fi
+# Compose may build the api and migrate targets concurrently even though both
+# targets share the same Go builder stage. Docker Desktop then runs two copies
+# of the compiler against the same dependency graph, which can exceed a
+# deliberately small local memory budget. Build each service in dependency-
+# neutral order: the api build populates the shared builder cache and migrate
+# reuses it, while Redis and the web bundle never compete with the Go compiler.
+for acceptance_build_service in api migrate redis web; do
+    if ! compose build "$acceptance_build_service"; then
+        build_status=1
+        break
+    fi
+done
 image_ownership_file="$response_directory/image-ownership"
 : > "$image_ownership_file"
 for acceptance_image in $acceptance_images; do
@@ -604,6 +620,122 @@ assert_running_healthy() {
     if [ "$service_state" != running ] || [ "$service_health" != healthy ]; then
         fail "$1 is $service_state/$service_health instead of running/healthy"
     fi
+}
+
+wait_gateway_reachable() {
+    baseline_gateway_attempt=0
+    while [ "$baseline_gateway_attempt" -lt 30 ]; do
+        if curl \
+            --silent \
+            --show-error \
+            --fail \
+            --connect-timeout 1 \
+            --max-time 2 \
+            --header 'Accept: application/json' \
+            --output /dev/null \
+            "$base_url/health" 2>/dev/null; then
+            return 0
+        fi
+        baseline_gateway_attempt=$((baseline_gateway_attempt + 1))
+        sleep 1
+    done
+    fail 'the disposable web gateway did not become reachable within 30 seconds'
+}
+
+recreate_api_for_cache_mode() {
+    baseline_cache_mode=$1
+    export GROWTHOS_LESSON24_ACCEPTANCE_CACHE_ENABLED="$baseline_cache_mode"
+    if ! compose up --detach --no-deps --force-recreate --wait --wait-timeout 90 api; then
+        fail "could not recreate the API with Strategy cache enabled=$baseline_cache_mode"
+    fi
+    resolve_container api
+    baseline_api_container_id=$resolved_container_id
+    # Keep the edge container and its Docker-assigned host port stable. Nginx
+    # resolves the service name through Docker DNS with a short validity, so a
+    # successful gateway probe proves that service discovery followed the new
+    # API container instead of hiding the transition behind an edge restart.
+    assert_running_healthy web
+    wait_gateway_reachable
+    request GET /ready 200 - - -
+}
+
+mysql_app_select_count() {
+    # go-sql-driver/mysql sends the repository's parameterized SELECTs through
+    # COM_STMT_EXECUTE, so statement/sql/select does not count API source
+    # reads. The application identity has an exact SELECT-only grant and the
+    # fixture fingerprint proves no writes, making this execute delta the
+    # database-independent evidence for the two repository SELECTs per load.
+    # The root identity reads only Performance Schema counters inside this
+    # disposable project. Hex literals keep shell quoting deterministic.
+    # shellcheck disable=SC2016
+    compose exec -T mysql sh -eu -c '
+        export MYSQL_PWD="$(cat /run/secrets/mysql_root_password)"
+        mysql --protocol=socket --user=root --batch --silent --skip-column-names \
+            --execute="
+                SELECT COALESCE(SUM(COUNT_STAR), 0)
+                FROM performance_schema.events_statements_summary_by_account_by_event_name
+                WHERE USER = 0x67726f7774686f735f617070
+                  AND EVENT_NAME = 0x73746174656d656e742f636f6d2f45786563757465
+            "
+    '
+}
+
+cache_outcome_count() {
+    baseline_log_container=$1
+    baseline_log_kind=$2
+    docker logs "$baseline_log_container" 2>&1 |
+        jq -Rr --arg kind "$baseline_log_kind" '
+            fromjson? |
+            select(has("cache_outcome")) |
+            select($kind == "*" or .cache_outcome == $kind) |
+            1
+        ' |
+        wc -l |
+        tr -d '[:space:]'
+}
+
+assert_counter() {
+    baseline_counter_name=$1
+    baseline_counter_value=$2
+    case "$baseline_counter_value" in
+        ''|*[!0-9]*)
+            fail "$baseline_counter_name is not a non-negative integer"
+            ;;
+    esac
+}
+
+run_m1_load() {
+    baseline_scenario=$1
+    baseline_report="$response_directory/m1-$baseline_scenario.json"
+    if ! (
+        cd "$repository_root"
+        go run ./cmd/healthload \
+            -url "$base_url/api/v1/lottery/strategies/21003/ephemeral-selections" \
+            -method POST \
+            -ephemeral-selection=true \
+            -rate "$baseline_rate" \
+            -duration "$baseline_duration" \
+            -workers "$baseline_workers" \
+            -timeout 3s \
+            -expected-status 200 > "$baseline_report"
+    ); then
+        fail "the $baseline_scenario M1 load returned transport, status, or completion failures"
+    fi
+    if ! jq -e '
+        .method == "POST" and
+        .ephemeral_selection == true and
+        .scheduled > 0 and
+        .completed == .scheduled and
+        .success == .scheduled and
+        .errors == 0 and
+        .unexpected_status == 0 and
+        .dropped == 0 and
+        .status_counts["200"] == .scheduled
+    ' "$baseline_report" >/dev/null; then
+        fail "the $baseline_scenario M1 report failed its exact count contract"
+    fi
+    baseline_completed=$(jq -r '.completed' "$baseline_report")
+    baseline_summary=$(jq -c '{scheduled, actual_rps, p50_ms, p95_ms, p99_ms, max_ms}' "$baseline_report")
 }
 
 containers_publishing_loopback_port() {
@@ -1291,6 +1423,97 @@ if ! printf '%s' "$recovered_mysql_projection" | jq -e '
     fail 'MySQL recovery did not rebuild the expected Strategy projection'
 fi
 ok 'warm Redis hit survived MySQL outage; readiness and cold reads failed safely; recovery refilled the cache'
+
+# M1 uses one immutable fixture and one loopback Nginx -> Go endpoint for all
+# scenarios. Latency is reported, never gated as a production SLO. Performance
+# Schema account counters prove source reads independently of cache log events.
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 200 - - ephemeral-selection
+assert_multi_strategy_selection 'the M1 warm-up request'
+recreate_api_for_cache_mode true
+warm_selects_before=$(mysql_app_select_count) || fail 'could not read the pre-warm-cache MySQL SELECT counter'
+assert_counter 'pre-warm-cache MySQL SELECT counter' "$warm_selects_before"
+run_m1_load warm-cache
+warm_completed=$baseline_completed
+warm_report_summary=$baseline_summary
+warm_selects_after=$(mysql_app_select_count) || fail 'could not read the post-warm-cache MySQL SELECT counter'
+assert_counter 'post-warm-cache MySQL SELECT counter' "$warm_selects_after"
+warm_select_delta=$((warm_selects_after - warm_selects_before))
+warm_hits=$(cache_outcome_count "$baseline_api_container_id" hit)
+assert_counter 'warm-cache hit count' "$warm_hits"
+if [ "$warm_select_delta" -ne 0 ] || [ "$warm_hits" -ne "$warm_completed" ]; then
+    fail "warm-cache evidence was mysql_select_executes=$warm_select_delta cache_hits=$warm_hits completed=$warm_completed"
+fi
+printf 'm1 - warm-cache %s mysql_select_executes=%s cache_hits=%s\n' \
+    "$warm_report_summary" "$warm_select_delta" "$warm_hits"
+
+recreate_api_for_cache_mode false
+direct_selects_before=$(mysql_app_select_count) || fail 'could not read the pre-direct-MySQL SELECT counter'
+assert_counter 'pre-direct-MySQL SELECT counter' "$direct_selects_before"
+run_m1_load direct-mysql
+direct_completed=$baseline_completed
+direct_report_summary=$baseline_summary
+direct_selects_after=$(mysql_app_select_count) || fail 'could not read the post-direct-MySQL SELECT counter'
+assert_counter 'post-direct-MySQL SELECT counter' "$direct_selects_after"
+direct_select_delta=$((direct_selects_after - direct_selects_before))
+direct_expected_selects=$((direct_completed * 2))
+direct_cache_events=$(cache_outcome_count "$baseline_api_container_id" '*')
+assert_counter 'cache-disabled observation count' "$direct_cache_events"
+if [ "$direct_select_delta" -ne "$direct_expected_selects" ] || [ "$direct_cache_events" -ne 0 ]; then
+    fail "direct-MySQL evidence was mysql_select_executes=$direct_select_delta expected=$direct_expected_selects cache_events=$direct_cache_events"
+fi
+printf 'm1 - direct-mysql %s mysql_select_executes=%s source_loads=%s cache_events=%s\n' \
+    "$direct_report_summary" "$direct_select_delta" "$direct_completed" "$direct_cache_events"
+
+recreate_api_for_cache_mode true
+redis_business del "$multi_cache_key" >/dev/null
+resolve_container redis
+if ! compose stop redis; then
+    fail 'could not stop Redis for the M1 degraded baseline'
+fi
+if [ "$(docker inspect --format '{{.State.Status}}' "$resolved_container_id")" != exited ]; then
+    fail 'Redis did not reach exited state for the M1 degraded baseline'
+fi
+down_selects_before=$(mysql_app_select_count) || fail 'could not read the pre-Redis-down MySQL SELECT counter'
+assert_counter 'pre-Redis-down MySQL SELECT counter' "$down_selects_before"
+run_m1_load redis-down
+down_completed=$baseline_completed
+down_report_summary=$baseline_summary
+down_selects_after=$(mysql_app_select_count) || fail 'could not read the post-Redis-down MySQL SELECT counter'
+assert_counter 'post-Redis-down MySQL SELECT counter' "$down_selects_after"
+down_select_delta=$((down_selects_after - down_selects_before))
+if [ $((down_select_delta % 2)) -ne 0 ]; then
+    fail "Redis-down MySQL SELECT delta $down_select_delta is not two statements per source load"
+fi
+down_source_loads=$((down_select_delta / 2))
+down_fill_leaders=$(cache_outcome_count "$baseline_api_container_id" fill_leader)
+down_fill_joined=$(cache_outcome_count "$baseline_api_container_id" fill_joined)
+down_read_error_logs=$(cache_outcome_count "$baseline_api_container_id" read_error)
+assert_counter 'Redis-down fill leader count' "$down_fill_leaders"
+assert_counter 'Redis-down fill joined count' "$down_fill_joined"
+assert_counter 'Redis-down read-error log count' "$down_read_error_logs"
+if [ "$down_source_loads" -lt 1 ] || [ "$down_source_loads" -gt "$down_completed" ] ||
+   [ $((down_fill_leaders + down_fill_joined)) -ne "$down_completed" ] ||
+   [ "$down_read_error_logs" -lt 1 ]; then
+    fail "Redis-down evidence was completed=$down_completed source_loads=$down_source_loads leaders=$down_fill_leaders joined=$down_fill_joined read_error_logs=$down_read_error_logs"
+fi
+request GET /ready 200 - - -
+if ! compose up --detach --wait --wait-timeout 60 redis; then
+    fail 'could not restore Redis after the M1 degraded baseline'
+fi
+assert_running_healthy redis
+request POST /api/v1/lottery/strategies/21003/ephemeral-selections 200 - - ephemeral-selection
+assert_multi_strategy_selection 'the post-M1 Redis recovery request'
+post_baseline_projection=$(redis_business getrange "$multi_cache_key" 0 2097152) ||
+    fail 'could not read the Strategy projection rebuilt after the M1 baseline'
+if ! printf '%s' "$post_baseline_projection" | jq -e '
+    .schema_version == 1 and .strategy.id == "21003" and (.strategy.awards | length) == 2
+' >/dev/null; then
+    fail 'post-M1 recovery did not rebuild the expected Strategy projection'
+fi
+printf 'm1 - redis-down %s mysql_select_executes=%s source_loads=%s fill_leaders=%s fill_joined=%s read_error_logs=%s\n' \
+    "$down_report_summary" "$down_select_delta" "$down_source_loads" \
+    "$down_fill_leaders" "$down_fill_joined" "$down_read_error_logs"
+ok 'M1 warm-cache, direct-MySQL, and Redis-down baselines have independent latency and source-load evidence'
 
 # Stop only the label-resolved disposable API and prove nginx-generated
 # upstream failures retain the same JSON/no-store/correlation contract. Then
