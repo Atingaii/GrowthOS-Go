@@ -159,7 +159,7 @@ return graph 中的 default target
 | 优点 | 成本 / 风险 |
 | --- | --- |
 | 完全复用现有 graph 与 membership 领域语言 | v1 只能执行一种 concrete rule |
-| exact identity、single snapshots 与 path 可重放 | 每次求值要再次 Validate graph |
+| exact identity 可定位同一 topology，single snapshots 让同一输入结果确定 | 每次求值要再次 Validate graph；尚无历史 fact 回读/持久审计，不能完整重放 |
 | step/time budget 与取消点可明确验证 | 需要新的 decision/path/error 契约 |
 | 不引入 registry/DSL/Activity/selection | 尚不能回答线上 active revision |
 
@@ -205,7 +205,7 @@ Application 新增未装配的 graph evaluation service，只依赖：
 
 1. 验证 ctx、subject ref、exact graph identity 与 service configuration；非法输入零依赖调用；
 2. 若 caller context 已取消，直接返回 caller error；
-3. 从 caller context 派生 positive `maxDuration` child deadline，覆盖本次 graph read、clock、fact read 与 traversal 的整体 wall-clock budget；
+3. 从 caller context 派生 positive `maxDuration` child deadline；timer window 横跨 graph read、Clock、fact read 与 traversal，但只协作取消接收 context 的依赖，本地 Clock 返回后立即检查 deadline；
 4. `FindByIdentity(childCtx, exactIdentity)` 恰好一次；不查 latest、不 list、不重试成另一个 revision；
 5. 检查 caller/internal deadline，再处理 reader error；reader 返回 nil error 时仍检查 identity 完全相等且 `graph.Validate()` 成功；
 6. 调用 Clock 恰好一次，规范为 UTC；检查 caller/internal deadline并拒绝 zero instant；
@@ -304,6 +304,8 @@ caller context
 - child deadline：这次 application 调用最多等待多久的技术资源预算。
 
 Context cancellation 是协作式的：service 在每个依赖边界前后和 evaluator 每个 step 检查 context；无法保证抢占一个完全不遵守 context 的 provider，也不声称取消发生在最终检查之后仍能撤回已经返回的内存值。本节没有副作用，因此不存在 commit outcome unknown。
+
+`MembershipRoutingClock.Now()` 是既有的本地业务时刻端口，不接收 context。当前契约要求它保持有界、无远程 I/O；若一个错误实现长期阻塞，child deadline 会继续流逝，但只能在 `Now()` 返回后的检查点被观察。因此 `maxDuration` 不是 wall-clock 硬上界。若未来 Clock 需要 I/O，必须重设计为 context-aware 端口，而不是沿用当前接口并宣称可取消。
 
 这里不能只启动两个相同截止时间的 timer 然后假设 caller 固定获胜。Go `context` 保存第一次取消原因；完全相同 deadline 的调度先后不是业务优先级。实现必须先比较绝对 deadline：caller 更早或相等时只派生普通 child，internal 更早时才安装私有 timeout cause。内部 cause 通过受控诊断通道保留，对外稳定类不能 `errors.Is(context.DeadlineExceeded)`；构造器返回的 cleanup cancel 也不能被误判为内部超时。
 
@@ -443,9 +445,9 @@ Schema v1 的全部 decision 都使用同一个 rule code，且 node 不含不�
 ### 正面影响
 
 - 第 27 节 concrete route 与第 28 节 immutable graph 首次形成可执行闭环；
-- exact graph/fact/time snapshots 使 target 和 path 可确定重放；
+- exact graph/fact/time snapshots 使相同输入的 target 和 path 确定，并让 topology 可重新定位；
 - iterative single path 把 step、cancellation 和错误位置变成显式控制流；
-- 1～16 step 与 positive maxDuration 把 CPU/等待成本限制在服务端配置内；
+- 1～16 step 限制本地遍历规模，positive maxDuration 为 context-aware 等待与检查点提供服务端 cooperative budget；
 - caller/internal/provider priority 避免把超时来源混成一个 `context deadline exceeded`；
 - zero partial result 阻止失败 prefix 被误当成成功 route；
 - closed typed input 保持 Lottery ownership，不污染 Participation 或 Governance；
@@ -456,7 +458,7 @@ Schema v1 的全部 decision 都使用同一个 rule code，且 node 不含不�
 - 每次求值会重新 Validate 至多 128 nodes / 256 edges 的 graph；
 - application 需要 graph reader、Clock、fact reader、freshness 与两个执行预算配置；
 - v1 所有 decision 使用同一 membership rule，多步业务表达力有限；
-- context 只能协作取消，不能强制停止忽略 context 的 provider；
+- context 只能协作取消，不能强制停止忽略 context 的 provider；Clock 端口还必须维持有界本地实现；
 - maxDuration 使用 wall-clock deadline，但不是业务 evaluated-at 或性能 SLO；
 - graph identity 仍由调用方显式提供，没有 Activity 决定 active revision；
 - target 只是 StrategyID，不证明 Strategy published、不可变或可抽奖；
@@ -472,7 +474,7 @@ Schema v1 的全部 decision 都使用同一个 rule code，且 node 不含不�
 | default 吞掉 unknown/provider error | fact 先验证；context/provider error优先；无 catch-all |
 | graph reader 返回错 identity 或伪造 aggregate | application identity equality + evaluator入口 `Validate()` |
 | 深 graph 消耗过多步骤 | graph depth 16 + configured maxSteps 1～16 + loop hard stop |
-| provider 阻塞超过预算 | child context覆盖整个 use case；边界后 caller/internal优先检查 |
+| provider 阻塞超过预算 | context-aware reader 接收 child context；Clock 必须有界本地；所有边界返回后优先检查 caller/internal |
 | timeout 来源不可区分 | caller -> internal -> provider固定优先级与稳定错误类别 |
 | cancellation 返回半条 path | failure始终 zero decision，path只在 terminal后原子形成 |
 | 多次读取产生混合版本 | graph/clock/fact各一次，node loop零 I/O |
@@ -488,7 +490,7 @@ Schema v1 的全部 decision 都使用同一个 rule code，且 node 不含不�
 - shared service 的并发安全取决于注入 reader/Clock 自身可并发；
 - evaluator 不缓存 graph/fact/decision，不使用 global mutable registry；
 - path 最多 16 steps，visited 最多 17 nodes；
-- graph 入口验证为 O(V+E)，单路径 traversal 至多 16 轮；
+- graph 入口验证含复制、规范排序与结构检查，当前为 `O(V log V + E log E + V + E)`；单路径 traversal 至多 16 轮；
 - `Node` / `OutgoingEdges` 使用 aggregate 的确定访问器，不暴露内部 slice；
 - 本节没有 goroutine fan-out、parallel branch、background retry 或异步副作用。
 
@@ -541,7 +543,7 @@ Schema v1 的全部 decision 都使用同一个 rule code，且 node 不含不�
 13. Decision `Confirmed()` 拒绝伪造 identity、非连续 path、branch/reason 不匹配和 terminal/target 不一致；
 14. Path accessor 防御复制，并发只读求值得到相同结果且通过 race；
 15. fuzz 对 graph/fact/time 组合不 panic、不越过 16 steps、不无限循环；
-16. architecture guard 证明没有 generic Rule/Engine/registry/DSL、raw row执行、Activity、Strategy selection、HTTP/UI/auth 或 runtime composition；
+16. architecture guard 拒绝 generic Rule/Engine/registry/DSL，并在指定 runtime/HTTP/Compose/Docker/Web production source 中拒绝五个 evaluator 标识符的直接装配；raw row、Activity、Strategy selection、auth 与其他零变化由类型依赖、章节 diff 和回归审查补证；
 17. 第 28 节 Repository/MySQL strict restore、现有 ephemeral API/React 和 Participation 行为保持不变。
 
 ## 相关资料

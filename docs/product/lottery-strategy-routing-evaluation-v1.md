@@ -270,7 +270,7 @@ schema v1 的所有 decision 都使用同一 membership tier operator，并复�
 - 每条实际走过的 decision edge 计 1；
 - 到达 terminal 不额外加 1；
 - 未选 edge 不计数；
-- 读取 graph、Clock、fact 不计 step，但受 time/cancel budget；
+- 读取 graph、Clock、fact 不计 step；graph/fact reader 接收 child context，Clock `Now()` 不接收 context，必须保持为有界本地调用，并在返回后立刻检查 budget/cancel；
 - 直接 `decision -> terminal` 的成功 path 长度和 step count 都是 1；
 - 16 条 edge 的 path 在 `maxSteps=16` 下合法；
 - 当 step count 已等于 maxSteps 且当前节点仍是 decision 时，在 dispatch 前返回 budget exceeded，不执行第 `maxSteps+1` 个 operator。
@@ -294,6 +294,7 @@ caller 已有更早或相同 deadline 时，显式让 caller 拥有 deadline；�
 这个 time budget 是 cooperative deadline，不是硬实时抢占：
 
 - Repository/provider 必须遵守 context 才能及时停止 I/O；
+- `MembershipRoutingClock.Now()` 没有 context 参数，当前契约要求它是有界本地读取；若它阻塞，deadline 只能在它返回后的检查点被观察，不能形成 wall-clock 硬上界；
 - 一个已经开始的同步 typed operator 不能被 Go 强行中断；
 - v1 operator 是常量规模纯计算；
 - 最多 16 steps 把不可抢占本地段限制在严格小规模内。
@@ -489,7 +490,7 @@ decision 可以沿用会员路由的稳定最终 reason，但 intermediate step 
 
 - 调用方修改返回 path slice 不影响 decision；
 - decision 的 graph identity、schema、path、terminal 与 target 不能形成不一致 confirmed 状态；
-- 64 个并发 evaluation 不共享请求级 path、step count、fact 或 context；
+- domain 同输入 64-worker 结果可重复；application 交错不同 subject/identity/tier/target 的 64 个请求时不混淆被测 decision/path 与按 key 计数；
 - race test 无数据竞争；
 - fuzz 对 identity、budget、fact 与合法/伪造 graph 输入不 panic、不死循环、不越界；
 - unknown operator/branch/invariant mismatch 失败关闭；
