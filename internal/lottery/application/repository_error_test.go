@@ -82,6 +82,38 @@ func TestRepositoryErrorRecognizesStrategyRoutingGraphClassesWithoutConflation(t
 	}
 }
 
+func TestRepositoryErrorRecognizesStrategySnapshotClassesWithoutConflation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		class    error
+		notClass error
+	}{
+		{name: "snapshot not found", class: ErrStrategySnapshotNotFound, notClass: ErrStrategyNotFound},
+		{name: "snapshot already exists", class: ErrStrategySnapshotAlreadyExists, notClass: ErrStrategyAlreadyExists},
+		{name: "stored snapshot invalid", class: ErrStoredStrategySnapshotInvalid, notClass: ErrStoredStrategyInvalid},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			cause := errors.New("secret snapshot storage detail")
+			err := WrapRepositoryError(test.class, cause)
+			if !errors.Is(err, test.class) || errors.Is(err, test.notClass) {
+				t.Fatalf("snapshot class = %v, want %v without %v", err, test.class, test.notClass)
+			}
+			if !errors.Is(err, cause) {
+				t.Fatal("snapshot repository error lost diagnostic cause")
+			}
+			if got := err.Error(); got != test.class.Error() {
+				t.Fatalf("Error() = %q, want safe class %q", got, test.class.Error())
+			}
+		})
+	}
+}
+
 func TestRepositoryErrorZeroValuesFailClosedConsistently(t *testing.T) {
 	t.Parallel()
 

@@ -17,6 +17,23 @@ type StrategyReader interface {
 	FindByID(ctx context.Context, id domain.StrategyID) (domain.Strategy, error)
 }
 
+// StrategySnapshotCreator is the create-only write port for one complete,
+// immutable Strategy configuration revision. It deliberately exposes no
+// update, upsert, delete, publish, or latest-revision operation.
+type StrategySnapshotCreator interface {
+	CreateSnapshot(ctx context.Context, snapshot domain.StrategySnapshot) error
+}
+
+// StrategySnapshotReader restores exactly one immutable Strategy snapshot by
+// its validated StrategyID/revision identity. StrategyID-only reads keep their
+// existing non-versioned semantics and must not be used as a substitute.
+type StrategySnapshotReader interface {
+	FindSnapshotByIdentity(
+		ctx context.Context,
+		identity domain.StrategySnapshotIdentity,
+	) (domain.StrategySnapshot, error)
+}
+
 // StrategyRoutingGraphCreator is the create-only write port for one complete
 // immutable graph revision. Implementations must reject invalid aggregates
 // before storage. The port intentionally exposes no update, upsert, delete,
