@@ -35,6 +35,8 @@ const (
 	defaultLotteryCacheLookupTimeout = 75 * time.Millisecond
 	defaultLotteryCacheWriteTimeout  = 75 * time.Millisecond
 	defaultLotteryCacheFillTimeout   = 2 * time.Second
+	minimumLotteryStrategyCacheTTL   = time.Second
+	minimumLotteryCacheTimeout       = time.Millisecond
 	maximumLotteryStrategyCacheTTL   = 5 * time.Minute
 	maximumLotteryCacheLookupTimeout = time.Second
 	maximumLotteryCacheWriteTimeout  = time.Second
@@ -142,10 +144,10 @@ func loadStrategyCacheAndRedis(
 	problems *[]error,
 ) {
 	enabledValid := loadBoolean(lookup, lotteryStrategyCacheEnabledVariable, &cache.Enabled, problems)
-	loadDuration(lookup, lotteryStrategyCacheTTLVariable, maximumLotteryStrategyCacheTTL, &cache.TTL, problems)
-	lookupValid := loadDuration(lookup, lotteryStrategyCacheLookupVariable, maximumLotteryCacheLookupTimeout, &cache.LookupTimeout, problems)
-	writeValid := loadDuration(lookup, lotteryStrategyCacheWriteVariable, maximumLotteryCacheWriteTimeout, &cache.WriteTimeout, problems)
-	fillValid := loadDuration(lookup, lotteryStrategyCacheFillVariable, maximumLotteryCacheFillTimeout, &cache.FillTimeout, problems)
+	loadDurationRange(lookup, lotteryStrategyCacheTTLVariable, minimumLotteryStrategyCacheTTL, maximumLotteryStrategyCacheTTL, &cache.TTL, problems)
+	lookupValid := loadDurationRange(lookup, lotteryStrategyCacheLookupVariable, minimumLotteryCacheTimeout, maximumLotteryCacheLookupTimeout, &cache.LookupTimeout, problems)
+	writeValid := loadDurationRange(lookup, lotteryStrategyCacheWriteVariable, minimumLotteryCacheTimeout, maximumLotteryCacheWriteTimeout, &cache.WriteTimeout, problems)
+	fillValid := loadDurationRange(lookup, lotteryStrategyCacheFillVariable, minimumLotteryCacheTimeout, maximumLotteryCacheFillTimeout, &cache.FillTimeout, problems)
 
 	if value, found := suppliedValue(lookup, redisAddressVariable, problems); found {
 		if validMySQLAddress(value) {

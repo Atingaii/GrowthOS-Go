@@ -219,6 +219,23 @@ func TestLoadCapsStrategyCacheTTLAtFiveMinutes(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsSubMillisecondCacheBudgetsAndSubsecondTTL(t *testing.T) {
+	tests := map[string]string{
+		lotteryStrategyCacheTTLVariable:    "999ms",
+		lotteryStrategyCacheLookupVariable: "999us",
+		lotteryStrategyCacheWriteVariable:  "999us",
+		lotteryStrategyCacheFillVariable:   "999us",
+	}
+	for variable, value := range tests {
+		t.Run(variable, func(t *testing.T) {
+			_, err := Load(mapLookup(apiVariables(map[string]string{variable: value})))
+			if err == nil || !strings.Contains(err.Error(), variable) {
+				t.Fatalf("Load() error = %v, want lower-bound failure for %s", err, variable)
+			}
+		})
+	}
+}
+
 func TestRedisConfigRedactsCommonFormattingBoundaries(t *testing.T) {
 	const secret = "SENTINEL_REDIS_PASSWORD"
 	config := defaultRedisConfig()
