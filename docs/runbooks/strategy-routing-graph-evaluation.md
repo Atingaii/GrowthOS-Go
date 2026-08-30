@@ -1,8 +1,10 @@
 # Lottery Strategy Routing Graph 求值验收与故障分诊手册
 
-**状态：** 第 29 节内部能力基线  
-**更新日期：** 2026-08-30  
-**适用分支：** `codex/lesson-29-rule-decision-engine`  
+**状态：** 第 29 节内部能力基线
+
+**更新日期：** 2026-08-30
+
+**适用分支：** `codex/lesson-29-rule-decision-engine`
 **当前运行状态：** 未装配到 `growth-api`、HTTP、React、Compose 或任何生产事实适配器
 
 本手册回答两个容易被混在一起的问题：
