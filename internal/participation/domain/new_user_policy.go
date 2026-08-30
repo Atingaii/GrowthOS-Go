@@ -14,6 +14,33 @@ type RuleCode string
 // PolicyRevision identifies the immutable policy snapshot used for a decision.
 type PolicyRevision string
 
+// RuleSetRevision identifies one immutable ordered composition of concrete
+// Participation prerequisites. It is independent of every policy revision,
+// fact revision, configuration schema, and application build.
+type RuleSetRevision string
+
+// NewRuleSetRevision constructs a stable revision for one ordered prerequisite
+// plan. Lesson 26 keeps the plan in code; this value does not imply a persisted
+// or dynamically configurable ruleset.
+func NewRuleSetRevision(revision string) (RuleSetRevision, error) {
+	ruleSetRevision := RuleSetRevision(revision)
+	if err := ruleSetRevision.Validate(); err != nil {
+		return "", err
+	}
+	return ruleSetRevision, nil
+}
+
+// Validate rejects a zero, non-canonical, non-printing, or oversized revision.
+func (revision RuleSetRevision) Validate() error {
+	if err := validateMetadataToken(string(revision), maxPolicyRevisionBytes); err != nil {
+		return fmt.Errorf("%w: %v", ErrRuleSetRevisionInvalid, err)
+	}
+	return nil
+}
+
+// String returns the opaque revision token without changing its semantics.
+func (revision RuleSetRevision) String() string { return string(revision) }
+
 // NewUserRuleCode is intentionally concrete. Lesson 25 does not introduce a
 // generic Rule interface for its only implemented eligibility rule.
 const NewUserRuleCode RuleCode = "participation.new_user.registered_on_or_after"

@@ -19,12 +19,14 @@ const (
 // this value does not prove caller identity, tenancy, role, or authorization.
 type ParticipantRef uint64
 
-// FactSource identifies the authority that supplied a registration snapshot.
-// It is metadata for internal traceability, not a user-facing label.
+// FactSource identifies the authority that supplied one Participation input
+// snapshot. It is metadata for controlled traceability, not a user-facing label
+// or a safe default metrics dimension.
 type FactSource string
 
-// FactRevision identifies the source snapshot used by one evaluation. Its
-// lifecycle is owned by the fact provider, independently of policy revisions.
+// FactRevision identifies the source snapshot used by one concrete evaluation.
+// Its lifecycle is owned by that fact provider, independently of policy and
+// rule-set revisions. It must not encode PII or a raw source payload.
 type FactRevision string
 
 // RegistrationFactSnapshot is the immutable minimum account fact needed by

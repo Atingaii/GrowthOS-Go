@@ -20,6 +20,9 @@ type ReasonCode string
 const (
 	ReasonRegistrationOnOrAfterCutoff ReasonCode = "registration_on_or_after_cutoff"
 	ReasonRegistrationBeforeCutoff    ReasonCode = "registration_before_cutoff"
+	// ReasonAllPrerequisitesSatisfied is the aggregate success reason emitted
+	// only after every prerequisite in one ordered Participation plan passes.
+	ReasonAllPrerequisitesSatisfied ReasonCode = "all_prerequisites_satisfied"
 )
 
 // NewUserEligibilityDecision is the immutable result of the one concrete rule.
