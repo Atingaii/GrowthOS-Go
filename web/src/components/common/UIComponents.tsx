@@ -1,5 +1,5 @@
-import React from 'react';
-import { LucideIcon } from 'lucide-react';
+import React from "react";
+import { LucideIcon } from "lucide-react";
 
 interface MetricCardProps {
   title: string;
@@ -9,7 +9,7 @@ interface MetricCardProps {
   subtitle?: string;
   icon?: LucideIcon;
   badgeText?: string;
-  color?: 'blue' | 'purple' | 'emerald' | 'amber' | 'cyan';
+  color?: "blue" | "purple" | "emerald" | "amber" | "cyan";
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({
@@ -20,14 +20,14 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   subtitle,
   icon: Icon,
   badgeText,
-  color = 'blue',
+  color = "blue",
 }) => {
   const iconColor = {
-    blue: 'text-blue-600 dark:text-blue-400',
-    purple: 'text-violet-600 dark:text-violet-400',
-    emerald: 'text-emerald-600 dark:text-emerald-400',
-    amber: 'text-amber-600 dark:text-amber-400',
-    cyan: 'text-cyan-600 dark:text-cyan-400',
+    blue: "text-blue-600 dark:text-blue-400",
+    purple: "text-violet-600 dark:text-violet-400",
+    emerald: "text-emerald-600 dark:text-emerald-400",
+    amber: "text-amber-600 dark:text-amber-400",
+    cyan: "text-cyan-600 dark:text-cyan-400",
   };
 
   return (
@@ -44,8 +44,11 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           {value}
         </div>
         {change && (
-          <span className={`text-xs font-medium ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {isPositive ? '+' : ''}{change}
+          <span
+            className={`text-xs font-medium ${isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+          >
+            {isPositive ? "+" : ""}
+            {change}
           </span>
         )}
       </div>
@@ -66,20 +69,85 @@ export const MetricCard: React.FC<MetricCardProps> = ({
 
 export const StatusBadge: React.FC<{ status: string; label?: string }> = ({ status, label }) => {
   const map: Record<string, { bg: string; text: string; dot: string; defaultLabel: string }> = {
-    active: { bg: 'bg-emerald-50 dark:bg-emerald-950/50', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500', defaultLabel: 'Active' },
-    online: { bg: 'bg-emerald-50 dark:bg-emerald-950/50', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500', defaultLabel: 'Online' },
-    running: { bg: 'bg-blue-50 dark:bg-blue-950/50', text: 'text-blue-700 dark:text-blue-400', dot: 'bg-blue-500 animate-pulse', defaultLabel: 'Running' },
-    pending: { bg: 'bg-amber-50 dark:bg-amber-950/50', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500', defaultLabel: 'Pending' },
-    waiting_approval: { bg: 'bg-purple-50 dark:bg-purple-950/50', text: 'text-purple-700 dark:text-purple-400', dot: 'bg-purple-500 animate-ping', defaultLabel: 'Needs Approval' },
-    draft: { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-400', dot: 'bg-slate-400', defaultLabel: 'Draft' },
-    degraded: { bg: 'bg-orange-50 dark:bg-orange-950/50', text: 'text-orange-700 dark:text-orange-400', dot: 'bg-orange-500', defaultLabel: 'Degraded' },
-    failed: { bg: 'bg-rose-50 dark:bg-rose-950/50', text: 'text-rose-700 dark:text-rose-400', dot: 'bg-rose-500', defaultLabel: 'Failed' },
+    active: {
+      bg: "bg-emerald-50 dark:bg-emerald-950/50",
+      text: "text-emerald-700 dark:text-emerald-400",
+      dot: "bg-emerald-500",
+      defaultLabel: "Active",
+    },
+    online: {
+      bg: "bg-emerald-50 dark:bg-emerald-950/50",
+      text: "text-emerald-700 dark:text-emerald-400",
+      dot: "bg-emerald-500",
+      defaultLabel: "Online",
+    },
+    running: {
+      bg: "bg-blue-50 dark:bg-blue-950/50",
+      text: "text-blue-700 dark:text-blue-400",
+      dot: "bg-blue-500",
+      defaultLabel: "Running",
+    },
+    pending: {
+      bg: "bg-amber-50 dark:bg-amber-950/50",
+      text: "text-amber-700 dark:text-amber-400",
+      dot: "bg-amber-500",
+      defaultLabel: "Pending",
+    },
+    waiting_approval: {
+      bg: "bg-purple-50 dark:bg-purple-950/50",
+      text: "text-purple-700 dark:text-purple-400",
+      dot: "bg-purple-500",
+      defaultLabel: "Needs Approval",
+    },
+    local_only: {
+      bg: "bg-violet-50 dark:bg-violet-950/50",
+      text: "text-violet-700 dark:text-violet-300",
+      dot: "bg-violet-500",
+      defaultLabel: "Local only",
+    },
+    completed: {
+      bg: "bg-emerald-50 dark:bg-emerald-950/50",
+      text: "text-emerald-700 dark:text-emerald-400",
+      dot: "bg-emerald-500",
+      defaultLabel: "Completed",
+    },
+    offline: {
+      bg: "bg-zinc-100 dark:bg-zinc-800",
+      text: "text-zinc-600 dark:text-zinc-400",
+      dot: "bg-zinc-400",
+      defaultLabel: "Offline",
+    },
+    draft: {
+      bg: "bg-slate-100 dark:bg-slate-800",
+      text: "text-slate-600 dark:text-slate-400",
+      dot: "bg-slate-400",
+      defaultLabel: "Draft",
+    },
+    degraded: {
+      bg: "bg-orange-50 dark:bg-orange-950/50",
+      text: "text-orange-700 dark:text-orange-400",
+      dot: "bg-orange-500",
+      defaultLabel: "Degraded",
+    },
+    failed: {
+      bg: "bg-rose-50 dark:bg-rose-950/50",
+      text: "text-rose-700 dark:text-rose-400",
+      dot: "bg-rose-500",
+      defaultLabel: "Failed",
+    },
   };
 
-  const current = map[status] || { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', defaultLabel: status };
+  const current = map[status] || {
+    bg: "bg-slate-100 dark:bg-slate-800",
+    text: "text-slate-600 dark:text-slate-400",
+    dot: "bg-slate-400",
+    defaultLabel: status,
+  };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${current.bg} ${current.text}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${current.bg} ${current.text}`}
+    >
       <span className={`w-1.5 h-1.5 rounded-full ${current.dot}`} />
       {label || current.defaultLabel}
     </span>

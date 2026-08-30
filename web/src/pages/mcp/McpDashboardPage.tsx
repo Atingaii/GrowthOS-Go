@@ -1,78 +1,104 @@
-import React from 'react';
-import { Terminal, Server, Wrench, ShieldCheck, Activity, Cpu } from 'lucide-react';
-import { MetricCard, StatusBadge } from '../../components/common/UIComponents';
-import { mockMcpServers, mockMcpTools } from '../../mocks/growthOsMockData';
+import { Activity, Server, Wrench } from "lucide-react";
+import { CompactMetric, PageHeader, Surface } from "../../components/common/ProductPage";
+import { StatusBadge } from "../../components/common/UIComponents";
+import { MOCK_SNAPSHOT_LABEL, mockMcpServers, mockMcpTools } from "../../mocks/growthOsMockData";
 
-export const McpDashboardPage: React.FC = () => {
+export function McpDashboardPage() {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-indigo-400" /> AI 工具调度控制台
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            监控已接入的智能工具、调度节点状态与调用质量。
-          </p>
-        </div>
-        <span className="text-xs font-mono text-emerald-400 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> 调度节点在线
-        </span>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="MCP Gateway · JSON-RPC"
+        title="AI 工具调度控制台"
+        description={`查看截至 ${MOCK_SNAPSHOT_LABEL} 的本地演示节点、工具风险等级与调用质量快照；本页面尚未连接实时网关观测流。`}
+        badge="演示快照"
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <MetricCard title="在线 MCP Server" value="3 个" icon={Server} color="purple" />
-        <MetricCard title="已注册工具" value="28 个" icon={Wrench} color="cyan" badgeText="策略生效中" />
-        <MetricCard title="24h 工具调用总量" value="124,890" icon={Activity} color="emerald" badgeText="均延迟 32ms" />
-      </div>
+      <section
+        aria-label="MCP 指标摘要"
+        className="grid gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800"
+      >
+        <CompactMetric
+          className="bg-white dark:bg-zinc-950"
+          label="MCP Server"
+          value="3"
+          helper="演示节点"
+          icon={Server}
+        />
+        <CompactMetric
+          className="bg-white dark:bg-zinc-950"
+          label="已登记工具"
+          value="28"
+          helper="本地工具目录"
+          icon={Wrench}
+        />
+        <CompactMetric
+          className="bg-white dark:bg-zinc-950"
+          label="24h 调用量"
+          value="124,890"
+          helper="演示均值 32ms"
+          icon={Activity}
+        />
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Servers */}
-        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <Server className="w-4 h-4 text-indigo-400" /> 运行中的 MCP Server 节点
-          </h3>
-          <div className="divide-y divide-slate-800 text-xs">
-            {mockMcpServers.map((srv) => (
-              <div key={srv.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-white">{srv.name}</div>
-                  <div className="text-[10px] text-slate-500 font-mono">{srv.endpoint} • {srv.version}</div>
+      <section className="grid gap-2 rounded-xl bg-zinc-100 p-2 lg:grid-cols-2 dark:bg-zinc-900">
+        <Surface className="border-0 p-4">
+          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            MCP Server 节点
+          </h2>
+          <div className="divide-y divide-zinc-100 text-xs dark:divide-zinc-900">
+            {mockMcpServers.map((server) => (
+              <div key={server.id} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                    {server.name}
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-400">
+                    {server.endpoint} · {server.version}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-slate-400">{srv.avgLatencyMs}ms</span>
-                  <StatusBadge status={srv.status} />
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="font-mono text-zinc-400">{server.avgLatencyMs}ms</span>
+                  <StatusBadge status={server.status} />
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Surface>
 
-        {/* Tools */}
-        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <Wrench className="w-4 h-4 text-cyan-400" /> 高频 MCP Tool 风险与成功率
-          </h3>
-          <div className="divide-y divide-slate-800 text-xs">
+        <Surface className="border-0 p-4">
+          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            Tool 风险与成功率
+          </h2>
+          <div className="divide-y divide-zinc-100 text-xs dark:divide-zinc-900">
             {mockMcpTools.map((tool) => (
-              <div key={tool.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-white font-mono">{tool.name}</div>
-                  <div className="text-[10px] text-slate-400 line-clamp-1">{tool.description}</div>
+              <div key={tool.id} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <div className="truncate font-mono font-medium text-zinc-900 dark:text-zinc-100">
+                    {tool.name}
+                  </div>
+                  <div className="mt-0.5 line-clamp-1 text-[10px] text-zinc-400">
+                    {tool.description}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                    tool.riskLevel === 'critical' ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'bg-amber-950 text-amber-400'
-                  }`}>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${
+                      tool.riskLevel === "critical"
+                        ? "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300"
+                        : "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"
+                    }`}
+                  >
                     {tool.riskLevel}
                   </span>
-                  <span className="font-mono text-emerald-400 font-bold">{tool.successRate}%</span>
+                  <span className="font-mono font-medium text-emerald-600">
+                    {tool.successRate}%
+                  </span>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </Surface>
+      </section>
     </div>
   );
-};
+}
