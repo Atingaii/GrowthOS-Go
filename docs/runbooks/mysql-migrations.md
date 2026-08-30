@@ -2,20 +2,22 @@
 
 **适用范围：** GrowthOS-Go 第 13 节及之后的 MySQL 前向 Migration
 
-**当前边界：** 产品迁移 latest 为 2；`000001` / `000002` 分别创建 `lottery_strategy` / `lottery_strategy_award`
+**当前边界：** 产品源码 Migration latest 为 5；`000001` / `000002` 创建 Strategy/Award，`000003` / `000004` / `000005` 创建 Strategy routing graph/node/edge
 
 ## 1. 目的
 
 本手册说明如何安全检查和执行 GrowthOS MySQL Migration，以及遇到 dirty、版本漂移、取消或连接问题时何时必须停止。它不是 MySQL 管理员权限说明，也不授权操作者绕过审批执行 `force`、`drop` 或任意 SQL。
 
-长期设计依据见 [ADR-0010](../decisions/ADR-0010-mysql-migration-boundaries.md)；第 21 节运行时最小权限依据见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)，配置键和值域见[配置参考](../configuration.md)。
+长期设计依据见 [ADR-0010](../decisions/ADR-0010-mysql-migration-boundaries.md)；第 21 节运行时最小权限依据见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)，第 28 节 graph 持久化边界见 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)，配置键和值域见[配置参考](../configuration.md)。
 
 ## 2. 角色与权限
 
 | 角色 | 账号 | 权限边界 |
 | --- | --- | --- |
-| API 进程 | `growthos_app`（可覆盖） | 第 21 节当前运行链只允许两张 Lottery 业务表 `SELECT`；无 INSERT、UPDATE、DELETE、DDL 或 `schema_migrations` 权限 |
+| API 进程 | `growthos_app`（可覆盖） | 当前运行链只允许旧两张 Lottery 业务表 `SELECT`；对 graph/node/edge 三表零权限，也无 INSERT、UPDATE、DELETE、DDL 或 `schema_migrations` 权限 |
 | Migration 进程 | `growthos_migrator`（可覆盖） | 仅目标 schema 的审核 DDL、版本记录和必要 DML |
+| legacy Repository 集成测试 | 任务专用隔离 writer | 仅旧 Strategy/Award 两表 `SELECT, INSERT`；不等于 API 运行身份 |
+| graph Repository 集成测试 | 任务专用隔离 graph writer | 仅新 graph/node/edge 三表 `SELECT, INSERT`；不等于 API 运行身份，且 graph adapter 尚未装配 |
 | DBA/管理员 | 部署环境管理的独立身份 | 创建 schema/账号、授权、备份和事故恢复；不进入应用配置 |
 
 不要让 API 使用 Migrator 密码“临时解决权限问题”，也不要让 Migration 借用 API 密码。管理员应通过环境自己的 Secret 与账号管理流程创建身份，再用 `SHOW GRANTS` 核对；仓库不提供真实密码。
@@ -33,9 +35,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
   ON growthos.* TO 'growthos_migrator'@'<migration-host>';
 ```
 
-这不是复制即用的生产授权：生产 host、管理员身份、mandatory role 与撤权流程必须由环境安全设计决定。Repository 代码仍保留 Create/FindByID，但当前 composition root 的 HTTP 用例只依赖 `StrategyReader.FindByID`，所以长期 runtime 不需要 INSERT。第 19 节 Create 由可丢弃 schema 中的隔离 writer 测试身份验证；测试需要写权限不代表产品进程也应拥有写权限。后续增加新写用例、SQL、VIEW、TRIGGER、EVENT 或其他对象时，应从已审核用例重新计算 API/Migrator 最小权限，禁止直接授予应用或 Migrator 全局 `ALL PRIVILEGES`。
+这不是复制即用的生产授权：生产 host、管理员身份、mandatory role 与撤权流程必须由环境安全设计决定。Strategy Repository 仍保留 Create/FindByID，但当前 HTTP 用例只依赖 `StrategyReader.FindByID`；第 28 节 graph Repository 也保留 Create/FindByIdentity，却没有进入 `cmd/growth-api`。所以长期 runtime 既不需要 INSERT，也不需要读取 graph 三表。第 19 节 legacy Create 与第 28 节 graph Create 分别由可丢弃 schema 中的两个隔离测试身份验证；测试需要写权限不代表产品进程也应拥有写权限。后续增加新写用例或数据库对象时，应从已审核用例重新计算最小权限，禁止直接授予应用或 Migrator 全局 `ALL PRIVILEGES`。
 
-Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛这个 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销应用旧授权，再精确授予两张表 `SELECT`，最后比较排序后的 `SHOW GRANTS`。它还要求 `@@GLOBAL.mandatory_roles` 为空，防止角色在 `SHOW GRANTS` 表面 allowlist 之外隐式扩权；任一断言失败都会阻止 API 启动。其他环境若启用 mandatory role，必须把有效权限纳入独立安全评审，不能直接删掉断言后照搬 Compose 作业。
+Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛这个 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销应用旧授权，再精确授予旧两表 `SELECT`，最后比较排序后的 `SHOW GRANTS`，并显式确认 graph 三表不可读。它还要求 `@@GLOBAL.mandatory_roles` 为空，防止角色在表面 allowlist 之外隐式扩权；任一断言失败都会阻止 API 启动。其他环境若启用 mandatory role，必须把有效权限纳入独立安全评审，不能直接删掉断言后照搬 Compose 作业。
 
 第 21 节权限变化的上下文与证据见[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)和[面试问答](../interview/lessons/lesson-21.md)。
 
@@ -95,8 +97,11 @@ migrations/sql/NNNNNN_description.up.sql
 | ---: | --- | --- | --- |
 | 1 | `000001_create_lottery_strategy.up.sql` | `CREATE TABLE lottery_strategy` | Strategy 聚合根行、正 ID、基础名称与行时间戳 |
 | 2 | `000002_create_lottery_strategy_award.up.sql` | `CREATE TABLE lottery_strategy_award` | 复合主键、正 ID/权重、封闭 outcome、父表 `RESTRICT` 外键与行时间戳 |
+| 3 | `000003_create_lottery_strategy_routing_graph.up.sql` | `CREATE TABLE lottery_strategy_routing_graph` | `(graph_id, revision)` header、schema version 与逻辑 root；revision 使用 ASCII binary 语义 |
+| 4 | `000004_create_lottery_strategy_routing_node.up.sql` | `CREATE TABLE lottery_strategy_routing_node` | decision/strategy_target 互斥节点、同 revision 复合 scope 与 Strategy target `RESTRICT` 引用 |
+| 5 | `000005_create_lottery_strategy_routing_edge.up.sql` | `CREATE TABLE lottery_strategy_routing_edge` | 同 revision 两端复合外键、source-scoped branch 唯一性与 default 映射 |
 
-每个版本只有一条 MySQL DDL，因为 MySQL atomic DDL 的原子边界是一条语句，不是任意多语句文件。若版本 2 失败，版本 1 可以已经完整存在，而版本表明确记录 version 2 dirty；这比把两个 `CREATE TABLE` 塞入一个看似整体、实际并不跨语句原子的文件更容易恢复。已共享文件只追加不回写，并由嵌入字节 hash 测试保护；任何改动都应新增更高版本。
+每个版本只有一条 MySQL DDL，因为 MySQL atomic DDL 的原子边界是一条语句，不是任意多语句文件。若某版本失败，之前版本可以已经完整存在，而版本表明确记录当前 dirty；这比把多条 `CREATE TABLE` 塞入一个看似整体、实际并不跨语句原子的文件更容易恢复。第 28 节必须按 `000003 graph -> 000004 node -> 000005 edge` 前向执行。已共享文件只追加不回写，并由嵌入字节 hash 测试保护；任何改动都应新增更高版本。
 
 ## 5. 标准发布流程
 
@@ -117,7 +122,7 @@ make db-status
 | --- | --- |
 | `uninitialized` | 已有首个迁移，确认目标库为空或符合初始条件后继续 |
 | `pending` | 核对当前/最新版本与发布内容后继续 |
-| `clean` | 当前已部署环境仍必须确认 `version=latest=2`；重复 `up` 应为 `no_change` |
+| `clean` | 使用当前构建时仍必须确认 `version=latest=5`；重复 `up` 应为 `no_change` |
 
 任何命令失败、dirty、version mismatch、未知状态或日志环境不符都必须停止。
 
@@ -129,8 +134,8 @@ make db-migrate
 
 当前成功结果只能是：
 
-- `no_change`：已经 latest 2；
-- `applied`：应用了一个或两个待执行版本。
+- `no_change`：已经 latest 5；
+- `applied`：应用了一个或多个待执行版本。
 
 命令退出 0 之后再次检查：
 
@@ -138,7 +143,7 @@ make db-migrate
 make db-status
 ```
 
-应达到 `clean` 且 `version=latest=2`。如果数据库版本高于二进制 latest、dirty、或 latest 不是预期的 2，停止发布并核对构建 SHA 与目标库。
+应达到 `clean` 且 `version=latest=5`。如果数据库版本高于二进制 latest、dirty、或 latest 不是预期的 5，停止发布并核对构建 SHA 与目标库。已经运行的长期 volume 不会因源码更新自动升级；只有实际 `status -> up -> status` 完成，才可记录该实例达到 v5。本节默认长期 `growthos` 已在同一 MySQL container 与 named resources 上完成 `2:0 -> 5:0`，旧表指纹不变、新三表为空，并通过 runtime graph 1142 负证与完整 smoke；这是已验收实例记录，不是跳过其他环境发布流程的依据。
 
 ### 5.3 部署 API
 
@@ -154,6 +159,10 @@ Migration 成功并核对后再收敛应用授权，授权通过后才部署 API
 - `lottery_strategy.updated_at` 与 Award 行的 `updated_at` 都只是各自行元数据。更新 Award 不会触碰根行，因此两者都不能充当聚合版本、ETag 或缓存失效水位。
 
 第 19 节 Repository 已按稳定顺序读取根和 Award，并通过 `RestoreAward` / `RestoreStrategy` 原样重建聚合；非法存量数据失败关闭，而不是 trim、跳过坏行或返回半合法对象。Create 在一个事务中写完整父子聚合，但当前产品进程没有调用 Create，也没有 INSERT；该写路径只由隔离 writer 测试身份验证，不应在运维层给 runtime “补回”写权限。
+
+第 28 节 graph 三表同样只承担数据库可靠表达的局部事实：node 以 `(graph_id, revision)` 引用 header，edge 两端以 `(graph_id, revision, node_id)` 引用同一版本节点，branch/default/target shape 用 CHECK、UNIQUE 与外键收紧。header 的 `root_node_id` 刻意没有反向 FK：InnoDB 不支持可延迟外键，node 先要求 header 存在而 header 若反向要求 root node 存在，会形成无合法第一条 INSERT 的环。root 存在且为 decision、全可达、无环、最大深度、decision 分支完备与 terminal 无出边必须由 `NewStrategyRoutingGraph` / `RestoreStrategyRoutingGraph` 对完整投影验证，不能靠运维 SQL 猜测或修补。
+
+graph Repository 写前重新验证、在单一事务按 header -> canonical nodes -> canonical edges 创建完整 revision；读取在一个 read-only `REPEATABLE READ` snapshot 中先读 header，再以 129/257 sentinel 有界读取 nodes/edges，最后严格恢复。它没有 Update/Delete、active revision、published 状态、执行器或 Activity 绑定。`(GraphID, Revision)` 冲突与 commit outcome unknown 也不能被运维层改成覆盖写或盲目重试。
 
 ### 5.5 Repository 事务故障的操作边界
 
@@ -230,19 +239,28 @@ Migration 执行成功但连接/source 关闭失败时，命令仍非零退出�
 
 ## 8. 真实集成测试
 
-普通 `make test` 可能因缺少环境变量而 skip 第 19 节隔离 writer MySQL 集成测试。强制联调使用：
+普通 `make test` 会在缺少显式 opt-in 时 skip 真实 MySQL 集成测试。第 28 节推荐使用自包含的一次性门禁：
+
+```bash
+make lesson28-mysql-acceptance
+```
+
+该目标启动随机名称/label、动态回环端口、tmpfs 数据目录的一次性 `mysql:8.4.11`，生成仅存在任务临时目录的 Secret，创建彼此隔离的 Migrator、legacy writer 与 graph repository 身份，应用 latest 5 后运行六组 `Integration` 测试。当前第 28 节验收已真实 exit 0：六组全部通过，任务容器与 Secret 目录零残留，长期 `growthos` containers/volumes/networks 前后快照一致。若镜像原本不存在，下载的 `mysql:8.4.11` 会作为可复用依赖保留，而不是作为“临时垃圾”删除。
+
+需要接入外部**专用可丢弃 schema**时，强制联调使用：
 
 ```bash
 export GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES=lesson-19-isolated-schema
 export GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES=lesson-19-isolated-repository
+export GROWTHOS_TEST_MYSQL_ALLOW_RULE_GRAPH_WRITES=lesson-28-isolated-rule-graph
 make test-integration-mysql
 ```
 
-该目标必须连接专用、可丢弃且事先授权改变结构与写入 Repository fixture 的 schema。两个 opt-in 必须同时为精确值；它在进入 Go 测试前还逐项要求名为 `GROWTHOS_TEST_MYSQL_API_*` 的**隔离 writer 测试身份**与 Migration 身份的 address/database/user/password 八个变量，缺失即失败且只输出变量名。变量中的 `API` 是历史测试命名，不表示当前长期 `growthos_app` 应有写权限。测试会确认两个身份指向同一 address/database 且用户名不同。可选 TLS 变量沿用各测试前缀。不要把真实密码写入示例、shell history 或 QA。
+该目标必须连接专用、可丢弃且事先授权改变结构与写入 fixture 的 schema。三个 opt-in 必须同时为精确值；进入 Go 测试前还逐项要求 Migration 身份、历史命名为 `GROWTHOS_TEST_MYSQL_API_*` 的 legacy writer 身份，以及 `GROWTHOS_TEST_MYSQL_RULE_GRAPH_*` graph repository 身份的 address/database/user/password。三个身份必须指向同一隔离 schema 且用户名互异。变量中的 `API` 不表示当前长期 `growthos_app` 应有写权限；可选 TLS 变量沿用各前缀。不要把真实密码写入示例、shell history 或 QA。
 
 集成测试验证：
 
-- Migrator 应用嵌入迁移后状态为 clean latest 2；
+- Migrator 应用嵌入迁移后状态为 clean latest 5；
 - 两张表使用 InnoDB 与 `utf8mb4_0900_bin`，正 ID/权重、复合主键、外键 `RESTRICT`、封闭 outcome 和名称长度/基础形态约束有效；
 - 128 个中文字符和 `uint64` 最大值可往返，组合/分解 Unicode 在二进制 collation 下保持不同；
 - 隔离 writer 测试身份可在事务中 INSERT/SELECT 两张业务表并回滚，但 UPDATE、DELETE 和 `schema_migrations` 读写被 MySQL 1142 拒绝；
@@ -250,10 +268,13 @@ make test-integration-mysql
 - Repository 对 Unicode/SQL 特殊字符和 `uint64` 上限往返，串行/并发重复、父子回滚、取消、坏快照与连接池复用均符合语义；
 - 同一 RR 事务在并发修改中读取旧根/旧 Award 集，后续公开读取看到新根/新 Award 集；
 - 生产根/子查询的真实 EXPLAIN 使用主键，Award 排序不出现 filesort；
+- graph 三表精确列、binary revision、四组 FK（其中 graph scope 与 edge 两端为复合 FK）、局部 CHECK/UNIQUE、同 revision scope、大小写 revision 共存和尾空白拒绝符合 DDL；header root 无反向 FK 且由领域恢复验证；
+- legacy writer 的精确权限仍只有旧两表 `SELECT, INSERT`，读取或写入 graph 三表被拒绝；graph repository 身份的精确权限只覆盖新三表 `SELECT, INSERT`，不能访问旧两表、`schema_migrations`、UPDATE 或 DELETE；
+- graph Repository 覆盖 create/round-trip、新 revision、重复、完整 `uint64`/nullable scan、并发 create、子行约束回滚、not-found、坏存量、取消、真实 read-only RR 和 EXPLAIN；
 - Migrator 单连接可执行隔离多语句 DDL；
 - UTC/`utf8mb4` 会话不变量；
 - 临时迁移首次 applied、再次 no_change、最终 clean；
-- schema 探针数据在事务中回滚；Repository fixture、定向临时 CHECK、通用临时表和独立版本表完成精确清理。
+- schema 探针数据在事务中回滚；legacy/graph Repository fixture、定向临时 CHECK、通用临时表和独立版本表完成精确清理。
 
 测试只可以连接专用测试 schema，禁止对共享开发 volume、staging 或 production 运行。显式 opt-in 只是防误操作的一道门，不替代目标地址、数据库归属和清理核对。
 
@@ -275,6 +296,7 @@ make test-integration-mysql
 
 - 删除任务专用临时二进制、响应和日志目录；
 - 确认测试隔离表与隔离版本表已经删除；
+- `lesson28-mysql-acceptance` 只可停止同时匹配本次精确 container ID、随机 name 与 label 的容器，并只删除已解析的任务 Secret 文件/目录；不得按前缀、通配符或全局 prune 扩大清理范围；
 - 不删除用户原有容器、Volume、数据库、账号或可复用依赖；
 - 记录实际 MySQL 版本、构建 SHA、状态前后值、命令退出码和清理结果；
 - 不在工单或 QA 文档粘贴 Secret。
