@@ -31,7 +31,7 @@ require_command() {
     fi
 }
 
-for required_command in awk curl docker jq mktemp openssl sed sort tr wc xargs; do
+for required_command in awk curl docker jq mktemp openssl sed sort stat tr wc xargs; do
     require_command "$required_command"
 done
 if ! docker compose version >/dev/null 2>&1; then
@@ -161,6 +161,8 @@ fi
 
 secret_directory=
 response_directory=
+secret_directory_identity=
+response_directory_identity=
 response_number=0
 cleanup_project=0
 cleanup_images=0
@@ -279,36 +281,80 @@ remove_regular_file() {
     fi
 }
 
+directory_identity() {
+    identity_target=$1
+    if identity_value=$(stat -f '%d:%i' -- "$identity_target" 2>/dev/null); then
+        printf '%s\n' "$identity_value"
+        return 0
+    fi
+    stat -c '%d:%i' -- "$identity_target" 2>/dev/null
+}
+
+verify_temporary_directory() {
+    cleanup_directory=$1
+    expected_identity=$2
+    cleanup_description=$3
+
+    if [ -L "$cleanup_directory" ]; then
+        printf 'refusing cleanup: temporary %s directory became a symlink: %s\n' \
+            "$cleanup_description" "$cleanup_directory" >&2
+        return 1
+    fi
+    if [ ! -d "$cleanup_directory" ]; then
+        printf 'refusing cleanup: temporary %s target is not a directory: %s\n' \
+            "$cleanup_description" "$cleanup_directory" >&2
+        return 1
+    fi
+    if ! cleanup_identity=$(directory_identity "$cleanup_directory"); then
+        printf 'refusing cleanup: could not inspect temporary %s directory identity: %s\n' \
+            "$cleanup_description" "$cleanup_directory" >&2
+        return 1
+    fi
+    if [ -z "$expected_identity" ] || [ "$cleanup_identity" != "$expected_identity" ]; then
+        printf 'refusing cleanup: temporary %s directory identity changed: %s\n' \
+            "$cleanup_description" "$cleanup_directory" >&2
+        return 1
+    fi
+}
+
 cleanup_temporary_directories() {
     temporary_cleanup_status=0
-    if [ -n "$response_directory" ] && [ -d "$response_directory" ]; then
-        cleanup_index=1
-        while [ "$cleanup_index" -le "$response_number" ]; do
-            remove_regular_file "$response_directory/headers-$cleanup_index" || temporary_cleanup_status=1
-            remove_regular_file "$response_directory/body-$cleanup_index" || temporary_cleanup_status=1
-            cleanup_index=$((cleanup_index + 1))
-        done
-        cleanup_index=1
-        while [ "$cleanup_index" -le "$concurrent_requests" ]; do
-            remove_regular_file "$response_directory/concurrent-headers-$cleanup_index" || temporary_cleanup_status=1
-            remove_regular_file "$response_directory/concurrent-body-$cleanup_index" || temporary_cleanup_status=1
-            remove_regular_file "$response_directory/concurrent-status-$cleanup_index" || temporary_cleanup_status=1
-            cleanup_index=$((cleanup_index + 1))
-        done
-        remove_regular_file "$response_directory/gateway-oversize-request" || temporary_cleanup_status=1
-        remove_regular_file "$response_directory/image-ownership" || temporary_cleanup_status=1
-        if ! rmdir "$response_directory"; then
-            printf 'temporary response directory was not empty: %s\n' "$response_directory" >&2
+    if [ -n "$response_directory" ] && { [ -e "$response_directory" ] || [ -L "$response_directory" ]; }; then
+        if ! verify_temporary_directory "$response_directory" "$response_directory_identity" response; then
             temporary_cleanup_status=1
+        else
+            cleanup_index=1
+            while [ "$cleanup_index" -le "$response_number" ]; do
+                remove_regular_file "$response_directory/headers-$cleanup_index" || temporary_cleanup_status=1
+                remove_regular_file "$response_directory/body-$cleanup_index" || temporary_cleanup_status=1
+                cleanup_index=$((cleanup_index + 1))
+            done
+            cleanup_index=1
+            while [ "$cleanup_index" -le "$concurrent_requests" ]; do
+                remove_regular_file "$response_directory/concurrent-headers-$cleanup_index" || temporary_cleanup_status=1
+                remove_regular_file "$response_directory/concurrent-body-$cleanup_index" || temporary_cleanup_status=1
+                remove_regular_file "$response_directory/concurrent-status-$cleanup_index" || temporary_cleanup_status=1
+                cleanup_index=$((cleanup_index + 1))
+            done
+            remove_regular_file "$response_directory/gateway-oversize-request" || temporary_cleanup_status=1
+            remove_regular_file "$response_directory/image-ownership" || temporary_cleanup_status=1
+            if ! rmdir "$response_directory"; then
+                printf 'temporary response directory was not empty: %s\n' "$response_directory" >&2
+                temporary_cleanup_status=1
+            fi
         fi
     fi
-    if [ -n "$secret_directory" ] && [ -d "$secret_directory" ]; then
-        for secret_name in mysql_root_password mysql_app_password mysql_migration_password redis_password; do
-            remove_regular_file "$secret_directory/$secret_name" || temporary_cleanup_status=1
-        done
-        if ! rmdir "$secret_directory"; then
-            printf 'temporary secret directory was not empty: %s\n' "$secret_directory" >&2
+    if [ -n "$secret_directory" ] && { [ -e "$secret_directory" ] || [ -L "$secret_directory" ]; }; then
+        if ! verify_temporary_directory "$secret_directory" "$secret_directory_identity" secret; then
             temporary_cleanup_status=1
+        else
+            for secret_name in mysql_root_password mysql_app_password mysql_migration_password redis_password; do
+                remove_regular_file "$secret_directory/$secret_name" || temporary_cleanup_status=1
+            done
+            if ! rmdir "$secret_directory"; then
+                printf 'temporary secret directory was not empty: %s\n' "$secret_directory" >&2
+                temporary_cleanup_status=1
+            fi
         fi
     fi
     return "$temporary_cleanup_status"
@@ -438,7 +484,7 @@ cleanup() {
     fi
 
     if [ "$cleanup_status" -eq 0 ]; then
-        ok 'removed only the label/ID-verified disposable project, images, builder cache, secrets, and responses'
+        ok 'removed only label/ID-verified Docker resources and identity/type-verified temporary files'
         ok 'the long-lived growthos project resource identity remained unchanged'
     fi
     exit "$cleanup_status"
@@ -450,7 +496,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 secret_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson21-secrets.XXXXXX")
+secret_directory_identity=$(directory_identity "$secret_directory") || fail 'could not record the temporary secret directory identity'
 response_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson21-responses.XXXXXX")
+response_directory_identity=$(directory_identity "$response_directory") || fail 'could not record the temporary response directory identity'
 export GROWTHOS_LESSON21_ACCEPTANCE_SECRET_DIRECTORY="$secret_directory"
 
 # Arm project cleanup before the first command that may create a Docker
@@ -1026,7 +1074,7 @@ while [ "$concurrent_index" -le "$concurrent_requests" ]; do
     fi
     concurrent_index=$((concurrent_index + 1))
 done
-ok "$concurrent_requests concurrent multi-award selections returned only configured outcomes"
+ok "$concurrent_requests multi-award requests at concurrency $concurrent_workers returned only configured outcomes"
 
 # Stop only the label-resolved disposable API and prove nginx-generated
 # upstream failures retain the same JSON/no-store/correlation contract. Then
