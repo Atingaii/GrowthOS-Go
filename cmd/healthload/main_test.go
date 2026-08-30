@@ -49,8 +49,8 @@ func TestRunCLISuccess(t *testing.T) {
 	if result.Target != server.URL+"/health" || result.StartedAt.IsZero() || result.FinishedAt.Before(result.StartedAt) {
 		t.Fatalf("report identity/time fields are invalid: %+v", result)
 	}
-	if result.Method != http.MethodGet {
-		t.Fatalf("report method = %q, want %q", result.Method, http.MethodGet)
+	if result.Method != http.MethodGet || result.EphemeralSelection {
+		t.Fatalf("report method/mode = %q/%v, want GET/false", result.Method, result.EphemeralSelection)
 	}
 	if result.Scheduled != 4 || result.Completed != 4 || result.Success != 4 {
 		t.Fatalf("request counts = scheduled:%d completed:%d success:%d, want 4/4/4", result.Scheduled, result.Completed, result.Success)
@@ -79,6 +79,7 @@ func TestRunCLIPOSTUsesConfiguredMethodWithEmptyBody(t *testing.T) {
 		transferEncoding []string
 		accept           string
 		userAgent        string
+		demoMode         string
 		readErr          error
 	}
 
@@ -94,6 +95,7 @@ func TestRunCLIPOSTUsesConfiguredMethodWithEmptyBody(t *testing.T) {
 			transferEncoding: append([]string(nil), request.TransferEncoding...),
 			accept:           request.Header.Get("Accept"),
 			userAgent:        request.Header.Get("User-Agent"),
+			demoMode:         request.Header.Get("X-GrowthOS-Demo-Mode"),
 			readErr:          err,
 		}
 		writer.WriteHeader(http.StatusOK)
@@ -104,6 +106,7 @@ func TestRunCLIPOSTUsesConfiguredMethodWithEmptyBody(t *testing.T) {
 	exitCode := runCLI(context.Background(), []string{
 		"-url=" + server.URL + "/draw",
 		"-method=POST",
+		"-ephemeral-selection=true",
 		"-rate=1",
 		"-duration=1ms",
 		"-workers=1",
@@ -114,7 +117,7 @@ func TestRunCLIPOSTUsesConfiguredMethodWithEmptyBody(t *testing.T) {
 		t.Fatalf("runCLI exit code = %d, stderr = %q, stdout = %q", exitCode, stderr.String(), stdout.String())
 	}
 	result := decodeReport(t, stdout.Bytes())
-	if result.Method != http.MethodPost || result.Scheduled != 1 || result.Completed != 1 || result.Success != 1 {
+	if result.Method != http.MethodPost || !result.EphemeralSelection || result.Scheduled != 1 || result.Completed != 1 || result.Success != 1 {
 		t.Fatalf("POST report = %+v", result)
 	}
 
@@ -139,6 +142,9 @@ func TestRunCLIPOSTUsesConfiguredMethodWithEmptyBody(t *testing.T) {
 	if observation.userAgent != userAgent {
 		t.Fatalf("User-Agent = %q, want %q", observation.userAgent, userAgent)
 	}
+	if observation.demoMode != "ephemeral-selection" {
+		t.Fatalf("X-GrowthOS-Demo-Mode = %q, want ephemeral-selection", observation.demoMode)
+	}
 	if calls.Load() != 1 {
 		t.Fatalf("server calls = %d, want exactly one without retries", calls.Load())
 	}
@@ -156,10 +162,13 @@ func TestMeasurePOSTDoesNotRetryTransportFailure(t *testing.T) {
 		if request.Body != nil {
 			t.Fatal("POST request body must be nil")
 		}
+		if request.Header.Get("X-GrowthOS-Demo-Mode") != "ephemeral-selection" {
+			t.Fatal("ephemeral selection acknowledgement is missing")
+		}
 		return nil, fmt.Errorf("forced transport failure")
 	})}
 
-	result := measure(context.Background(), client, http.MethodPost, "http://example.test/draw")
+	result := measure(context.Background(), client, http.MethodPost, "http://example.test/draw", true)
 	if result.err == nil {
 		t.Fatal("measure succeeded, want transport failure")
 	}
@@ -276,6 +285,7 @@ func TestParseConfigValidation(t *testing.T) {
 		{name: "empty method", args: []string{"-method="}},
 		{name: "lowercase method", args: []string{"-method=post"}},
 		{name: "unsupported method", args: []string{"-method=PUT"}},
+		{name: "ephemeral selection with GET", args: []string{"-method=GET", "-ephemeral-selection=true"}},
 		{name: "relative URL", args: []string{"-url=/health"}},
 		{name: "unsupported scheme", args: []string{"-url=ftp://example.com/health"}},
 		{name: "URL user info", args: []string{"-url=http://user:password@example.com/health"}},
@@ -312,7 +322,7 @@ func TestParseConfigDefaultsAndScheduledCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseConfig defaults: %v", err)
 	}
-	if cfg.URL != defaultURL || cfg.Method != http.MethodGet || cfg.Rate != 100 || cfg.Duration != 5*time.Minute || cfg.Workers != 32 || cfg.Timeout != 2*time.Second || cfg.ExpectedStatus != 200 || cfg.MaxP99 != 0 {
+	if cfg.URL != defaultURL || cfg.Method != http.MethodGet || cfg.EphemeralSelection || cfg.Rate != 100 || cfg.Duration != 5*time.Minute || cfg.Workers != 32 || cfg.Timeout != 2*time.Second || cfg.ExpectedStatus != 200 || cfg.MaxP99 != 0 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 

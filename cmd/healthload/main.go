@@ -38,42 +38,44 @@ const (
 )
 
 type config struct {
-	URL            string
-	Method         string
-	Rate           int
-	Duration       time.Duration
-	Workers        int
-	Timeout        time.Duration
-	ExpectedStatus int
-	MaxP99         time.Duration
+	URL                string
+	Method             string
+	EphemeralSelection bool
+	Rate               int
+	Duration           time.Duration
+	Workers            int
+	Timeout            time.Duration
+	ExpectedStatus     int
+	MaxP99             time.Duration
 }
 
 type report struct {
-	Target           string           `json:"target"`
-	Method           string           `json:"method"`
-	StartedAt        time.Time        `json:"started_at"`
-	FinishedAt       time.Time        `json:"finished_at"`
-	Rate             int              `json:"rate"`
-	DurationMS       float64          `json:"duration_ms"`
-	Workers          int              `json:"workers"`
-	TimeoutMS        float64          `json:"timeout_ms"`
-	ExpectedStatus   int              `json:"expected_status"`
-	Scheduled        int64            `json:"scheduled"`
-	Completed        int64            `json:"completed"`
-	Success          int64            `json:"success"`
-	Errors           int64            `json:"errors"`
-	UnexpectedStatus int64            `json:"unexpected_status"`
-	Dropped          int64            `json:"dropped"`
-	StatusCounts     map[string]int64 `json:"status_counts"`
-	ActualRPS        float64          `json:"actual_rps"`
-	ElapsedMS        float64          `json:"elapsed_ms"`
-	MinMS            float64          `json:"min_ms"`
-	P50MS            float64          `json:"p50_ms"`
-	P95MS            float64          `json:"p95_ms"`
-	P99MS            float64          `json:"p99_ms"`
-	MaxMS            float64          `json:"max_ms"`
-	MaxP99MS         float64          `json:"max_p99_ms"`
-	P99LimitExceeded bool             `json:"p99_limit_exceeded"`
+	Target             string           `json:"target"`
+	Method             string           `json:"method"`
+	EphemeralSelection bool             `json:"ephemeral_selection"`
+	StartedAt          time.Time        `json:"started_at"`
+	FinishedAt         time.Time        `json:"finished_at"`
+	Rate               int              `json:"rate"`
+	DurationMS         float64          `json:"duration_ms"`
+	Workers            int              `json:"workers"`
+	TimeoutMS          float64          `json:"timeout_ms"`
+	ExpectedStatus     int              `json:"expected_status"`
+	Scheduled          int64            `json:"scheduled"`
+	Completed          int64            `json:"completed"`
+	Success            int64            `json:"success"`
+	Errors             int64            `json:"errors"`
+	UnexpectedStatus   int64            `json:"unexpected_status"`
+	Dropped            int64            `json:"dropped"`
+	StatusCounts       map[string]int64 `json:"status_counts"`
+	ActualRPS          float64          `json:"actual_rps"`
+	ElapsedMS          float64          `json:"elapsed_ms"`
+	MinMS              float64          `json:"min_ms"`
+	P50MS              float64          `json:"p50_ms"`
+	P95MS              float64          `json:"p95_ms"`
+	P99MS              float64          `json:"p99_ms"`
+	MaxMS              float64          `json:"max_ms"`
+	MaxP99MS           float64          `json:"max_p99_ms"`
+	P99LimitExceeded   bool             `json:"p99_limit_exceeded"`
 }
 
 func (r report) failed() bool {
@@ -120,6 +122,7 @@ func parseConfig(args []string) (config, error) {
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&cfg.URL, "url", defaultURL, "health endpoint URL")
 	flags.StringVar(&cfg.Method, "method", defaultMethod, "HTTP method (GET or POST)")
+	flags.BoolVar(&cfg.EphemeralSelection, "ephemeral-selection", false, "send the development-only ephemeral selection acknowledgement")
 	flags.IntVar(&cfg.Rate, "rate", defaultRate, "scheduled requests per second")
 	flags.DurationVar(&cfg.Duration, "duration", defaultDuration, "load duration")
 	flags.IntVar(&cfg.Workers, "workers", defaultWorkers, "maximum concurrent workers")
@@ -142,6 +145,9 @@ func parseConfig(args []string) (config, error) {
 func validateConfig(cfg config) error {
 	if cfg.Method != http.MethodGet && cfg.Method != http.MethodPost {
 		return errors.New("method must be GET or POST")
+	}
+	if cfg.EphemeralSelection && cfg.Method != http.MethodPost {
+		return errors.New("ephemeral-selection requires method POST")
 	}
 	parsedURL, err := url.ParseRequestURI(cfg.URL)
 	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
@@ -263,19 +269,20 @@ func runLoad(ctx context.Context, cfg config, client *http.Client) report {
 	close(jobs)
 
 	result := report{
-		Target:         cfg.URL,
-		Method:         cfg.Method,
-		StartedAt:      started.UTC(),
-		Rate:           cfg.Rate,
-		DurationMS:     milliseconds(cfg.Duration),
-		Workers:        cfg.Workers,
-		TimeoutMS:      milliseconds(cfg.Timeout),
-		ExpectedStatus: cfg.ExpectedStatus,
-		MaxP99MS:       milliseconds(cfg.MaxP99),
-		Scheduled:      scheduled,
-		Dropped:        dropped,
-		Errors:         dropped + canceled,
-		StatusCounts:   make(map[string]int64),
+		Target:             cfg.URL,
+		Method:             cfg.Method,
+		EphemeralSelection: cfg.EphemeralSelection,
+		StartedAt:          started.UTC(),
+		Rate:               cfg.Rate,
+		DurationMS:         milliseconds(cfg.Duration),
+		Workers:            cfg.Workers,
+		TimeoutMS:          milliseconds(cfg.Timeout),
+		ExpectedStatus:     cfg.ExpectedStatus,
+		MaxP99MS:           milliseconds(cfg.MaxP99),
+		Scheduled:          scheduled,
+		Dropped:            dropped,
+		Errors:             dropped + canceled,
+		StatusCounts:       make(map[string]int64),
 	}
 	aggregate := <-collected
 	client.CloseIdleConnections()
@@ -339,13 +346,13 @@ func startWorkers(
 		go func() {
 			defer workers.Done()
 			for range jobs {
-				results <- measure(ctx, client, cfg.Method, cfg.URL)
+				results <- measure(ctx, client, cfg.Method, cfg.URL, cfg.EphemeralSelection)
 			}
 		}()
 	}
 }
 
-func measure(ctx context.Context, client *http.Client, method, target string) measurement {
+func measure(ctx context.Context, client *http.Client, method, target string, ephemeralSelection bool) measurement {
 	started := time.Now()
 	request, err := http.NewRequestWithContext(ctx, method, target, nil)
 	if err != nil {
@@ -353,6 +360,9 @@ func measure(ctx context.Context, client *http.Client, method, target string) me
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", userAgent)
+	if ephemeralSelection {
+		request.Header.Set("X-GrowthOS-Demo-Mode", "ephemeral-selection")
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
