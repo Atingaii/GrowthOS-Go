@@ -10,8 +10,9 @@
 - **面试问答：** [第 28 节面试问答](../../interview/lessons/lesson-28.md)
 - **基准提交：** `809d436`（第 27 节已验收 tip）
 - **已知实现与真实依赖验收序列：** `f27ce17`、`2786d96`、`17a6c54`、`ac89423`、`d53b2ec`、`4d9b074`、`e053527`、`8db8c3c`、`4b79d1d`、`97bb783`、`d7deafa`、`2d2c7c2`、`f6b537d`、`ebe0b70`
+- **学习文档与当前态收口序列：** `3b3886b`、`5c757a9`、`be19827`、`54f4769`、`e4531bf`、`4057f5d`
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** graph domain、窄 Repository port、Migration 000003～000005、未装配的 MySQL graph adapter、单元/集成测试与一次性 MySQL 8.4.11 验收脚本已经形成。mysqlrepo 普通、race、20 轮 shuffle、vet、disposable MySQL 全链路、长期 `growthos` 原地 `2:0 -> 5:0`、重复 migration/status、Compose smoke 与隔离 Lottery/cache acceptance 均已实际通过；最终 accepted-tip 的 `make verify`、全仓 race、独立 fuzz、前端门禁、最终 diff/历史/远端一致性与构建产物清理仍是 **final freeze pending**，本文不预写其结果
+- **当前记录状态：** graph domain、窄 Repository port、Migration 000003～000005、未装配的 MySQL graph adapter、单元/集成测试与一次性 MySQL 8.4.11 验收脚本已经形成。mysqlrepo 普通/race/20 轮 shuffle/vet、disposable MySQL 全链路、长期 `growthos` 原地 `2:0 -> 5:0`、重复 migration/status、Compose smoke、隔离 Lottery/cache acceptance、最终 `make verify`、全仓 race、独立 fuzz、atomic coverage、前端 test/typecheck/build、章节 diff/停止线/线性历史和任务自有构建产物清理均已实际通过。远端与累计分支只在冻结提交产生后核对，最终 SHA 以同名远端实际引用为准，不在会改变自身 SHA 的文档提交中预写
 
 > 本节验收的是“一份 Lottery 专属、有界、不可变的 Strategy 路由 rooted DAG 能被完整保存并严格恢复”。它不是通用规则引擎，不执行图，不发布 revision，不把图绑定到 Activity，也没有新增公开 API、UI、会话或权限系统。测试专用 graph repository 账号具备精确三表 `SELECT, INSERT`，不等于长期运行 API 账号已经获得同样权限。
 
@@ -23,7 +24,7 @@
 | --- | --- |
 | **ACTUAL-PASS** | 命令已经在本机真实执行并以 exit 0 完成；若依赖 MySQL，则测试没有 skip |
 | **CODE-EVIDENCE** | 实现和对应测试已经落盘，但本文不把它冒充最终 accepted-tip 的独立复跑 |
-| **FINAL-FREEZE-PENDING** | 必须由根代理在完整文档、索引和最终候选上执行，当前没有结果可写 |
+| **FINAL-CANDIDATE-PASS** | 完整文档与索引已经收口，命令已在候选内容上真实 exit 0；冻结提交只承载相同内容与证据 |
 | **OUT-OF-SCOPE** | 本节刻意没有交付，不能通过测试旧路径来伪装已经完成 |
 
 一次 `go test` exit 0 只有在目标测试实际运行时才算证据。MySQL 集成测试依赖显式授权 token 与连接变量；缺少变量时会 `Skip`，所以普通无环境的全仓测试不能替代本节 disposable MySQL 验收。
@@ -93,7 +94,7 @@
 | 合流不误判 cycle | convergence、shared successor、longest-depth tests | CODE-EVIDENCE | 任意图算法都已验证 |
 | 128/256/16 预算 | limit/depth boundary tests，读取 `LIMIT 129/257` | CODE-EVIDENCE | 线上容量或 latency SLO |
 | graph value 不可变 | input/output slice mutation、64-worker read tests | CODE-EVIDENCE | 真实 adapter 的所有调用都无 race |
-| damaged topology fuzz target | `FuzzRestoreStrategyRoutingGraphTopologyNeverPanicsOrLoops` | CODE-EVIDENCE；独立 final fuzz 待执行 | 对所有输入的穷举证明 |
+| damaged topology fuzz target | `FuzzRestoreStrategyRoutingGraphTopologyNeverPanicsOrLoops` | FINAL-CANDIDATE-PASS；10 秒、1,693,489 execs | 对所有输入的穷举证明 |
 | 窄 application port | `StrategyRoutingGraphCreator` / `Reader` 反射测试 | CODE-EVIDENCE | 已有管理 use case 或 runtime composition |
 | 三表 migration v5 | embed checksum/inventory tests + schema integration | ACTUAL-PASS（真实 MySQL） | 数据库单独证明 rooted DAG |
 | graph Create transaction | sqlmock 顺序/RowsAffected/rollback/commit tests | ACTUAL-PASS（mysqlrepo 普通/race/shuffle/vet） | 网络断开时 commit 一定失败 |
@@ -108,7 +109,7 @@
 | 长期 Compose 前向迁移 | 同一 MySQL container/named resources、`2:0 -> 5:0`、旧表 fingerprint、新表空态 | ACTUAL-PASS | 任意旧 volume 会自动升级或生产迁移零风险 |
 | 长期运行身份最小权限 | exact grants、空 mandatory roles、graph `SELECT`/`INSERT` 拒绝与 smoke | ACTUAL-PASS | 产品层认证、RBAC 或对象级授权 |
 | 隔离 Lottery/cache 回归 | v5 acceptance、故障恢复、三组 M1 与所有权清理 | ACTUAL-PASS | graph 已被 HTTP/runtime 消费或 M1 是生产 SLO |
-| 全仓/前端/最终文档门禁 | `make verify`、全仓 race、frontend、doccheck | FINAL-FREEZE-PENDING | 当前已经是 accepted tip |
+| 全仓/前端/最终文档门禁 | `make verify`、全仓 race、frontend、doccheck | FINAL-CANDIDATE-PASS | 获得生产 SLO 或图已进入 runtime |
 
 ## 5. 按提交核查真实演进
 
@@ -128,6 +129,12 @@
 | 12 | `2d2c7c2` | 将一次性 MySQL 8.4.11 验收和精确清理自动化 |
 | 13 | `f6b537d` | 将 Compose build/schema checkpoint 前向推进到 lesson 28 / v5，不新增 graph runtime consumer |
 | 14 | `ebe0b70` | 在长期 smoke 与隔离 Lottery acceptance 中固定运行身份 graph 表拒绝 |
+| 15 | `3b3886b` | 交付课程与零公开 HTTP 变化的 API 记录 |
+| 16 | `5c757a9` | 交付第一性原理设计手记与技术权衡 |
+| 17 | `be19827` | 登记实现阶段、真实 MySQL 与 Compose 验收证据及待冻结项 |
+| 18 | `54f4769` | 对齐 README、产品边界与 Repository 当前态 |
+| 19 | `e4531bf` | 对齐本地 Compose 与 Migration 运维手册 |
+| 20 | `4057f5d` | 登记课程、API、QA、设计与面试索引及章节状态 |
 
 可复核线性切片：
 
@@ -420,24 +427,27 @@ make compose-lottery-api-acceptance
 
 验收结束后，脚本按精确 ownership 清除了本次随机 Compose project 的 containers、volumes、networks、task image tags、buildx builder/state、Secret 与 response files/directories；长期默认 `growthos` containers/volumes/networks 前后 identity 不变。可复用基础镜像与共享构建缓存保留。
 
-## 14. Final freeze 待执行矩阵
+## 14. Final freeze 实际矩阵
 
-以下结果当前一律不得写成通过；由根代理在完整文档和索引收口、最终候选形成后执行并回填：
+以下命令均在完整文档和索引收口后的候选内容上真实执行。测试不是因为提交动作才成立；冻结提交只把已经通过的同一工作树内容固化进历史。
 
-| 待执行项 | 预期命令/证据 | 当前状态 |
+| 验收项 | 实际命令/证据 | 结果 |
 | --- | --- | --- |
-| 独立文档检查 | `go run ./cmd/doccheck` | 当前完整工作树 ACTUAL-PASS；最终 accepted-tip 仍 pending |
-| 完整仓库门禁 | `make verify` | FINAL-FREEZE-PENDING |
-| 全仓 race | `go test -race -count=1 ./...` | FINAL-FREEZE-PENDING |
-| graph fuzz 窗口 | `go test ... -fuzz=FuzzRestoreStrategyRoutingGraphTopologyNeverPanicsOrLoops -fuzztime=10s` | FINAL-FREEZE-PENDING |
-| atomic coverage | 临时 `coverprofile` + `go tool cover` | FINAL-FREEZE-PENDING |
-| frontend test/typecheck/build | `make web-verify` 或 `make verify` 内门禁 | FINAL-FREEZE-PENDING |
-| 章节 diff | `git diff --check 809d436..accepted-tip` | FINAL-FREEZE-PENDING |
-| runtime stop-line diff | 对 composition/API/UI/config/Participation 等精确路径核对 | FINAL-FREEZE-PENDING |
-| 线性历史 | merge-base、`rev-list --merges`、远端 SHA 一致 | FINAL-FREEZE-PENDING |
-| clean worktree | 清除本次 build/coverage 后 `git status --porcelain` 为空 | FINAL-FREEZE-PENDING |
+| 独立文档检查 | `go run ./cmd/doccheck` | ACTUAL-PASS，`documentation checks passed` |
+| 完整仓库门禁 | `make verify` | ACTUAL-PASS，约 14.14 秒；Go vet/test、doccheck 与全部前端门禁均通过 |
+| 全仓 race | `go test -race -count=1 ./...` | ACTUAL-PASS，约 15.05 秒，无 race 报告 |
+| graph fuzz 窗口 | `go test ./internal/lottery/domain -run='^$' -fuzz='^FuzzRestoreStrategyRoutingGraphTopologyNeverPanicsOrLoops$' -fuzztime=10s` | ACTUAL-PASS；baseline `238/238`，1,693,489 execs，5 个 new interesting（total 243） |
+| atomic coverage | 六个 Lottery package，`-covermode=atomic` + `go tool cover -func` | ACTUAL-PASS；总覆盖率 89.9% |
+| frontend test | `make verify` 内 Vitest | ACTUAL-PASS；19/19 files、152/152 tests |
+| frontend typecheck | `tsc --noEmit` | ACTUAL-PASS，无错误 |
+| frontend build | Vite v8.0.3 | ACTUAL-PASS；2,462 modules，约 245 ms |
+| 章节 diff | `git diff --check 809d436..HEAD` | ACTUAL-PASS |
+| runtime stop-line diff | `cmd/growth-api`、`web`、HTTP adapter、Participation、configs、`go.mod/go.sum` 精确路径 | ACTUAL-PASS，`809d436..HEAD` 无变化 |
+| 线性历史 | `merge-base --is-ancestor` + `rev-list --merges` | ACTUAL-PASS；基于 `809d436`，候选 20 个线性、零 merge 提交 |
+| main/cumulative 前置核对 | 本地与远端 ref | ACTUAL-PASS；main 仍为 `3ec52a2`，累计分支在冻结前仍为第 27 节 `809d436` |
+| task-owned artifact cleanup | coverage temp、fuzz corpus、`web/dist` | ACTUAL-PASS；均不存在，工作树重新干净 |
 
-若最终命令失败，应修复后重跑并记录真实失败原因；不能保留本表的 pending 同时宣布章节 accepted，也不能先把 checkbox 勾成完成再等待命令结果。
+冻结提交 push 后还会执行同名远端 SHA 相等、累计分支 fast-forward 与 main 不变的外部 ref 核对。最终 commit SHA 不能安全写入它自身：一旦修改文档写入 SHA，SHA 就会再次变化，因此以 Git 远端引用和本节最终交接记录共同作为证据。
 
 ### 14.1 当前文档草稿检查
 
@@ -453,7 +463,7 @@ test -z "$(git diff --no-index --check /dev/null \
 
 - **实际：** 四条检查均 exit 0；doccheck 输出 `documentation checks passed`；
 - **为什么新增文件需要第四条：** 普通 `git diff --check` 不检查 untracked 文件；`git diff --no-index` 对“文件内容不同”本身会返回 1，因此外层只断言其 `--check` 没有输出 whitespace error；
-- **边界：** 这是当前共享工作树的草稿检查，不是 clean-worktree accepted-tip 证据。索引、QA 和最终证据提交完成后仍须重新运行 doccheck 与完整章节 diff。
+- **边界：** 这是文档形成阶段的检查；完整索引收口后已经再次执行本节 14 的全量门禁，不能用这里的早期结果替代最终矩阵。
 
 ## 15. 停止线与精确负向断言
 
@@ -513,9 +523,15 @@ test -z "$(git diff --no-index --check /dev/null \
 - 共享 Go build/test cache 可供后续章节复用，未删除；仓库内没有保留容器日志、密码、coverage、browser trace 或下载图片。
 - 隔离 Lottery/cache acceptance 创建的随机 project containers/volumes/networks、task image tags、buildx builder/state、Secret 与 response 文件/目录也按精确 ownership 清除；默认长期 `growthos` 资源保留且 identity 不变。
 
-### 17.2 最终冻结仍需清理的 artifact
+### 17.2 Final freeze artifact 实际清理
 
-若后续 `make verify` 生成 `web/dist`，或 coverage/fuzz 生成任务专用临时文件，根代理必须先解析并枚举本次实际创建的精确路径，再只删除这些路径；不得递归删除用户已有 cache、长期 Docker volume、依赖镜像、凭证或项目源文件。清理结果应在最终 accepted-tip QA 更新中记录。
+- atomic coverage 使用唯一 `mktemp -d` 目录；`coverage.out` 已逐个 `unlink`，目录已精确 `rmdir`，二者均验证不存在；
+- fuzz 没有在仓库内生成 `testdata/fuzz` corpus、`*.test`、`*.prof`、`coverage.out` 或 `fuzz-*`；
+- `make verify` 前 `web/dist` 不存在，之后只生成 `index.html` 与 `assets/` 下 5 个带 hash 的 JS/CSS 文件；根代理先用 `find` 枚举，再逐文件 `unlink`、逐目录 `rmdir`，最终验证 `web/dist` 不存在；
+- `web/node_modules`、四个 Compose secret 文件、Go build cache、`mysql:8.4.11` 与共享 buildx 基础镜像是既有或可复用依赖，均保留；既有 Vitest `results.json` 被测试刷新，但不是本任务新建，因没有可信前值而未删除；
+- 清理后 `git status --short` 为空；`git status --short --ignored` 只显示上述既有 secrets 与 `web/node_modules/`。
+
+本轮没有递归删除用户 cache、长期 Docker volume、依赖镜像、凭证或项目源文件。
 
 ## 18. 文档同步状态
 
@@ -546,10 +562,10 @@ test -z "$(git diff --no-index --check /dev/null \
 - [x] 已如实记录 BSD sed、async `--rm`、edge filesort 三次真实失败与修正；
 - [x] 当前无 `VAULT`，未伪造外部文档同步；
 - [x] 本 QA 落盘后当前工作树 doccheck 与 tracked/untracked whitespace diff-check 已通过；
-- [ ] 完整文档/索引收口后的最终 doccheck；
-- [ ] final candidate `make verify` 与全仓 race；
-- [ ] final graph fuzz、atomic coverage 与前端门禁；
-- [ ] `809d436..accepted-tip` diff/stop-line/线性历史/clean-worktree；
-- [ ] 推送后同名远端 SHA、累计分支和 main 不变复核。
+- [x] 完整文档/索引收口后的最终 doccheck；
+- [x] final candidate `make verify` 与全仓 race；
+- [x] final graph fuzz、atomic coverage 与前端门禁；
+- [x] `809d436..HEAD` diff/stop-line/线性历史/clean-worktree；
+- [ ] 冻结提交 push 后同名远端 SHA、累计分支 fast-forward 和 main 不变复核。
 
-最终 accepted tip 只以根代理完成所有 pending gate、提交并推送后的同名远端实际 SHA 为准。本文不虚构尚未生成的 SHA，也不把 disposable test identity 的成功外推为生产权限系统已经完成。
+最终 accepted tip 只以根代理提交并推送后的同名远端实际 SHA 为准。本文不虚构尚未生成的 SHA，也不把 disposable test identity 的成功外推为生产权限系统已经完成。
