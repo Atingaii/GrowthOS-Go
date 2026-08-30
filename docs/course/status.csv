@@ -26,7 +26,7 @@
 25,4,需求升级不是所有用户都能抽,已完成,docs/course/part-04/lesson-25-user-eligibility.md,docs/qa/lessons/lesson-25.md
 26,4,责任链实现前置规则,已完成,docs/course/part-04/lesson-26-responsibility-chain.md,docs/qa/lessons/lesson-26.md
 27,4,责任链为什么开始不够用了,已完成,docs/course/part-04/lesson-27-responsibility-chain-limits.md,docs/qa/lessons/lesson-27.md
-28,4,规则树第一次数据库升级,计划中,,
+28,4,规则树第一次数据库升级,已完成,docs/course/part-04/lesson-28-rule-tree-schema.md,docs/qa/lessons/lesson-28.md
 29,4,实现规则决策引擎,计划中,,
 30,4,为什么 Strategy 不等于 Activity,计划中,,
 31,4,统一访问控制模型与威胁边界,计划中,,

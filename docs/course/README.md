@@ -35,7 +35,7 @@
 
 ## 当前进度
 
-当前已完成第 1～27 节，共 27 节；第二部分 M0 与第三部分 M1 均已验收。第三部分已经完成最小 Lottery 领域对象、第一组业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API、真实 React 消费者、规则事实所有权停止线，以及第一个以 MySQL 为事实源的 Redis Strategy 读取投影。第四部分由第 25 节开始：Participation 先以权威注册事实交付新用户资格，第 26 节再增加风险准入事实并组合成固定线性资格链；第 27 节保留这条链，在 Lottery 内用权威会员快照、premium override、standard baseline default 与一跳 path 建立首个真实多出口 Route，证明 `continue/reject` 不能表达多个成功目标。两块内核仍未接生产事实 adapter、公开 API、Activity、真实主体或运行时编排。完成数与证据路径以 [status.csv](status.csv) 为准。
+当前已完成第 1～28 节，共 28 节；第二部分 M0 与第三部分 M1 均已验收。第三部分已经完成最小 Lottery 领域对象、第一组业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API、真实 React 消费者、规则事实所有权停止线，以及第一个以 MySQL 为事实源的 Redis Strategy 读取投影。第四部分由第 25 节开始：Participation 先以权威注册事实交付新用户资格，第 26 节再增加风险准入事实并组合成固定线性资格链；第 27 节保留这条链，在 Lottery 内建立首个真实多出口 Route；第 28 节把已证明的 root/branch/default/target 词汇保存成 Lottery-owned、有界、不可变、可严格恢复的 rooted DAG，并用 `000003`～`000005` 把 Migration latest 推进到 5。资格链和路由图仍未接生产事实 adapter、公开 API、Activity、真实主体或运行时编排，路由图也尚未执行或发布。完成数与证据路径以 [status.csv](status.csv) 为准。
 
 - [第 1 节：为什么要做 AI 原生大营销增长平台](part-01/lesson-01-why-ai-native-growth-platform.md) 已完成。
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
@@ -64,10 +64,11 @@
 - [第 25 节：需求升级——不是所有用户都能抽](part-04/lesson-25-user-eligibility.md) 已完成并验收；配套[规则基线](../product/new-user-eligibility-v1.md)、[API](../api/lessons/lesson-25.md)、[QA](../qa/lessons/lesson-25.md)、[设计手记](../design-thinking/lessons/lesson-25.md)、[面试问答](../interview/lessons/lesson-25.md)和 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)已登记。
 - [第 26 节：责任链实现前置规则](part-04/lesson-26-responsibility-chain.md) 已完成并验收；配套[规则链基线](../product/participation-prerequisite-chain-v1.md)、[API](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[设计手记](../design-thinking/lessons/lesson-26.md)、[面试问答](../interview/lessons/lesson-26.md)和 [ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)已登记。
 - [第 27 节：责任链为什么开始不够用了](part-04/lesson-27-responsibility-chain-limits.md) 已完成并验收；配套[会员路由基线](../product/membership-strategy-routing-v1.md)、[API](../api/lessons/lesson-27.md)、[QA](../qa/lessons/lesson-27.md)、[设计手记](../design-thinking/lessons/lesson-27.md)、[面试问答](../interview/lessons/lesson-27.md)和 [ADR-0023](../decisions/ADR-0023-membership-strategy-routing-boundary.md)已登记。
+- [第 28 节：规则树第一次数据库升级](part-04/lesson-28-rule-tree-schema.md) 已完成并验收；配套[路由图基线](../product/lottery-strategy-routing-graph-v1.md)、[API](../api/lessons/lesson-28.md)、[QA](../qa/lessons/lesson-28.md)、[设计手记](../design-thinking/lessons/lesson-28.md)、[面试问答](../interview/lessons/lesson-28.md)和 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)已登记。
 - 第 11～23 节依次建立 Go/MySQL/React/Compose 基线、Lottery 领域/仓储/选择/API/React 纵向链和规则所有权停止线；第 24 节只在 application-owned `StrategyReader` 外增加 Lottery cache-aside decorator。MySQL 仍是唯一事实源，Redis value 经严格 v1 codec 与领域恢复；2 MiB/1000 Award、TTL≤5m+jitter、同 key fill、poison 修复、fail-open、最小 ACL 与低基数观测分别由适合它们的单元/边界测试或隔离 Compose 证据覆盖。服务器实际剩余 TTL、真实 2 MiB Redis value 和 Redis/MySQL 同时停止未被冒充为已执行场景，精确边界见第 24 节 QA。
-- 当前真实 Lottery API 及其 React 消费者仍只产生并展示不持久化的 ephemeral selection；`reward` 只是奖励候选，`no_reward` 是正常候选结果。Redis 不缓存资格、权限、会员事实、路由决定、随机选择或 Draw/Result，也不进入 API readiness。第 25～26 节的固定 Participation 资格链和第 27 节的 Lottery 会员路由仍是彼此独立、未装配的 domain/application 内核；正式 Draw/Result、认证、对象级授权、幂等、Activity/次数等完整资格与 Lottery 前置门控、库存、积分扣减和发奖均未实现；INV-03 仍未满足。
+- 当前真实 Lottery API 及其 React 消费者仍只产生并展示不持久化的 ephemeral selection；`reward` 只是奖励候选，`no_reward` 是正常候选结果。Redis 不缓存资格、权限、会员事实、路由决定、随机选择或 Draw/Result，也不进入 API readiness。第 25～26 节的固定 Participation 资格链、第 27 节的 Lottery 会员路由与第 28 节的持久化路由图仍是彼此独立、未装配的内核；三张图表存在不等于图已执行、已发布或已获得管理 API。正式 Draw/Result、认证、对象级授权、幂等、Activity/次数等完整资格与 Lottery 前置门控、库存、积分扣减和发奖均未实现；INV-03 仍未满足。
 - M0 健康探针基线与 M1 Strategy 缓存本地基线均已形成。M1 三组 50 RPS×10s 均 500/500 成功：warm-cache MySQL prepared execute 为 0，cache-disabled 与 Redis-down 均为 1000；它只证明当前本机的命中/直连/fail-open 路径，不外推为业务 SLO、生产容量或通用缓存收益。第 45、61、77、85、93、101 节继续形成后续里程碑。
-- 下一节是第 28 节“规则树第一次数据库升级”：只把第 27 节已经证明的 root/branch/default/target/path 词汇建成可迁移、可恢复、可验证的最小持久化模型，先解决 schema/version、引用完整性、环、深度和不可达节点，不提前执行任意图。第 29 节才执行已验证配置；第 31～35 节仍按“公共模型 → 会话 → 服务端强制 → 前端感知 → 越权验收”演进，并在第 36 节首个真实运营后台复用。
+- 下一节是第 29 节“实现规则决策引擎”：只执行第 28 节已经严格验证和恢复的有界图，不把持久化存在误写为已发布或可执行。第 31～35 节仍按“公共模型 → 会话 → 服务端强制 → 前端感知 → 越权验收”演进，并在第 36 节首个真实运营后台复用。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 
 ## 课程演进规则
@@ -82,7 +83,7 @@
 
 前端不是最终阶段补上的展示层。React + TypeScript 在第 14 节初始化，第 15 节完成首次 API 联调；抽奖页、运营后台、活动详情、积分/优惠券中心、Growth Feed、数据大盘、MCP 控制台和 AI Operator 依次在对应业务章节交付。
 
-数据库同样不是预制终态。第 13 节先建立连接、账号隔离、readiness 与前向 Migration 机制；第 18 节才以 `000001` / `000002` 分别创建 `lottery_strategy`、`lottery_strategy_award`，当前 latest 为 2。拆成两个版本使每个版本只包含一条 MySQL DDL，并让第二张表失败时能明确报告 version 2 dirty；API 只有在全部迁移和精确授权成功后才启动。后续每一次字段、索引、新表、冗余快照或宽表变化，必须记录新业务需求、现有设计的不足、Migration、查询/并发影响和 QA 证据。已执行的 Migration 只追加，不回写历史。
+数据库同样不是预制终态。第 13 节先建立连接、账号隔离、readiness 与前向 Migration 机制；第 18 节以 `000001` / `000002` 分别创建 `lottery_strategy`、`lottery_strategy_award`；第 28 节再以 `000003`～`000005` 依次创建 graph、node、edge 三张表，当前 latest 为 5。每个版本仍只包含一条 MySQL DDL，使 dirty version 能精确定位；长期 API 身份仍只保留既有业务表权限，图仓储使用隔离测试身份验证精确三表 `SELECT, INSERT`，且 adapter 尚未装配进运行时。后续每一次字段、索引、新表、冗余快照或宽表变化，必须记录新业务需求、现有设计的不足、Migration、查询/并发影响和 QA 证据。已执行的 Migration 只追加，不回写历史。
 
 ## 可部署里程碑
 

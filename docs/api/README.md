@@ -41,6 +41,7 @@
 | 第 25 节 | 新增未装配的 Participation 新用户资格 domain/application 切片；公开 route、DTO、header、status、error code 与 React 调用全部不变 | 已验收 | [第 25 节 API 记录](lessons/lesson-25.md) |
 | 第 26 节 | 新增未装配的风险准入规则与固定 Participation 前置资格链；公开 HTTP、React、schema 与 Compose 契约全部不变 | 已验收 | [第 26 节 API 记录](lessons/lesson-26.md) |
 | 第 27 节 | 新增未装配的 Lottery 会员等级多出口路由内核；公开 route、DTO、header、status、error code、React、schema 与 Compose 契约全部不变 | 已验收 | [第 27 节 API 记录](lessons/lesson-27.md) |
+| 第 28 节 | 新增未装配的 Lottery Strategy 路由图领域模型、Repository 与 Migration latest v5；公开 HTTP、React 与运行时组合根不变，图尚未执行或发布 | 已验收 | [第 28 节 API 记录](lessons/lesson-28.md) |
 
 ## 阅读方式
 

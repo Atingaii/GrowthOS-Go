@@ -31,5 +31,6 @@
 | 第 25 节 | [Participation 新用户资格与零公开 API 变化](lesson-25.md) | 已验收 |
 | 第 26 节 | [Participation 前置资格链与零公开 API 变化](lesson-26.md) | 已验收 |
 | 第 27 节 | [Lottery 会员等级路由与零公开 API 变化](lesson-27.md) | 已验收 |
+| 第 28 节 | [Strategy 路由图持久化与零公开 API 变化](lesson-28.md) | 已验收 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。
