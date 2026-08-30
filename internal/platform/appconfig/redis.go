@@ -35,7 +35,7 @@ const (
 	defaultLotteryCacheLookupTimeout = 75 * time.Millisecond
 	defaultLotteryCacheWriteTimeout  = 75 * time.Millisecond
 	defaultLotteryCacheFillTimeout   = 2 * time.Second
-	maximumLotteryStrategyCacheTTL   = 24 * time.Hour
+	maximumLotteryStrategyCacheTTL   = 5 * time.Minute
 	maximumLotteryCacheLookupTimeout = time.Second
 	maximumLotteryCacheWriteTimeout  = time.Second
 	maximumLotteryCacheFillTimeout   = 30 * time.Second

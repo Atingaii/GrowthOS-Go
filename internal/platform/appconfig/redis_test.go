@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadRequiresRedisCredentialOnlyWhenStrategyCacheIsEnabled(t *testing.T) {
@@ -196,6 +197,25 @@ func TestLoadRejectsInvalidRedisValuesWithoutEchoingThem(t *testing.T) {
 				t.Fatalf("Load() error echoed supplied value: %v", err)
 			}
 		})
+	}
+}
+
+func TestLoadCapsStrategyCacheTTLAtFiveMinutes(t *testing.T) {
+	_, err := Load(mapLookup(apiVariables(map[string]string{
+		lotteryStrategyCacheTTLVariable: "5m1ns",
+	})))
+	if err == nil || !strings.Contains(err.Error(), lotteryStrategyCacheTTLVariable) {
+		t.Fatalf("Load() error = %v, want five-minute TTL ceiling", err)
+	}
+
+	config, err := Load(mapLookup(apiVariables(map[string]string{
+		lotteryStrategyCacheTTLVariable: "5m",
+	})))
+	if err != nil {
+		t.Fatalf("Load(5m) error = %v", err)
+	}
+	if config.Lottery.StrategyCache.TTL != 5*time.Minute {
+		t.Fatalf("strategy cache TTL = %s, want 5m", config.Lottery.StrategyCache.TTL)
 	}
 }
 

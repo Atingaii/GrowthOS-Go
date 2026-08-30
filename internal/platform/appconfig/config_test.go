@@ -115,7 +115,7 @@ func TestLoadAppliesCompleteOverride(t *testing.T) {
 		mysqlConnMaxLifetimeVariable:        "12m",
 		mysqlConnMaxIdleTimeVariable:        "7m",
 		lotteryStrategyCacheEnabledVariable: "true",
-		lotteryStrategyCacheTTLVariable:     "9m",
+		lotteryStrategyCacheTTLVariable:     "4m",
 		lotteryStrategyCacheLookupVariable:  "100ms",
 		lotteryStrategyCacheWriteVariable:   "120ms",
 		lotteryStrategyCacheFillVariable:    "4s",
@@ -153,7 +153,7 @@ func TestLoadAppliesCompleteOverride(t *testing.T) {
 			SelectionTimeout: 11 * time.Second,
 			StrategyCache: StrategyCacheConfig{
 				Enabled:       true,
-				TTL:           9 * time.Minute,
+				TTL:           4 * time.Minute,
 				LookupTimeout: 100 * time.Millisecond,
 				WriteTimeout:  120 * time.Millisecond,
 				FillTimeout:   4 * time.Second,
