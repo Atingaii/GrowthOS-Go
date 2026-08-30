@@ -73,12 +73,16 @@ describe("LotteryPage", () => {
 
     fireEvent.change(input, { target: { value: "01" } });
     expect(screen.getByText(/无前导零、无符号/)).toBeTruthy();
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-errormessage")).toBe("lottery-strategy-error");
     expect(
       (screen.getByRole("button", { name: "发起一次临时选择" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(select).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: "18446744073709551615" } });
+    expect(input.getAttribute("aria-invalid")).toBe("false");
+    expect(input.hasAttribute("aria-errormessage")).toBe(false);
     const button = screen.getByRole("button", { name: "发起一次临时选择" });
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);
@@ -153,6 +157,16 @@ describe("LotteryPage", () => {
         requestId: "req-route",
       }),
       "临时选择接口当前未启用",
+    ],
+    [
+      "temporarily unavailable",
+      new ApiClientError("raw unavailable detail", {
+        kind: "http",
+        status: 503,
+        code: "lottery_selection_unavailable",
+        requestId: "req-unavailable",
+      }),
+      "服务暂时无法给出可信结果",
     ],
     [
       "unknown network outcome",

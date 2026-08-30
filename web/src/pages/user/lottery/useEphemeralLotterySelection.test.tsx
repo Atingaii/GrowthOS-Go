@@ -111,6 +111,41 @@ describe("useEphemeralLotterySelection", () => {
     expect(mockedRequestEphemeralSelection).toHaveBeenCalledTimes(1);
   });
 
+  it("starts a second request only after the consumer explicitly selects again", async () => {
+    const firstRequest = deferred<ApiResponse<EphemeralSelectionResponse>>();
+    const secondRequest = deferred<ApiResponse<EphemeralSelectionResponse>>();
+    mockedRequestEphemeralSelection
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise);
+    const apiError = new ApiClientError("gateway response lost", {
+      kind: "http",
+      status: 504,
+      code: "gateway_timeout",
+      requestId: "selection-unknown",
+    });
+
+    const { result } = renderHook(() => useEphemeralLotterySelection());
+    act(() => result.current.select("21003"));
+    await act(async () => firstRequest.reject(apiError));
+
+    await waitFor(() => expect(result.current.state.phase).toBe("error"));
+    expect(mockedRequestEphemeralSelection).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.select("21003"));
+    expect(result.current.state).toEqual({ phase: "selecting", strategyId: "21003" });
+    expect(mockedRequestEphemeralSelection).toHaveBeenCalledTimes(2);
+
+    const response = selectionResponse("21003", "reward");
+    await act(async () => secondRequest.resolve(response));
+
+    await waitFor(() => expect(result.current.state.phase).toBe("success"));
+    expect(result.current.state).toEqual({
+      phase: "success",
+      strategyId: "21003",
+      response,
+    });
+  });
+
   it("suppresses every duplicate submission while one selection is pending", () => {
     const request = deferred<ApiResponse<EphemeralSelectionResponse>>();
     mockedRequestEphemeralSelection.mockReturnValue(request.promise);

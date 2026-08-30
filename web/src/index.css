@@ -1,10 +1,16 @@
 @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
-    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    color-scheme: light;
+
+    --font-sans:
+      "Plus Jakarta Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system,
+      BlinkMacSystemFont, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
 
     --background: #f5f5f4;
     --foreground: #0c0a09;
@@ -32,6 +38,8 @@
   }
 
   .dark {
+    color-scheme: dark;
+
     --background: #0a0a0a;
     --foreground: #fafaf9;
     --card: #141414;
@@ -67,7 +75,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-code, pre {
+code,
+pre {
   font-family: var(--font-mono);
 }
 
@@ -89,11 +98,19 @@ code, pre {
 
 /* Dot Grid Background */
 .bg-grid-pattern {
-  background-image: radial-gradient(circle at center, rgba(37, 99, 235, 0.12) 1.2px, transparent 1.4px);
+  background-image: radial-gradient(
+    circle at center,
+    rgba(37, 99, 235, 0.12) 1.2px,
+    transparent 1.4px
+  );
   background-size: 20px 20px;
 }
 
 .dark .bg-grid-pattern {
-  background-image: radial-gradient(circle at center, rgba(59, 130, 246, 0.2) 1.2px, transparent 1.4px);
+  background-image: radial-gradient(
+    circle at center,
+    rgba(59, 130, 246, 0.2) 1.2px,
+    transparent 1.4px
+  );
   background-size: 20px 20px;
 }
