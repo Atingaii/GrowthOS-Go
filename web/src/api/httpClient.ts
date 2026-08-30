@@ -44,6 +44,10 @@ export interface JsonRequestOptions<T> {
   now?: () => number;
 }
 
+export interface JsonPostWithoutBodyOptions<T> extends JsonRequestOptions<T> {
+  headers?: Readonly<Record<string, string>>;
+}
+
 const defaultTimeoutMs = 5_000;
 const requestIDHeader = "X-Request-ID";
 
@@ -141,9 +145,15 @@ async function readJSON(response: Response, requestId?: string): Promise<unknown
   }
 }
 
-export async function requestJSON<T>(
+interface JsonRequestSpec {
+  method: "GET" | "POST";
+  headers: Readonly<Record<string, string>>;
+}
+
+async function executeJSONRequest<T>(
   path: string,
   options: JsonRequestOptions<T>,
+  spec: JsonRequestSpec,
 ): Promise<ApiResponse<T>> {
   const safePath = requestPath(path);
   const timeoutMs = requestTimeout(options.timeoutMs);
@@ -167,8 +177,8 @@ export async function requestJSON<T>(
 
   try {
     const response = await fetcher(safePath, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      method: spec.method,
+      headers: spec.headers,
       cache: "no-store",
       credentials: "same-origin",
       mode: "same-origin",
@@ -237,6 +247,34 @@ export async function requestJSON<T>(
     clearTimeout(timeoutID);
     options.signal?.removeEventListener("abort", onCallerAbort);
   }
+}
+
+export function requestJSON<T>(
+  path: string,
+  options: JsonRequestOptions<T>,
+): Promise<ApiResponse<T>> {
+  return executeJSONRequest(path, options, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+}
+
+/**
+ * Sends a same-origin JSON POST whose request has no payload framing.
+ *
+ * Deliberately no `body` option exists here. The transport adds only `Accept`;
+ * callers must opt into every other header and it never infers Content-Type.
+ */
+export function postJSONWithoutBody<T>(
+  path: string,
+  options: JsonPostWithoutBodyOptions<T>,
+): Promise<ApiResponse<T>> {
+  const { headers = {}, ...requestOptions } = options;
+
+  return executeJSONRequest(path, requestOptions, {
+    method: "POST",
+    headers: { Accept: "application/json", ...headers },
+  });
 }
 
 export function asApiClientError(error: unknown): ApiClientError {

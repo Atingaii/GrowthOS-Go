@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requestJSON, type FetchLike } from "./httpClient";
+import { postJSONWithoutBody, requestJSON, type FetchLike } from "./httpClient";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -274,5 +274,50 @@ describe("requestJSON", () => {
       requestJSON("/health", { decode: decodeName, fetcher, timeoutMs }),
     ).rejects.toMatchObject({ kind: "contract" });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("postJSONWithoutBody", () => {
+  it("sends one bodyless POST without inferring payload framing headers", async () => {
+    const fetcher = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(jsonResponse({ name: "selected" }, { status: 200 }));
+
+    await expect(
+      postJSONWithoutBody("/api/v1/actions", {
+        decode: decodeName,
+        headers: { "X-GrowthOS-Demo-Mode": "ephemeral-selection" },
+        fetcher,
+      }),
+    ).resolves.toMatchObject({ data: { name: "selected" }, status: 200 });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    const [path, init] = fetcher.mock.calls[0];
+    const headers = new Headers(init?.headers);
+
+    expect(path).toBe("/api/v1/actions");
+    expect(init).toMatchObject({
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      mode: "same-origin",
+      redirect: "error",
+      signal: expect.any(AbortSignal),
+    });
+    expect(init).not.toHaveProperty("body");
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("X-GrowthOS-Demo-Mode")).toBe("ephemeral-selection");
+    expect(headers.has("Content-Type")).toBe(false);
+    expect(headers.has("Content-Length")).toBe(false);
+    expect(headers.has("Transfer-Encoding")).toBe(false);
+  });
+
+  it("does not retry a failed POST", async () => {
+    const fetcher = vi.fn<FetchLike>().mockRejectedValue(new TypeError("connection refused"));
+
+    await expect(
+      postJSONWithoutBody("/api/v1/actions", { decode: decodeName, fetcher }),
+    ).rejects.toMatchObject({ kind: "network" });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });
