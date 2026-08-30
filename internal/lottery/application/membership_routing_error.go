@@ -12,6 +12,9 @@ var (
 	// ErrMembershipRoutingClockInvalid reports that the controlled server clock
 	// did not provide a usable logical evaluation instant.
 	ErrMembershipRoutingClockInvalid = errors.New("lottery membership routing: clock is invalid")
+	// ErrMembershipRoutingDecisionInvalid reports an internal invariant breach
+	// where domain routing returned an incomplete or inconsistent decision.
+	ErrMembershipRoutingDecisionInvalid = errors.New("lottery membership routing: decision is invalid")
 	// ErrMembershipTierFactNotFound means no authoritative membership snapshot
 	// was available. Absence cannot be routed through the baseline default.
 	ErrMembershipTierFactNotFound = errors.New("lottery membership routing: membership tier fact not found")

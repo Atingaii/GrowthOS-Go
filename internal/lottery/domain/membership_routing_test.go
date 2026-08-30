@@ -132,6 +132,55 @@ func TestMembershipRoutePathIsDefensivelyCopied(t *testing.T) {
 	}
 }
 
+func TestMembershipRouteDecisionConfirmedRejectsInconsistentEvidence(t *testing.T) {
+	evaluatedAt := time.Unix(250, 0).UTC()
+	policy, _ := NewMembershipStrategyRoutingPolicy("route-v1", 200, 100)
+	fact, _ := NewMembershipTierFactSnapshot(1, MembershipTierPremium, evaluatedAt, "directory", "r1")
+	valid, err := RouteMembershipStrategy(policy, fact, evaluatedAt)
+	if err != nil || !valid.Confirmed() {
+		t.Fatalf("construct valid decision: %#v, %v", valid, err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*MembershipStrategyRouteDecision)
+	}{
+		{
+			name: "path target disagrees",
+			mutate: func(decision *MembershipStrategyRouteDecision) {
+				decision.path[0].target = 999
+			},
+		},
+		{
+			name: "path branch disagrees",
+			mutate: func(decision *MembershipStrategyRouteDecision) {
+				decision.path[0].branch = MembershipRoutingBranchBaselineDefault
+			},
+		},
+		{
+			name: "path rule disagrees",
+			mutate: func(decision *MembershipStrategyRouteDecision) {
+				decision.path[0].ruleCode = "lottery.other.rule"
+			},
+		},
+		{
+			name: "branch reason pair disagrees",
+			mutate: func(decision *MembershipStrategyRouteDecision) {
+				decision.reasonCode = MembershipRoutingReasonBaselineStrategy
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			forged := valid
+			forged.path = append([]MembershipRoutingPathStep(nil), valid.path...)
+			test.mutate(&forged)
+			if forged.Confirmed() {
+				t.Fatalf("inconsistent decision reported confirmed: %#v", forged)
+			}
+		})
+	}
+}
+
 func TestRouteMembershipStrategyRejectsInvalidOrFutureInputsWithZeroDecision(t *testing.T) {
 	evaluatedAt := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.UTC)
 	policy, _ := NewMembershipStrategyRoutingPolicy("route-v1", 200, 100)

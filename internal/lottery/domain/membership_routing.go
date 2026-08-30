@@ -136,16 +136,33 @@ func RouteMembershipStrategy(
 
 // Confirmed distinguishes a complete business route from a zero error result.
 func (decision MembershipStrategyRouteDecision) Confirmed() bool {
-	return decision.target != 0 &&
-		decision.ruleCode == MembershipStrategyRoutingRuleCode &&
-		(decision.branch == MembershipRoutingBranchPremiumOverride ||
-			decision.branch == MembershipRoutingBranchBaselineDefault) &&
-		decision.reasonCode != "" &&
-		decision.policyRevision != "" &&
-		decision.factSource != "" &&
-		decision.factRevision != "" &&
-		!decision.evaluatedAt.IsZero() &&
-		len(decision.path) == 1
+	if decision.target == 0 {
+		return false
+	}
+	if decision.ruleCode != MembershipStrategyRoutingRuleCode ||
+		decision.policyRevision == "" ||
+		decision.factSource == "" ||
+		decision.factRevision == "" ||
+		decision.evaluatedAt.IsZero() ||
+		len(decision.path) != 1 {
+		return false
+	}
+	switch decision.branch {
+	case MembershipRoutingBranchPremiumOverride:
+		if decision.reasonCode != MembershipRoutingReasonPremiumStrategy {
+			return false
+		}
+	case MembershipRoutingBranchBaselineDefault:
+		if decision.reasonCode != MembershipRoutingReasonBaselineStrategy {
+			return false
+		}
+	default:
+		return false
+	}
+	step := decision.path[0]
+	return step.ruleCode == decision.ruleCode &&
+		step.branch == decision.branch &&
+		step.target == decision.target
 }
 
 // Target returns the selected Strategy identity without loading the aggregate.

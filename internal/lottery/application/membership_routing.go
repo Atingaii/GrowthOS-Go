@@ -134,6 +134,9 @@ func (service *MembershipStrategyRoutingService) Route(
 			err,
 		)
 	}
+	if !decision.Confirmed() {
+		return domain.MembershipStrategyRouteDecision{}, ErrMembershipRoutingDecisionInvalid
+	}
 	return decision, nil
 }
 
