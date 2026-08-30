@@ -26,6 +26,7 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0019](ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md) | 已接受 | 按事实所有者和业务阶段拆分 Lottery 规则，保持终端选择纯度，并以真实证据驱动规则链、规则树与访问控制演进 |
 | [ADR-0020](ADR-0020-lottery-strategy-cache-aside.md) | 已接受 | 以 MySQL 为唯一事实源、Redis 为可丢弃严格版本化投影，为 Lottery Strategy 读取建立 fail-open cache-aside 边界 |
 | [ADR-0021](ADR-0021-participation-new-user-eligibility.md) | 已接受 | 以权威注册事实、具体决定与诚实失败语义建立首个 Participation 新用户资格切片，不提前伪造身份、事实表或通用规则引擎 |
+| [ADR-0022](ADR-0022-participation-prerequisite-chain.md) | 已接受 | 以风险准入作为第二条真实 Participation 规则，并用一次评估时刻、固定顺序与失败关闭建立最小线性前置资格链 |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。
 
