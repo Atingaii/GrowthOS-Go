@@ -6,9 +6,9 @@
 - **上一节：** [第 26 节 QA](lesson-26.md)
 - **API 记录：** [第 27 节 API 记录](../../api/lessons/lesson-27.md)
 - **基准提交：** `47fc94d`（第 26 节已验收 tip）
-- **已知实现序列：** `2d7728a`、`57a3216`、`076e399`、`b307f1a`、`42caed9`、`2dc49b1`、`8ebc94a`、`544f4af`
+- **已知实现与加固序列：** `2d7728a`、`57a3216`、`076e399`、`b307f1a`、`42caed9`、`2dc49b1`、`8ebc94a`、`544f4af`、`d57b963`、`5460bde`、`331c8c7`、`6db36dd`、`59499fb`、`a04d89d`
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** domain/application/architecture 实现已经形成；起草本 QA 前，Lottery application 普通测试、race 与 20 轮 shuffle 已实际通过，起草时及终审加固提交后的 runtime negative diff 均为空。本 QA/API 落盘后的独立 doccheck 已实际通过；domain 定向测试、Lottery 全量 race/shuffle、独立 fuzz、coverage、全仓 race、`make verify`、最终冻结 tip negative diff 与 `git diff --check` 仍留给根代理最终复跑，本文不预写通过结果
+- **当前记录状态：** domain/application/architecture、课程、API、QA、设计与面试材料已经形成。根代理在证据候选 `a04d89d` 对应内容上实际复跑 domain/application、Lottery 全量 race、20 轮 shuffle、10 秒 fuzz、atomic coverage、全仓 race、`make verify`、doccheck、章节 diff-check 与 runtime negative diff，结果均通过；coverage profile 与两次前端构建目录均已精确枚举后删除。最终索引/证据提交形成干净工作树后仍须对 accepted tip 再跑一次 clean-worktree gate，并以远端实际 SHA 冻结，本文不预写尚未生成的最终 SHA
 
 > 本节验收的是 Lottery 内部一个具体、代码拥有的会员等级到 Strategy ID 的路由切片。它证明 `premium` 和 `standard` 需要不同出口、显式基线分支与可审查 path，因而不能继续伪装成 Participation 的线性 `continue/reject` chain。它没有真实会员 adapter、公开路由、Activity 绑定、Strategy 加载、随机选择、正式 Draw、认证或授权。
 
@@ -36,7 +36,7 @@
 - nil、typed-nil、zero/partial service 在任何外部工作前失败关闭；
 - 只读 service/policy 能被 64 个 goroutine 共享，当前线程安全 doubles 下 race detector 无报告；
 - Lottery domain 不依赖仓库内项目包，Lottery application 只依赖 Lottery domain；Participation 仍只依赖自身 domain；
-- 不提前出现通用 Rule/Tree/Engine、generic production type、无类型 fact bag、数据库规则图、runtime priority 或 DSL；
+- 不提前出现通用 Rule/Tree/Engine、generic production type/function、无类型 fact bag、数据库规则图、runtime priority 或 DSL；
 - 相对第 26 节，HTTP adapter、composition root、Migration、Redis、Compose、配置、Web 与 Participation runtime 保持零变化。
 
 ### 1.2 本节明确不验收
@@ -116,7 +116,7 @@ git diff --stat 47fc94d..544f4af
 - 构造失败返回零 snapshot；手工绕过构造器的 zero/unsupported 值仍被 `Validate` 拒绝；
 - snapshot 不含姓名、手机号、邮箱、消费金额、成长值、角色、凭证、完整会员 payload 或 Strategy target。
 
-现有 fuzz target `FuzzMembershipTierFactSnapshotNeverAcceptsUnsupportedTier` 的不变量是：只有精确 `standard` 和 `premium` 可以成功；任意其他字符串不能形成合法 fact。普通测试只运行 seed，独立 fuzz 窗口见第 14 节，最终结果尚待根代理复跑。
+现有 fuzz target `FuzzMembershipTierFactSnapshotNeverAcceptsUnsupportedTier` 的不变量是：只有精确 `standard` 和 `premium` 可以成功；任意其他字符串不能形成合法 fact。普通测试只运行 seed；第 14 节另有实际 10 秒 fuzz 窗口，但它仍是有限探索，不是对所有字符串的穷举证明。
 
 ### 4.2 为什么 unknown 不能走 default
 
@@ -322,9 +322,9 @@ stale = age >  max_fact_age
 - Lottery application 只允许 import Lottery domain；
 - Participation domain/application 继续只依赖自身边界；
 - production type 不得声明 `Rule`、`RuleChain`、`RuleTree`、`RuleNode`、`RuleEdge`、`RuleEngine`、`DecisionEngine`、`EvaluationContext`、`RulePriority` 或 `DSL`；
-- 不声明 generic production type；
+- 递归扫描目标目录，不声明 generic production type/function；
 - 不声明 `map[string]any` / `map[string]interface{}` 无类型事实袋；
-- 每个受检 package 确实包含 production Go 文件，防止空目录假通过。
+- 每个受检边界确实包含 production Go 文件，且嵌套泛型函数 fixture 必须被 guard 拒绝，防止只扫当前目录或空目录假通过。
 
 AST 只能防已知语法形状；换名的万能抽象、隐藏跳转或语义越权仍依赖 code review、路径 diff 与下一节真实模型约束。
 
@@ -339,7 +339,16 @@ git diff --name-only 47fc94d..544f4af -- \
 
 在 `544f4af` 终审加固提交后实际结果：无输出。另检查现有 Lottery Strategy/Award/WeightedSelector、repository 与 ephemeral selection 核心文件的定向 diff，无输出；`internal/lottery/adapter` 与 `migrations` 下没有 membership 命名文件。
 
-这只证明到终审加固 HEAD `544f4af` 为止没有 runtime 装配漂移。包含课程、API、QA、设计与面试记录的最终证据 tip 尚未形成；根代理必须在冻结前用最终 HEAD 复跑，不能直接沿用本阶段结果。
+冻结前又在证据候选 `a04d89d` 上用加入 `scripts` 的并集重跑：
+
+```bash
+git diff --name-only 47fc94d..a04d89d -- \
+  cmd deploy migrations web scripts configs go.mod go.sum \
+  internal/lottery/adapter internal/infrastructure \
+  internal/platform internal/participation
+```
+
+实际仍无输出。该证据证明本节没有悄悄装配 runtime；accepted tip 形成后还要以同一白名单复核一次。
 
 ## 13. 起草前已实际执行的定向命令
 
@@ -379,9 +388,9 @@ go run ./cmd/doccheck
 - **实际：** QA/API 与并行课程、设计、面试文件全部落盘后复跑 exit 0，输出 `documentation checks passed`。
 - **边界：** 只检查当前文档链接、ADR 注册、课程登记规则等结构约束；根代理仍需在索引/状态与最终证据全部收口后再次复跑。
 
-## 14. 根代理冻结前待最终复跑
+## 14. 根代理最终复跑结果
 
-以下项目在本 QA 初稿中保持“待最终复跑”，不得提前改成通过：
+以下命令均由根代理在 2026-08-30 实际执行。代码/文档候选内容包括递归架构 guard、revision 语义校准和全部第 27 节材料；最终 clean-worktree 重跑见 14.6。
 
 ### 14.1 Domain + application 普通测试
 
@@ -391,8 +400,7 @@ go test -count=1 \
   ./internal/lottery/application
 ```
 
-- **预期：** 两个 package exit 0；domain 事实、policy、route/path 与 application contract 全部执行。
-- **当前状态：** 待根代理在完整文档工作树复跑。
+- **实际：** 两个 package 均 exit 0；domain 事实、policy、route/path、application contract、递归架构 guard 与 nested generic-function 反例均执行通过。
 
 ### 14.2 Lottery race 与 shuffle
 
@@ -401,8 +409,7 @@ go test -race -count=1 ./internal/lottery/...
 go test -shuffle=on -count=20 ./internal/lottery/...
 ```
 
-- **预期：** 全部 Lottery package exit 0，无 race，不依赖顺序。
-- **当前状态：** application 子集已通过；完整 Lottery 范围待最终复跑。
+- **实际：** 两条命令均 exit 0；Lottery 全部 package 无 race 报告，20 轮顺序扰动通过。
 
 ### 14.3 Unsupported tier 独立 fuzz
 
@@ -412,22 +419,24 @@ go test ./internal/lottery/domain -run='^$' \
   -fuzztime=10s
 ```
 
-- **预期：** 只有 exact standard/premium 可构造；其他字符串永不形成合法 fact；无 panic/crash。
-- **当前状态：** fuzz seed 会随普通 domain tests 运行；独立 10 秒 fuzz 尚待最终执行，不记录虚构 exec count。
+- **实际：** exit 0；本次 10 秒窗口执行 `5,150,324` 次，`new interesting: 0 (total: 2)`，无 panic/crash。该数字只描述本次有限探索，不外推为穷举证明。
 
 ### 14.4 Atomic coverage
 
 ```bash
+lesson27_cover_dir=$(mktemp -d /tmp/growthos-lesson27-cover.XXXXXX)
+lesson27_cover_file="$lesson27_cover_dir/lottery.cover"
+
 go test -count=1 -covermode=atomic \
-  -coverprofile=/tmp/growthos_lesson27_lottery.cover \
+  -coverprofile="$lesson27_cover_file" \
   ./internal/lottery/domain \
   ./internal/lottery/application
 
-go tool cover -func=/tmp/growthos_lesson27_lottery.cover
+go tool cover -func="$lesson27_cover_file"
 ```
 
-- **预期：** exit 0并输出可审计覆盖率；不设置为了数字而设的阈值。
-- **当前状态：** 尚未创建该 profile；若最终执行，读取后必须只删除已确认的精确临时文件。
+- **实际：** exit 0；domain `95.3%`，application `90.7%`，合计 statements `93.7%`。不设置为了数字而设的阈值。
+- **清理：** 实际 profile 为 `/tmp/growthos-lesson27-cover.6Os6mW/lottery.cover`，`28,124` bytes；先以 `find`/`stat` 精确确认只有该文件，再删除文件并 `rmdir` 该随机目录，最后确认目录不存在。更早一次固定路径 profile 也在执行前确认不存在、读取后精确删除；仓库内从未生成 coverage 文件。
 
 ### 14.5 最终仓库门禁
 
@@ -435,16 +444,35 @@ go tool cover -func=/tmp/growthos_lesson27_lottery.cover
 go run ./cmd/doccheck
 make verify
 go test -race -count=1 ./...
+git diff --check 47fc94d..HEAD
 git diff --check
 
 git diff --name-only 47fc94d..HEAD -- \
-  cmd deploy migrations web internal/lottery/adapter \
+  cmd deploy migrations web scripts configs go.mod go.sum \
+  internal/lottery/adapter \
   internal/infrastructure internal/platform internal/participation \
-  configs go.mod go.sum
 ```
 
-- **预期：** 全部 exit 0；negative diff 无输出；构建产物可解释并在验收后精确清理。
-- **当前状态：** 本子任务只负责本 QA/API 落盘后的独立 doccheck；其余待根代理最终复跑。
+- **实际：** `make verify` exit 0；Go 全仓测试、vet、doccheck、19 个前端测试文件/152 个测试、TypeScript typecheck 与 Vite production build 全部通过。全仓 race exit 0；两个 diff-check exit 0；candidate runtime negative diff 无输出。
+- **构建清理：** `make verify` 每次只生成 `web/dist/index.html`、一个 CSS chunk 与四个 JS chunk；根代理先列出所有 8 个目录/文件节点，再只对本次执行前已确认不存在的 `web/dist` 执行 depth-first 删除，并确认目录不存在。
+- **边界：** 这一轮验证完整候选内容，但执行时索引/QA 尚未提交，因此不能冒充 clean-worktree 证据。
+
+### 14.6 Clean-worktree accepted-tip 门禁
+
+最终证据提交后执行：
+
+```bash
+test -z "$(git status --porcelain)"
+make verify
+go test -race -count=1 ./...
+git diff --check 47fc94d..HEAD
+git diff --name-only 47fc94d..HEAD -- \
+  cmd deploy migrations web scripts configs go.mod go.sum \
+  internal/lottery/adapter internal/infrastructure \
+  internal/platform internal/participation
+```
+
+- **当前状态：** 待本 QA、索引和状态台账先形成候选提交；通过后再补一笔只含最终证据的冻结提交。冻结后根代理还会对实际 accepted tip 再跑 doccheck/diff/clean 检查，避免把提交前结果冒充远端 tip 结果。
 
 ## 15. 为什么没有 Adapter、API、Compose 或浏览器 E2E
 
@@ -516,11 +544,13 @@ git diff --name-only 47fc94d..HEAD -- \
 
 ## 18. 清理与环境影响
 
-- 本子任务只创建两份 Markdown；不启动容器、不修改数据库、不创建 Redis key、RabbitMQ queue、浏览器 trace 或下载资源；
-- 当前没有创建 `/tmp/growthos_lesson27_lottery.cover`；若根代理执行 coverage，必须在读取后解析精确目标并删除；
+- 本节未启动容器、未修改数据库、未创建 Redis key、RabbitMQ queue、浏览器 trace、下载资源或外部服务状态；
+- atomic coverage 使用 `mktemp -d` 的随机目录；profile 经读取和精确枚举后删除，目录经 `rmdir` 删除，固定 `/tmp/growthos_lesson27_lottery.cover` 也确认不存在；
 - 普通/race/shuffle 使用共享 Go build/test cache，它可供后续章节复用，不作为 disposable task artifact 删除；
-- 独立 fuzz 尚未执行；不得声称不存在共享 fuzz cache 变化；
-- `make verify` 尚未由本子任务执行，因此本文不预写 `web/dist` 的生成或清理事实。
+- 10 秒 fuzz 已执行；它可能更新共享 Go fuzz/build cache，缓存用于后续验证且不在仓库内，因此保留；没有新增失败 corpus 或仓库内 artifact；
+- 两次 `make verify` 都在执行前确认 `web/dist` 不存在；生成的同一组 8 个目录/文件节点逐项枚举后被精确删除，最终再次确认 `web/dist` 不存在；
+- 当前 shell 未设置 `VAULT`，也没有可发现且获授权的个人 Obsidian Vault 路径，因此未执行 `make docs-sync VAULT=...`，不伪造同步成功；仓库内 `go run ./cmd/doccheck` 已独立通过，但它不等于个人 Vault 同步；
+- 第 27 节没有安装额外 skill、插件、系统包或项目依赖，也没有产生需要清理的下载图片、临时目录或构建缓存。
 
 ## 19. 当前验收清单
 
@@ -532,17 +562,19 @@ git diff --name-only 47fc94d..HEAD -- \
 - [x] caller cancellation、provider deadline 与 blocking-reader 边界已有 tests；
 - [x] domain bad payload 到 application invalid、单一 class 与显式 Cause 已有 tests；
 - [x] nil/typed-nil/partial service 与 64-worker 并发已有 tests；
-- [x] AST ownership/engine stop line 已有架构测试；
+- [x] AST ownership/engine stop line 已有架构测试，并以嵌套 generic function fixture 证明递归扫描；
 - [x] 起草时 application normal/race/20-round shuffle 已实际通过；
 - [x] 从 `47fc94d` 到终审加固 `544f4af` 的 runtime negative diff 已实际为空；
 - [x] API 记录明确公开 route/DTO/header/status 零变化；
 - [x] 未伪造 adapter/runtime/API/Compose/browser E2E；
 - [x] 本文落盘后的独立 doccheck 已 exit 0；
-- [ ] domain + application 最终普通测试；
-- [ ] Lottery 全量 race 与 20 轮 shuffle；
-- [ ] 独立 10 秒 fuzz 与 atomic coverage；
-- [ ] 最终 `make verify`、全仓 race、`git diff --check` 与最终 negative diff；
-- [ ] 若生成 coverage/web build artifact，完成精确枚举与清理；
+- [x] domain + application 最终普通测试；
+- [x] Lottery 全量 race 与 20 轮 shuffle；
+- [x] 独立 10 秒 fuzz 与 atomic coverage；
+- [x] 完整候选内容上的 `make verify`、全仓 race、章节/worktree diff-check 与 runtime negative diff；
+- [x] coverage/web build artifact 均已精确枚举与清理；
+- [x] 当前 shell 无 `VAULT`，已如实记录未执行个人 Obsidian 同步；
+- [ ] clean-worktree accepted-tip 门禁；
 - [ ] 根代理提交、推送并以远端实际 tip 冻结本节。
 
 最终 accepted tip 必须以根代理提交并推送后的同名远端分支实际 tip 为准，本文不虚构尚未生成的 SHA，也不把待复跑门禁提前写成通过。
