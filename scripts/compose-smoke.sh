@@ -302,6 +302,7 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has routing-graph INSERT permission'
 fi
+ok 'growthos_app cannot read or insert the unassembled routing-graph tables'
 # shellcheck disable=SC2016
 if compose exec -T mysql sh -c '
     export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
