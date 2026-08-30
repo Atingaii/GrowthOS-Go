@@ -2,7 +2,7 @@
 
 **状态：** v12 基线
 **更新日期：** 2026-08-30
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)
 
 ## 一句话定位
 
@@ -50,15 +50,17 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 第 23 节用“活动有效、新用户且有次数、风险允许、按会员等级路由、奖励可分配、仍可能 `no_reward`”这一复合需求检查现有模型，确认业务口中的“抽奖规则”跨越多个决定所有者。Activity 发布态与时间窗决定归 Marketing，用户资格、次数和参与风控决定归 Participation，Strategy 路由、终端选择与正式 Draw/Result 归 Lottery，库存可分配、权益交付与补偿归 Benefit（含内部库存子能力），操作者授权决定归 Governance 的统一访问控制能力；外部会员、风险等系统只是原始事实提供方。业务资格拒绝、合法 `no_reward`、技术失败/结果未知与授权拒绝必须保持不同语义。
 
-这一节没有新增 `Rule`、`RuleEngine`、通用上下文、Migration、API、Redis 或前端判断。现阶段只有一个真实终端选择消费者，提前把规则字段塞进 `Strategy` 会让两表 Repository 只能恢复残缺聚合，并污染第 24 节缓存完整性语义；通用执行接口至少要等第 25 节出现首个真实资格事实、第 26 节出现两个以上具体规则后，再由消费者反推。完整需求见 [Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)，长期停止线见 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)。
+第 23 节没有新增 `Rule`、`RuleEngine`、通用上下文、Migration、API、Redis 或前端判断。现阶段只有一个真实终端选择消费者，提前把规则字段塞进 `Strategy` 会让两表 Repository 只能恢复残缺聚合；通用执行接口至少要等第 25 节出现首个真实资格事实、第 26 节出现两个以上具体规则后，再由消费者反推。完整需求见 [Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)，长期停止线见 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)。
+
+第 24 节只加速 Strategy 读取投影：`strategycache.Reader` 装饰 application-owned `StrategyReader`，MySQL 始终是事实源；Redis 保存版本化 JSON v1，不保存用户资格、一次选择、Draw/Result 或 not-found。命中时恢复并重新校验聚合，miss、超时、协议错误、poison value 和写失败都在有界预算内回源；坏值只删除精确 key，TTL 不超过 5 分钟并带最多 10% jitter。同 key cold fill 合并避免击穿，但不同 key 不共享全局锁。Compose 只允许 API/Redis 进入 internal cache 网络，业务 ACL 仅有版本化前缀内 `PING/GETRANGE/SET/DEL`，默认用户和扫描/管理/channel 命令全部关闭。长期边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。
 
 数据库只承担它能可靠表达的子集：正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性以及基础名称形态。`*_name_basic` 只拒绝空串和首尾 ASCII U+0020 空格，不等价于领域层完整名称契约；外键不能保证至少一个 Award，单行约束也不能验证跨行总权重是否溢出。两表的 `updated_at` 是行级元数据，不是聚合版本，Award 更新不会自动推进 Strategy 时间戳。
 
-当前 Compose 运行身份仅可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要创建 fixture 的 Repository 集成测试使用可丢弃 schema 中的隔离 writer 身份。GrowthOS 已有可验证的领域、持久化结构、内部 Repository、加权选择器、一个真实后端业务路由及其 React 消费者，但还没有正式 Draw API、认证、RBAC、持久化结果或 Redis 业务缓存。除系统状态页和 `/lottery` 外，其他用户、运营、MCP 与 Agent 页面仍是明确标注的 Mock 快照或浏览器本地交互。
+当前 Compose MySQL 运行身份仅可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要创建 fixture 的 Repository 集成测试使用可丢弃 schema 中的隔离 writer 身份。GrowthOS 已有可验证的领域、持久化结构、内部 Repository、Strategy Redis 读取缓存、加权选择器、一个真实后端业务路由及其 React 消费者，但还没有正式 Draw API、认证、RBAC 或持久化结果。除系统状态页和 `/lottery` 外，其他用户、运营、MCP 与 Agent 页面仍是明确标注的 Mock 快照或浏览器本地交互。
 
 尤其，ephemeral API 返回的 Award 仍是一次瞬时计算结果，不是带 DrawID、幂等键和持久化状态的一次用户抽奖最终事实；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。当前没有认证、对象级授权、Participation 资格、Draw/Result、库存或发奖实现，因此“一次抽奖只能有一个最终结果”仍是待后续章节验证的业务不变量。调用超时后直接重试会形成一次新的临时选择，不能被描述为安全的业务重试。
 
-第 21 节服务端事实、契约和取舍分别见[课程正文](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[第一性原理手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节 React 消费与工作台设计见对应的[课程正文](../course/part-03/lesson-22-react-lottery-page.md)、[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[第一性原理手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)；第 23 节规则边界见对应的[课程正文](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[API](../api/lessons/lesson-23.md)、[QA](../qa/lessons/lesson-23.md)、[第一性原理手记](../design-thinking/lessons/lesson-23.md)和[面试问答](../interview/lessons/lesson-23.md)。隔离 acceptance 的 64 个多 Award 请求最多并行 16 个，只证明当前链路并发返回配置内结果，且调用前后两张 Lottery 业务表 fingerprint 不变；访问日志、连接统计等技术副作用仍可能发生，因此这不是“系统零副作用”、64 并发、64 RPS 或业务性能结果。浏览器 UI 验收同样不能替代业务负载证据；第 23 节的文档评审也不能替代尚未发生的规则运行时测试。
+第 21～23 节服务端、React 和规则边界分别见各自课程、QA、设计手记与 ADR。第 24 节缓存事实与取舍见[课程正文](../course/part-03/lesson-24-redis-strategy-cache.md)、[API](../api/lessons/lesson-24.md)、[QA](../qa/lessons/lesson-24.md)、[第一性原理手记](../design-thinking/lessons/lesson-24.md)、[面试问答](../interview/lessons/lesson-24.md)和 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。隔离 acceptance 验证了缓存/直连/Redis-down 三组 50 RPS×10s 均 500/500 成功，warm-cache MySQL prepared execute 为 0，另两组为 1000；这只证明当次本地链路的 source-load 和短窗口延迟，不是生产容量、正式 Draw SLO 或通用缓存收益。调用前后两张 Lottery 业务表 fingerprint 不变也不等于“系统零副作用”。
 
 ## 成功信号
 
@@ -70,7 +72,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象、两张持久化表、Strategy Repository、经过边界验证的选择器、ephemeral HTTP 纵向链与真实 React 消费者；但页面展示的仍是不可恢复的临时候选选择，不是正式 Draw/Result 或奖励到账事实，抽奖、参与、权益等业务 SLO 仍全部“未测量”。算法微基准、64 请求/最大并行 16 的 acceptance、浏览器 UI 验收和 M0 工程探针分别回答不同局部问题，均不能外推为正式 Draw 能力、端到端业务延迟或生产吞吐。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有第一组 Go 业务领域对象、两张持久化表、Strategy Repository、可丢弃读取缓存、经过边界验证的选择器、ephemeral HTTP 纵向链与真实 React 消费者；但页面展示的仍是不可恢复的临时候选选择，不是正式 Draw/Result 或奖励到账事实，抽奖、参与、权益等业务 SLO 仍全部“未测量”。算法微基准、M0 探针、M1 三组本地缓存基线和浏览器 UI 验收分别回答不同局部问题，均不能外推为正式 Draw 能力、端到端业务 SLO 或生产吞吐。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 

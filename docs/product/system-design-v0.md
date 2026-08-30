@@ -4,13 +4,13 @@
 
 **更新日期：** 2026-08-30
 
-**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；当前运行状态由[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)校准，规则演进边界由[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)校准
+**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；当前运行状态由[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)校准，规则演进边界由[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)校准
 
 ## 1. 文档目的
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架、第 11～16 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈，第 17～18 节的 Lottery Strategy/Award 领域对象与两张业务表，第 19 节 Create/FindByID 窄仓储与聚合事务/快照，第 20 节完整 `uint64` 边界的加权 Selector 与 `crypto/rand` adapter，第 21 节只读、默认关闭且仅 development/test 可启用的 ephemeral selection API，以及第 22 节真实消费该 API 的 React `/lottery` 页面和共享工作台壳层。第 23 节另以规则需求基线和 ADR 固定 Marketing、Participation、Lottery、Benefit（含内部库存子能力）与 Governance 的决定所有权、原始事实来源和失败语义，但没有改变这条运行链。当前 Compose 运行账号仅有两表 `SELECT`；Lottery 页面不再使用浏览器随机决定 Award。正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、资格、库存、发奖、Redis 业务调用、MQ、MCP Gateway 与 AI Agent 运行时仍未实现；除系统探针与 Lottery selection 外的工作台数据仍为明确 Mock/本地状态。
+V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架、第 11～16 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈，第 17～18 节的 Lottery Strategy/Award 领域对象与两张业务表，第 19 节 Create/FindByID 窄仓储与聚合事务/快照，第 20 节完整 `uint64` 边界的加权 Selector 与 `crypto/rand` adapter，第 21 节只读、默认关闭且仅 development/test 可启用的 ephemeral selection API，以及第 22 节真实消费该 API 的 React `/lottery` 页面和共享工作台壳层。第 23 节另以规则需求基线和 ADR 固定 Marketing、Participation、Lottery、Benefit（含内部库存子能力）与 Governance 的决定所有权、原始事实来源和失败语义；第 24 节再以可选 cache-aside、版本化 Strategy 投影和最小 Redis ACL 加速权威读取。当前 Compose MySQL 账号仅有两表 `SELECT`，Redis 账号仅有版本化 key 前缀内 `PING/GETRANGE/SET/DEL`；Lottery 页面不再使用浏览器随机决定 Award。正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、资格、库存、发奖、MQ、MCP Gateway 与 AI Agent 运行时仍未实现；除系统探针与 Lottery selection 外的工作台数据仍为明确 Mock/本地状态。
 
 ## 2. 图例与状态
 
@@ -184,7 +184,7 @@ flowchart LR
 
 ## 7. 第一版运行形态
 
-第 9～23 节的当前运行形态是一个模块化单体，而不是上图中每个方框一个服务；领域、表、仓储、选择器和真实 React 消费者已经装配成一条受限的 ephemeral HTTP 纵向链，但没有形成正式 Draw。第 23 节只校准未来规则在系统图中的所有权，不新增运行节点：
+第 9～24 节的当前运行形态是一个模块化单体，而不是上图中每个方框一个服务；领域、表、仓储、可选缓存、选择器和真实 React 消费者已经装配成一条受限的 ephemeral HTTP 纵向链，但没有形成正式 Draw。第 23 节只校准未来规则所有权，第 24 节只在权威 StrategyReader 外增加可丢弃加速器：
 
 ```mermaid
 flowchart LR
@@ -197,16 +197,20 @@ flowchart LR
     USECASE[EphemeralSelectionService\n只读快照 + 临时选择]
     DOMAIN[Lottery domain\n聚合与加权 Selector]
     RANDOM[CryptoSource\n均匀 bounded random]
+    CACHE[Strategy cache-aside\n版本化投影 + fail-open]
     REPOSITORY[MySQL Repository\nCreate / FindByID]
     TABLES[(MySQL 8.4\nlottery_strategy\nlottery_strategy_award)]
-    REDIS[(Redis\n环境占位已存在\n业务尚未接入)]
+    REDIS[(Redis 7.4\n48 MiB allkeys-lru\n无持久化)]
 
     BROWSER --> WEB
     WEB -->|同源 GET /health、/ready\nPOST ephemeral-selections| API
     WEB -->|活动 / Feed / 积分 / Admin / MCP / Agent 等| MOCK
     API -->|feature 打开时 POST ephemeral-selections| USECASE
     API -->|启动 Ping 与 /ready| TABLES
-    USECASE -->|StrategyReader.FindByID| REPOSITORY
+    USECASE -->|StrategyReader.FindByID| CACHE
+    CACHE -->|hit: 恢复合法聚合| USECASE
+    CACHE -->|miss / 坏值 / Redis 故障时回源| REPOSITORY
+    CACHE -->|GETRANGE / SET / DEL\n版本化 key 前缀| REDIS
     USECASE -->|选择配置内 Award| DOMAIN
     MIGRATE -->|000001 / 000002\nclean latest 2| TABLES
     TABLES -->|Migration 完成后| GRANTS
@@ -214,20 +218,19 @@ flowchart LR
     REPOSITORY -->|当前运行链只读 RR 快照| TABLES
     REPOSITORY -->|Restore 后返回合法聚合| USECASE
     RANDOM -->|实现领域拥有的随机端口| DOMAIN
-    DOMAIN -.后续派生缓存.-> REDIS
 ```
 
-宿主开发模式由 Vite 精确代理 `/health`、`/ready` 和 `/api` 路径边界；Compose 模式则由只发布 `127.0.0.1:8088` 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。Compose 启动链是 `mysql → migrate → mysql-grants → api`；授权作业 `network_mode: none`，只经 Unix socket 运行，并在两表 `SELECT` grants 不是精确 allowlist 或 `@@GLOBAL.mandatory_roles` 非空时失败关闭。系统状态页真实调用两个探针；Lottery React 页面也通过 `lotteryApi` 和同源 bodyless POST 贯通 Nginx→Go→MySQL→CryptoSource，且不自动重试。隔离 acceptance 的 64 个多 Award 请求最多并行 16 个，只验证返回配置内结果、网关契约和数据指纹不变，不是 64 并发、64 RPS 或产品 SLO。Redis 仍没有 API client 或业务数据，Mock 节点不属于服务端事实源。四类工作台没有认证或 RBAC 强制，导航可见性不能被解释成授权。
+宿主开发模式由 Vite 精确代理 `/health`、`/ready` 和 `/api` 路径边界；Compose 模式则由只发布 `127.0.0.1:8088` 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。Compose 启动链是 `mysql → migrate → mysql-grants → api`；Redis 独立启动，API 仅通过 internal `cache` 网络访问它，Redis 不进入启动门或 `/ready`。系统状态页真实调用两个探针；Lottery React 页面也通过 `lotteryApi` 和同源 bodyless POST 贯通 Nginx→Go→Strategy cache/MySQL→CryptoSource，且不自动重试。缓存命中不读取 MySQL，miss/坏值/Redis 故障会有界回源；MySQL 仍是唯一事实源，缓存不保存一次选择结果。隔离 acceptance 验证了 ACL、poison 修复、warm/cold 故障恢复与三组本地 M1 基线，但这些数据不是产品 SLO 或生产容量。Mock 节点不属于服务端事实源；四类工作台没有认证或 RBAC 强制，导航可见性不能被解释成授权。
 
 ### 7.1 当前、近期和远期边界
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、共享 React 工作台与明确业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收；第 17～22 节 Strategy/Award、两表 Schema/latest 2、Create/FindByID Repository、WeightedSelector/CryptoSource、两表 SELECT-only 运行身份、受限 ephemeral API 与真实 React 消费者已验收；第 23 节规则需求、所有权、失败与演进停止线已验收但无运行时变化 | 已存在的能力按台账和 QA 核查 |
-| 第 24～77 节 | 第 24 节只缓存可重建 Strategy 读取投影；第 25～30 节形成资格决策与 Activity；第 31～35 节在真实运营后台前建立公共访问控制；随后推进活动账户、订单、库存、消息一致性、权益、Feed 与增长反馈闭环 | 尚未实现，不能提前改写完成状态 |
+| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、共享 React 工作台与明确业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收；第 17～22 节 Strategy/Award、两表 Schema/latest 2、Create/FindByID Repository、WeightedSelector/CryptoSource、两表 SELECT-only 运行身份、受限 ephemeral API 与真实 React 消费者已验收；第 23 节规则需求边界已验收；第 24 节可重建 Strategy Redis 投影、ACL、故障恢复与 M1 本地证据已验收 | 已存在的能力按台账和 QA 核查 |
+| 第 25～77 节 | 第 25～30 节形成资格决策与 Activity；第 31～35 节在真实运营后台前建立公共访问控制；随后推进活动账户、订单、库存、消息一致性、权益、Feed 与增长反馈闭环 | 尚未实现，不能提前改写完成状态 |
 | 第 78～101 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 
-这里不承诺 Redis 已经承载业务缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；Compose 的隔离 Redis 占位不等于业务接入，ephemeral route 也不等于带认证、幂等、资格、库存、发奖和结果查询的正式在线抽奖。表内 `updated_at` 仅是行元数据，不能被解释为聚合版本或缓存水位。
+这里仅承诺 Redis 承载一个可重建的 Strategy 读取投影，不承诺用户资格、抽奖结果或业务事实进入缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；ephemeral route 仍不等于带认证、幂等、资格、库存、发奖和结果查询的正式在线抽奖。表内 `updated_at` 仅是行元数据，不能被解释为聚合版本或精确缓存水位，因此当前只用短 TTL/jitter，尚无写后失效协议。
 
 ## 8. 数据与信任边界
 
@@ -281,6 +284,6 @@ flowchart LR
 
 ## 12. 下一阶段输入
 
-第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境；第 17～18 节建立 Lottery 聚合与两张业务表；第 19 节用 Create/FindByID 窄端口、原子写事务、只读 RR 快照和领域恢复闭合仓储边界；第 20 节以 bounded random port、`crypto/rand.Int` 和减法桶闭合最小加权选择机制；第 21 节通过共享 pool、只读 port、feature gate 和专用 DTO 形成 development/test ephemeral API；第 22 节再用 bodyless POST、运行时 decoder 和 React 请求状态机替换页面端随机 Mock；第 23 节把复合规则拆给事实所有者，并明确不提前创建通用规则接口。下一节第 24 节只为 Strategy 读取投影补上首次 Redis 缓存；第 25～30 节逐步形成资格规则、决策引擎和 Activity，给权限判断提供真实的主体之外的资源、动作和范围。第 31～35 节才依次建立跨用户端、运营端、MCP 与 Agent 的公共访问控制模型、真实会话、服务端强制、前端权限感知和越权端到端验收，第 36 节首个真实运营后台必须复用它。当前没有认证或授权能力，不能用隐藏菜单代替授权。
+第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境；第 17～18 节建立 Lottery 聚合与两张业务表；第 19 节用 Create/FindByID 窄端口、原子写事务、只读 RR 快照和领域恢复闭合仓储边界；第 20 节以 bounded random port、`crypto/rand.Int` 和减法桶闭合最小加权选择机制；第 21 节通过共享 pool、只读 port、feature gate 和专用 DTO 形成 development/test ephemeral API；第 22 节再用 bodyless POST、运行时 decoder 和 React 请求状态机替换页面端随机 Mock；第 23 节把复合规则拆给事实所有者；第 24 节完成 Strategy 读取投影的首次 Redis cache-aside，并用 ACL、poison、依赖故障和 source-load 证据约束它。下一节第 25 节开始形成资格规则，随后逐步引入决策引擎和 Activity，给权限判断提供真实的主体之外资源、动作和范围。第 31～35 节才依次建立跨用户端、运营端、MCP 与 Agent 的公共访问控制模型、真实会话、服务端强制、前端权限感知和越权端到端验收，第 36 节首个真实运营后台必须复用它。当前没有认证或授权能力，不能用隐藏菜单代替授权。
 
-继续遵守 V0 的真实状态表达：可见的临时选择不等于最终结果，行时间戳不等于聚合版本，环境中的 Redis 占位不等于业务缓存，未来权限、中间件和服务不能提前伪装成交付物。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节运行证据见对应[课程](../course/part-03/lesson-22-react-lottery-page.md)与 [QA](../qa/lessons/lesson-22.md)；第 23 节规则边界见[需求基线](lottery-rule-requirements-v1.md)、[ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)、[课程](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)与 [QA](../qa/lessons/lesson-23.md)。
+继续遵守 V0 的真实状态表达：可见的临时选择不等于最终结果，行时间戳不等于聚合版本，Strategy 缓存不等于事实库或备份，未来权限、中间件和服务不能提前伪装成交付物。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 23 节规则边界见[需求基线](lottery-rule-requirements-v1.md)与 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)；第 24 节缓存边界与证据见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)、[课程](../course/part-03/lesson-24-redis-strategy-cache.md)与 [QA](../qa/lessons/lesson-24.md)。

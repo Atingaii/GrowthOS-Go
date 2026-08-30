@@ -2,7 +2,7 @@
 
 ## 定位
 
-`web/` 是统一的 React 单页应用。第 14 节完成框架、路由和基础组件，第 15 节完成系统探针首个真实前后端切片；第 17～21 节建立 Lottery 领域、持久化、选择与 development/test ephemeral API，第 22 节再通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 接入真实 React `/lottery` 页面。同时，四类工作台以同一个 `WorkspaceShell` 统一侧栏、顶栏、搜索、主题、内容几何和移动抽屉，视觉语言采用高密度、扁平、细边框的数据工作台，而不是把业务页面包装成营销落地页。第 23 节没有修改前端代码，只固定资格、Lottery 结果与访问权限都必须由服务端权威决定，页面只能消费投影。
+`web/` 是统一的 React 单页应用。第 14 节完成框架、路由和基础组件，第 15 节完成系统探针首个真实前后端切片；第 17～21 节建立 Lottery 领域、持久化、选择与 development/test ephemeral API，第 22 节再通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 接入真实 React `/lottery` 页面。同时，四类工作台以同一个 `WorkspaceShell` 统一侧栏、顶栏、搜索、主题、内容几何和移动抽屉，视觉语言采用高密度、扁平、细边框的数据工作台，而不是把业务页面包装成营销落地页。第 23 节没有修改前端代码，只固定资格、Lottery 结果与访问权限都必须由服务端权威决定；第 24 节同样不改浏览器契约，只在服务端 StrategyReader 后增加透明、可丢弃的 Redis 读取投影。
 
 ## 工作台
 
@@ -49,11 +49,13 @@ pnpm preview
 
 ## 当前事实与后续演进
 
-当前真实 React 联调有两条：`/system/status` 读取 `GET /health` 与由 MySQL 支撑的 `/ready`；`/lottery` 调用 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`，并把服务端 `reward`、`no_reward` 与各类失败保持为不同状态。Lottery 页面不维护前端候选、概率、库存或随机决定，不在失败后透明重试；返回值仍只是页面刷新后消失的临时候选，不是 Draw、中奖记录或已发放权益。
+当前真实 React 联调有两条：`/system/status` 读取 `GET /health` 与由 MySQL 支撑的 `/ready`；`/lottery` 调用 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`，并把服务端 `reward`、`no_reward` 与各类失败保持为不同状态。Lottery 页面不维护前端候选、概率、库存、Redis key、TTL 或随机决定，不在失败后透明重试；返回值仍只是页面刷新后消失的临时候选，不是 Draw、中奖记录或已发放权益。
 
-活动、Feed、积分、优惠券、个人资料、Admin、MCP 和 Agent 页面继续使用统一 `MOCK_SNAPSHOT_LABEL` 标注的演示快照或浏览器内状态。筛选、路由、复制、主题、搜索和本地任务等交互可以真实工作，但不代表存在相应后端查询/写入、实时账务或生产控制面。四类工作台当前也只是信息架构：没有登录认证、RBAC、租户隔离、对象级授权或服务端拒绝路径。第 23 节已经明确拒绝为页面临时增加角色开关，也没有把前端提交的 `eligible`、`role`、会员等级或 Award 可用性当作可信事实；第 24～30 节先形成缓存、资格决策与 Activity 等真实受保护资源，第 31～35 节再依次建立公共访问控制模型、真实会话、服务端强制、前端权限感知和越权端到端验收，第 36 节首个真实运营后台必须复用这套能力。导航、路由、操作和搜索结果都将消费同一服务端能力投影，前端裁剪只改善体验，服务端拒绝才构成授权边界。
+第 24 节缓存对浏览器完全透明：public path、method、headers、request/response DTO、错误码和 `Cache-Control: no-store` 都没有变化，也没有增加“cache hit”响应头或页面徽标。浏览器不能选择跳过/刷新服务端缓存，不能自行保存 Strategy 投影，Redis 故障也不应触发前端重试。是否命中、回源、修复 poison value 或降级只属于服务端低基数观测与运维证据；把这些细节泄露到 UI 会把技术拓扑变成产品契约，并诱导调用方依赖不可保证的缓存状态。
 
-第 21 节后端能力仍由[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；第 22 节前端实现与边界见对应[课程](../course/part-03/lesson-22-react-lottery-page.md)和 [QA](../qa/lessons/lesson-22.md)；第 23 节对前端信任边界的要求见[需求基线](../product/lottery-rule-requirements-v1.md)、[ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)、[设计手记](../design-thinking/lessons/lesson-23.md)和[面试问答](../interview/lessons/lesson-23.md)。
+活动、Feed、积分、优惠券、个人资料、Admin、MCP 和 Agent 页面继续使用统一 `MOCK_SNAPSHOT_LABEL` 标注的演示快照或浏览器内状态。筛选、路由、复制、主题、搜索和本地任务等交互可以真实工作，但不代表存在相应后端查询/写入、实时账务或生产控制面。四类工作台当前也只是信息架构：没有登录认证、RBAC、租户隔离、对象级授权或服务端拒绝路径。第 23 节已经明确拒绝为页面临时增加角色开关，也没有把前端提交的 `eligible`、`role`、会员等级或 Award 可用性当作可信事实；第 24 节完成的只是服务端缓存。第 25～30 节再形成资格决策与 Activity 等真实受保护资源，第 31～35 节依次建立公共访问控制模型、真实会话、服务端强制、前端权限感知和越权端到端验收，第 36 节首个真实运营后台必须复用这套能力。导航、路由、操作和搜索结果都将消费同一服务端能力投影，前端裁剪只改善体验，服务端拒绝才构成授权边界。
+
+第 21 节后端能力仍由[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；第 22 节前端实现与边界见对应[课程](../course/part-03/lesson-22-react-lottery-page.md)和 [QA](../qa/lessons/lesson-22.md)；第 23 节对前端信任边界的要求见[需求基线](../product/lottery-rule-requirements-v1.md)与 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)；第 24 节“服务端优化不扩张前端契约”的证据见[课程](../course/part-03/lesson-24-redis-strategy-cache.md)、[API](../api/lessons/lesson-24.md)、[QA](../qa/lessons/lesson-24.md)与 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。
 
 第 15 节已做正常、MySQL 不可用和 API 离线三种系统探针场景的真实浏览器关联验收。第 22 节又覆盖 Lottery 请求状态、共享壳层交互，以及 1719 × 862 桌面和 390 × 844 移动视口；这些证据只证明当前环境中的联调、交互和展示契约，不构成性能、持续可用性、权限隔离或生产就绪声明。
 

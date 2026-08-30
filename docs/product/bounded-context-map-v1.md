@@ -4,13 +4,13 @@
 
 **更新日期：** 2026-08-30
 
-**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17 节以[最小 Lottery 领域对象](../course/part-03/lesson-17-lottery-domain-objects.md)、第 18 节以[第一组 Lottery 业务表](../course/part-03/lesson-18-lottery-schema.md)、第 19 节以[Strategy 仓储](../course/part-03/lesson-19-lottery-repository.md)、第 20 节以[加权 Award 选择](../course/part-03/lesson-20-lottery-weighted-selection.md)、第 21 节以[临时 Lottery API](../course/part-03/lesson-21-lottery-api.md)、第 22 节以[真实 React 临时选择页](../course/part-03/lesson-22-react-lottery-page.md)、第 23 节以[Lottery 规则所有权](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)校准实现与演进边界
+**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17～23 节依次以 Lottery 对象、持久化、仓储、选择、API、React 消费者和规则所有权校准业务边界；第 24 节以[Redis Strategy 读取投影](../course/part-03/lesson-24-redis-strategy-cache.md)校准派生数据边界
 
 ## 1. 地图用途
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。第 17 节的 `internal/lottery/domain` 是单仓库内第一个真实业务领域包，第 18 节的两张表是共享 MySQL schema 中由 Lottery 负责的首组持久化结构，第 19 节的 application 端口与 MySQL adapter 也仍是同一模块内的依赖倒置边界；第 20 节又在领域包内增加加权选择器，并由外层 `crypto/rand` adapter 实现领域拥有的 bounded random port；第 21 节通过 application use case 与专用 HTTP adapter 组合出 development/test ephemeral route；第 22 节增加的 React adapter 是该 route 的体验层消费者，不改变 Lottery 的事实所有权。它们仍在同一进程/schema 与单一前端应用内，不代表独立微服务或独立数据库。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论物理拆分。
+当前实现策略仍是 Modular Monolith。第 17～22 节在单仓库内逐步建立 Lottery domain、共享 MySQL 中的两张表、application 端口、MySQL/随机/HTTP adapters 和 React 消费者；第 24 节的 `strategycache` 只是 Lottery adapter 下对 `StrategyReader` 的技术装饰，`redisstore` 是 infrastructure client。Redis 不是新的限界上下文、事实所有者或通用“缓存领域”，Strategy 的权威事实仍归 Lottery/MySQL。它们仍在同一进程/schema 与单一前端应用内，不代表独立微服务或独立数据库。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论物理拆分。
 
 ## 2. 划分依据
 
@@ -78,7 +78,7 @@ flowchart LR
 | 活动版本与运行状态 | Marketing | Feed 使用可投放摘要；Analytics 使用活动标识和快照 |
 | 审批结果与审计轨迹 | Governance | Marketing 将审批结果作为发布条件；AI 展示状态 |
 | 用户资格、参与次数与参与订单 | Participation | Lottery 接收已验证请求；Analytics 接收参与事件 |
-| 抽奖策略配置 | Lottery | Marketing 未来引用 Strategy；当前已有 Strategy/Award、两张表、内部 Create/FindByID Repository、加权选择器、只读 ephemeral API 与真实 React 消费者，但没有运营配置入口或发布模型 |
+| 抽奖策略配置 | Lottery | Marketing 未来引用 Strategy；当前已有 Strategy/Award、两张表、内部 Create/FindByID Repository、可重建 Redis 读取投影、加权选择器、只读 ephemeral API 与真实 React 消费者，但没有运营配置入口或发布模型 |
 | 一次抽奖的最终结果 | Lottery | Benefit 接收奖励结果；当前只有不持久化的临时选择，尚无正式 Draw/Result、结果查询或幂等 API，INV-03 未满足 |
 | 积分、优惠券等权益事实 | Benefit | Feed/Marketing 读取必要摘要；Analytics 接收领取和使用事件 |
 | 活动参与次数事实 | Participation | Benefit 可因奖励请求增加次数，但由 Participation 确认结果 |
@@ -117,7 +117,7 @@ flowchart LR
 
 `Campaign` 与 `Activity` 当前在中文产品文档中统一称“活动”。后续编码阶段再结合现有生态和团队语言选择代码名，不能同时制造两个同义聚合。
 
-### 7.1 第 17～23 节 Lottery 语言、持久化、选择、临时传输与规则所有权边界
+### 7.1 第 17～24 节 Lottery 语言、持久化、选择、临时传输、规则与派生缓存边界
 
 第 17 节把本地图中的一小段分析语言落成 `internal/lottery/domain`：
 
@@ -149,7 +149,9 @@ flowchart LR
 
 第 23 节同时固定四组不同语义：资格拒绝不等于 `no_reward`，依赖失败不等于用户不合格，奖励不可用不等于合法未中奖，授权拒绝不等于业务资格拒绝。它只形成 [Lottery 业务规则需求基线](lottery-rule-requirements-v1.md)和 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)，没有新增 Go 类型、规则链、规则树、Migration、API、Redis 或 React 判断；通用执行原语必须等待第 25～26 节出现至少两个真实消费者后再由消费方反推。
 
-下一节第 24 节只为可重建的 Strategy 读取投影建立首次 Redis 缓存，不缓存用户资格或一次决策结果；第 25～30 节继续形成资格规则、决策引擎与 Activity 等真实业务对象。公共访问控制安排在第 31～35 节：先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，再实现真实会话、服务端强制、前端权限感知和越权端到端验收；第 36 节首个真实运营后台只能消费这套统一能力，不能在各业务上下文复制角色开关。当前没有登录或 RBAC，不能用按工作台隐藏菜单代替授权。在正式 Draw/Result 与幂等语义出现前，也不能把 ephemeral route、仓储、Selector 或 React 页面解释为 Lottery 上下文已经形成最终结果事实，不能在调用超时后无条件重试并声称得到同一次结果。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 22 节证据见[API](../api/lessons/lesson-22.md)、[QA](../qa/lessons/lesson-22.md)、[设计手记](../design-thinking/lessons/lesson-22.md)和[面试问答](../interview/lessons/lesson-22.md)；第 23 节证据见对应的[API](../api/lessons/lesson-23.md)、[QA](../qa/lessons/lesson-23.md)、[设计手记](../design-thinking/lessons/lesson-23.md)和[面试问答](../interview/lessons/lesson-23.md)。
+第 24 节只为可重建的 Strategy 读取投影建立 Redis cache-aside：版本化 value 经领域恢复校验，miss/错误/poison 回源 MySQL，not-found、用户资格、一次随机选择和 Draw/Result 都不缓存。这个投影由 Lottery adapter 维护，`redisstore` 只提供三种业务命令能力；它既不拥有 Strategy，又不能被其他上下文绕过端口当作共享事实表。短 TTL+jitter 是当前没有聚合版本/写后失效协议时的有界折中，不应复制成资格、库存或权限缓存方案。
+
+下一节第 25 节开始形成真实资格事实，第 26 节再由多个具体规则反推最小决策执行原语，第 27～30 节继续引入 Activity 等真实业务对象。公共访问控制安排在第 31～35 节：先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，再实现真实会话、服务端强制、前端权限感知和越权端到端验收；第 36 节首个真实运营后台只能消费这套统一能力，不能在各业务上下文复制角色开关。当前没有登录或 RBAC，不能用按工作台隐藏菜单代替授权。在正式 Draw/Result 与幂等语义出现前，也不能把 ephemeral route、缓存、仓储、Selector 或 React 页面解释为 Lottery 已形成最终结果事实。第 24 节边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)、[API](../api/lessons/lesson-24.md)、[QA](../qa/lessons/lesson-24.md)、[设计手记](../design-thinking/lessons/lesson-24.md)和[面试问答](../interview/lessons/lesson-24.md)。
 
 ## 8. 外部系统和防腐边界
 
