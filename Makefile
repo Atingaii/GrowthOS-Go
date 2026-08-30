@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql lesson28-mysql-acceptance doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
 
 COMPOSE_FILE ?= deploy/compose/compose.yaml
 COMPOSE_PROJECT ?= growthos
@@ -24,6 +24,7 @@ help:
 		'  make db-migrate Apply all pending forward MySQL migrations' \
 		'  make db-status  Inspect the current MySQL migration status' \
 		'  make test-integration-mysql  Verify MySQL migrations, permissions, and Lottery repository' \
+		'  make lesson28-mysql-acceptance  Run the disposable MySQL 8.4.11 Lesson 28 gate' \
 		'  make doc-check  Check documentation integrity and course evidence' \
 		'  make web-test   Run frontend unit and component tests' \
 		'  make web-verify Run frontend tests, typecheck, and production build' \
@@ -66,6 +67,7 @@ db-status:
 test-integration-mysql:
 	@test "$${GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES:-}" = 'lesson-19-isolated-schema' || (printf '%s\n' 'set GROWTHOS_TEST_MYSQL_ALLOW_SCHEMA_CHANGES=lesson-19-isolated-schema for a dedicated disposable test schema' && exit 1)
 	@test "$${GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES:-}" = 'lesson-19-isolated-repository' || (printf '%s\n' 'set GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES=lesson-19-isolated-repository for isolated repository writes' && exit 1)
+	@test "$${GROWTHOS_TEST_MYSQL_ALLOW_RULE_GRAPH_WRITES:-}" = 'lesson-28-isolated-rule-graph' || (printf '%s\n' 'set GROWTHOS_TEST_MYSQL_ALLOW_RULE_GRAPH_WRITES=lesson-28-isolated-rule-graph for isolated rule-graph writes' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_API_ADDRESS:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_ADDRESS' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_API_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_DATABASE' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_API_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_API_USER' && exit 1)
@@ -74,11 +76,18 @@ test-integration-mysql:
 	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_DATABASE' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_USER' && exit 1)
 	@test -n "$${GROWTHOS_TEST_MYSQL_MIGRATION_PASSWORD:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_MIGRATION_PASSWORD' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_RULE_GRAPH_ADDRESS:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_RULE_GRAPH_ADDRESS' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_RULE_GRAPH_DATABASE:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_RULE_GRAPH_DATABASE' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_RULE_GRAPH_USER:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_RULE_GRAPH_USER' && exit 1)
+	@test -n "$${GROWTHOS_TEST_MYSQL_RULE_GRAPH_PASSWORD:-}" || (printf '%s\n' 'missing required variable: GROWTHOS_TEST_MYSQL_RULE_GRAPH_PASSWORD' && exit 1)
 	go test -v -count=1 -p=1 -run 'Integration$$' \
 		./internal/infrastructure/mysql \
 		./internal/infrastructure/migration \
 		./migrations \
 		./internal/lottery/adapter/mysqlrepo
+
+lesson28-mysql-acceptance:
+	./scripts/lesson28-mysql-acceptance.sh
 
 doc-check:
 	go run ./cmd/doccheck
