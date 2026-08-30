@@ -17,16 +17,24 @@ const lesson27ModuleImportPrefix = "github.com/Atingaii/GrowthOS-Go/"
 
 func TestLesson27MembershipRoutingKeepsContextOwnershipAndEngineStopLine(t *testing.T) {
 	forbiddenTypes := map[string]struct{}{
-		"Rule":              {},
-		"RuleChain":         {},
-		"RuleTree":          {},
-		"RuleNode":          {},
-		"RuleEdge":          {},
-		"RuleEngine":        {},
-		"DecisionEngine":    {},
-		"EvaluationContext": {},
-		"RulePriority":      {},
-		"DSL":               {},
+		"Rule":               {},
+		"RuleChain":          {},
+		"RuleTree":           {},
+		"RuleNode":           {},
+		"RuleEdge":           {},
+		"RuleEngine":         {},
+		"DecisionEngine":     {},
+		"EvaluationContext":  {},
+		"RulePriority":       {},
+		"Registry":           {},
+		"RuleRegistry":       {},
+		"OperatorRegistry":   {},
+		"EvaluationRegistry": {},
+		"FactBag":            {},
+		"Expression":         {},
+		"ExpressionEngine":   {},
+		"ScriptEngine":       {},
+		"DSL":                {},
 	}
 	packages := []struct {
 		name                 string
@@ -63,6 +71,87 @@ func TestLesson27MembershipRoutingKeepsContextOwnershipAndEngineStopLine(t *test
 				t.Fatalf("no production Go files found in %s", checkedPackage.directory)
 			}
 		})
+	}
+}
+
+func TestLesson29GraphEvaluationHasNoRuntimeOrHTTPAssembly(t *testing.T) {
+	forbiddenIdentifiers := map[string]struct{}{
+		"StrategyRoutingGraphEvaluationService":    {},
+		"NewStrategyRoutingGraphEvaluationService": {},
+		"EvaluateStrategyRoutingGraph":             {},
+		"StrategyRoutingGraphDecision":             {},
+		"StrategyRoutingGraphStepBudget":           {},
+	}
+	for _, root := range []string{
+		filepath.Join("..", "..", "..", "cmd"),
+		filepath.Join("..", "adapter", "httpapi"),
+		filepath.Join("..", "..", "infrastructure", "httpapi"),
+		filepath.Join("..", "..", "infrastructure", "httpserver"),
+		filepath.Join("..", "..", "platform", "appconfig"),
+	} {
+		violations, parsedProductionFiles, err := lesson29ForbiddenIdentifierViolations(
+			root,
+			forbiddenIdentifiers,
+		)
+		if err != nil {
+			t.Fatalf("inspect %s: %v", root, err)
+		}
+		for _, violation := range violations {
+			t.Error(violation)
+		}
+		if parsedProductionFiles == 0 {
+			t.Fatalf("no production Go files found in %s", root)
+		}
+	}
+
+	sourceRoots := []lesson29SourceRoot{
+		{
+			path: filepath.Join("..", "..", "..", "deploy", "compose"),
+			include: func(path string, entry fs.DirEntry) bool {
+				name := entry.Name()
+				return (strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) &&
+					!strings.Contains(name, "acceptance")
+			},
+		},
+		{
+			path: filepath.Join("..", "..", "..", "deploy", "docker"),
+			include: func(_ string, entry fs.DirEntry) bool {
+				return strings.HasPrefix(entry.Name(), "Dockerfile") ||
+					strings.HasSuffix(entry.Name(), ".conf") ||
+					strings.HasSuffix(entry.Name(), ".sh")
+			},
+		},
+		{
+			path: filepath.Join("..", "..", "..", "web"),
+			include: func(path string, entry fs.DirEntry) bool {
+				if strings.Contains(path, string(filepath.Separator)+"node_modules"+string(filepath.Separator)) ||
+					strings.Contains(path, string(filepath.Separator)+"mocks"+string(filepath.Separator)) {
+					return false
+				}
+				name := entry.Name()
+				if strings.Contains(name, ".test.") || strings.Contains(name, ".spec.") {
+					return false
+				}
+				extension := filepath.Ext(name)
+				return extension == ".ts" || extension == ".tsx" ||
+					extension == ".js" || extension == ".jsx" || extension == ".json"
+			},
+		},
+	}
+	for _, root := range sourceRoots {
+		violations, scannedProductionFiles, err := lesson29ForbiddenSourceViolations(
+			root,
+			forbiddenIdentifiers,
+		)
+		if err != nil {
+			t.Fatalf("inspect production sources %s: %v", root.path, err)
+		}
+		for _, violation := range violations {
+			t.Error(violation)
+		}
+		if scannedProductionFiles == 0 {
+			t.Fatalf("no production source files found in %s", root.path)
+		}
 	}
 }
 
@@ -156,4 +245,86 @@ func lesson27ArchitectureViolations(
 		return nil
 	})
 	return violations, parsedProductionFiles, err
+}
+
+func lesson29ForbiddenIdentifierViolations(
+	root string,
+	forbiddenIdentifiers map[string]struct{},
+) ([]string, int, error) {
+	var violations []string
+	parsedProductionFiles := 0
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+
+		parsedProductionFiles++
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			identifier, ok := node.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if _, forbidden := forbiddenIdentifiers[identifier.Name]; forbidden {
+				violations = append(violations, fmt.Sprintf(
+					"%s prematurely wires graph evaluation identifier %s",
+					path,
+					identifier.Name,
+				))
+			}
+			return true
+		})
+		return nil
+	})
+	return violations, parsedProductionFiles, err
+}
+
+type lesson29SourceRoot struct {
+	path    string
+	include func(path string, entry fs.DirEntry) bool
+}
+
+func lesson29ForbiddenSourceViolations(
+	root lesson29SourceRoot,
+	forbiddenIdentifiers map[string]struct{},
+) ([]string, int, error) {
+	var violations []string
+	scannedProductionFiles := 0
+	err := filepath.WalkDir(root.path, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == "node_modules" || entry.Name() == ".vite" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !root.include(path, entry) {
+			return nil
+		}
+
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		scannedProductionFiles++
+		for identifier := range forbiddenIdentifiers {
+			if strings.Contains(string(source), identifier) {
+				violations = append(violations, fmt.Sprintf(
+					"%s prematurely wires graph evaluation identifier %s",
+					path,
+					identifier,
+				))
+			}
+		}
+		return nil
+	})
+	return violations, scannedProductionFiles, err
 }
