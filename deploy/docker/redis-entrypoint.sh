@@ -26,8 +26,8 @@ mkdir -p "$runtime_dir"
 {
     printf '%s\n' 'user default off'
     printf 'user growthos_api on >%s ' "$password"
-    printf '%s ' '~growthos:development:lottery:strategy:projection:v1:*'
-    printf '%s\n' '&* +ping +getrange +set +del'
+    printf '%s ' 'resetkeys ~growthos:development:lottery:strategy:projection:v1:*'
+    printf '%s\n' 'resetchannels -@all +ping +getrange +set +del'
 } > "$runtime_dir/users.acl"
 cat > "$runtime_dir/redis.conf" <<'EOF'
 bind 0.0.0.0

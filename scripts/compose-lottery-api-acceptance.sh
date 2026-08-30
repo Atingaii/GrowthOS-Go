@@ -514,9 +514,9 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-secret_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson21-secrets.XXXXXX")
+secret_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson24-secrets.XXXXXX")
 secret_directory_identity=$(directory_identity "$secret_directory") || fail 'could not record the temporary secret directory identity'
-response_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson21-responses.XXXXXX")
+response_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson24-responses.XXXXXX")
 response_directory_identity=$(directory_identity "$response_directory") || fail 'could not record the temporary response directory identity'
 export GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY="$secret_directory"
 
@@ -642,6 +642,53 @@ for completed_service in migrate mysql-grants; do
 done
 ok 'all Compose services reached their expected states on the lesson-24 cache snapshot'
 
+if ! docker network inspect \
+    "${compose_project}_edge" \
+    "${compose_project}_data" \
+    "${compose_project}_cache" | jq -e \
+    --arg edge "${compose_project}_edge" \
+    --arg data "${compose_project}_data" \
+    --arg cache "${compose_project}_cache" '
+        (map({key: .Name, value: .Internal}) | from_entries) as $networks |
+        length == 3 and
+        $networks[$edge] == false and
+        $networks[$data] == true and
+        $networks[$cache] == true
+    ' >/dev/null; then
+    fail 'edge/data/cache internal-network flags differ from the exact topology'
+fi
+
+resolve_container api
+if ! docker inspect "$resolved_container_id" | jq -e \
+    --arg edge "${compose_project}_edge" \
+    --arg data "${compose_project}_data" \
+    --arg cache "${compose_project}_cache" '
+        (.[0].NetworkSettings.Networks | keys | sort) == ([$edge, $data, $cache] | sort) and
+        ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))] | sort) ==
+            (["/run/secrets/mysql_app_password", "/run/secrets/redis_password"] | sort)
+    ' >/dev/null; then
+    fail 'api network or Secret mounts differ from the MySQL plus cache contract'
+fi
+resolve_container redis
+if ! docker inspect "$resolved_container_id" | jq -e --arg cache "${compose_project}_cache" '
+    (.[0].NetworkSettings.Networks | keys) == [$cache] and
+    ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))]) ==
+        ["/run/secrets/redis_password"]
+' >/dev/null; then
+    fail 'redis network or Secret mounts differ from the cache-only contract'
+fi
+for cache_non_consumer in web migrate mysql mysql-grants; do
+    resolve_container "$cache_non_consumer"
+    if docker inspect "$resolved_container_id" | jq -e \
+        --arg cache "${compose_project}_cache" '
+            (.[0].NetworkSettings.Networks | has($cache)) or
+            any(.[0].Mounts[]?; .Destination == "/run/secrets/redis_password")
+        ' >/dev/null; then
+        fail "$cache_non_consumer unexpectedly consumes the cache network or Redis Secret"
+    fi
+done
+ok 'cache topology is internal and limited to the API and Redis consumers'
+
 acl_probe_key=growthos:development:lottery:strategy:projection:v1:0
 acl_outside_key=growthos:development:lottery:result:v1:0
 if [ "$(redis_business ping)" != PONG ] ||
@@ -655,6 +702,8 @@ assert_redis_denied SCAN scan 0
 assert_redis_denied CONFIG config get maxmemory
 assert_redis_denied ACL acl users
 assert_redis_denied EVAL eval 'return 1' 0
+assert_redis_denied SUBSCRIBE subscribe acceptance-channel
+assert_redis_denied PUBLISH publish acceptance-channel value
 # shellcheck disable=SC2016
 default_output=$(compose exec -T redis sh -c '
     export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
@@ -666,10 +715,24 @@ case "$default_output" in
 esac
 # shellcheck disable=SC2016
 if ! compose exec -T redis sh -eu -c '
-    IFS= read -r first_acl_line </tmp/growthos-redis/users.acl
+    export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
+    exec 3</tmp/growthos-redis/users.acl
+    IFS= read -r first_acl_line <&3
+    IFS= read -r second_acl_line <&3
+    expected_acl_line="user growthos_api on >$REDISCLI_AUTH resetkeys ~growthos:development:lottery:strategy:projection:v1:* resetchannels -@all +ping +getrange +set +del"
     [ "$first_acl_line" = "user default off" ]
+    [ "$second_acl_line" = "$expected_acl_line" ]
+    ! IFS= read -r unexpected_acl_line <&3
+    exec 3<&-
+    for expected_config_line in \
+        "save \"\"" \
+        "appendonly no" \
+        "maxmemory 48mb" \
+        "maxmemory-policy allkeys-lru"; do
+        grep -Fqx "$expected_config_line" /tmp/growthos-redis/redis.conf
+    done
 '; then
-    fail 'the generated Redis ACL file does not explicitly disable the default user'
+    fail 'the generated Redis ACL or memory policy differs from the exact boundary'
 fi
 redis_business del "$acl_probe_key" >/dev/null
 ok 'Redis named-user commands, exact keyspace, denied commands, and disabled default user passed'

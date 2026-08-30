@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-# Read-only smoke test for the current Docker Compose development stack.
+# Bounded-mutation smoke test for the current Docker Compose development stack.
+# Its only product-data write is one invalid Strategy-ID Redis key with a 30s
+# TTL; an in-container EXIT trap removes it immediately when possible.
 # Supported overrides:
 #   GROWTHOS_COMPOSE_PROJECT       Compose project name (default: growthos)
 #   GROWTHOS_COMPOSE_FILE          Compose file path
@@ -178,6 +180,13 @@ if [ "$inspected_value" != 'growthos/web:lesson-22' ]; then
 fi
 ok 'web image identifies the lesson-22 real React Lottery page build'
 
+resolve_container redis
+inspect_value '{{.Config.Image}}' image
+if [ "$inspected_value" != 'growthos/redis:7.4.11-lesson-24' ]; then
+    fail "redis image is $inspected_value instead of growthos/redis:7.4.11-lesson-24"
+fi
+ok 'redis image identifies the lesson-24 ACL and memory-policy snapshot'
+
 # The dollar-prefixed expressions belong to the container shell.
 # shellcheck disable=SC2016
 if ! migration_state=$(compose exec -T mysql sh -c '
@@ -325,13 +334,30 @@ if ! docker inspect "$redis_container_id" | jq -e --arg cache "${compose_project
 ' >/dev/null; then
     fail 'redis must have only the internal cache network and its own Secret'
 fi
-ok 'api and redis use the exact cache network and least-Secret mounts'
+if ! docker network inspect "${compose_project}_cache" | jq -e '.[0].Internal == true' >/dev/null; then
+    fail 'cache network is not Docker-internal'
+fi
+for cache_non_consumer in web migrate mysql mysql-grants; do
+    resolve_container "$cache_non_consumer"
+    if docker inspect "$resolved_container_id" | jq -e \
+        --arg cache "${compose_project}_cache" '
+            (.[0].NetworkSettings.Networks | has($cache)) or
+            any(.[0].Mounts[]?; .Destination == "/run/secrets/redis_password")
+        ' >/dev/null; then
+        fail "$cache_non_consumer unexpectedly consumes the cache network or Redis Secret"
+    fi
+done
+ok 'only api and redis consume the Docker-internal cache network and Redis Secret'
 
 # shellcheck disable=SC2016
 if ! compose exec -T redis sh -eu -c '
     export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
     allowed_key=growthos:development:lottery:strategy:projection:v1:0
     outside_key=growthos:development:lottery:result:v1:0
+    cleanup_probe() {
+        redis-cli --raw --no-auth-warning --user growthos_api del "$allowed_key" >/dev/null 2>&1 || true
+    }
+    trap cleanup_probe 0
     assert_denied() {
         denied_label=$1
         shift
@@ -350,17 +376,36 @@ if ! compose exec -T redis sh -eu -c '
     assert_denied CONFIG config get maxmemory
     assert_denied ACL acl users
     assert_denied EVAL eval "return 1" 0
+    assert_denied SUBSCRIBE subscribe smoke-channel
+    assert_denied PUBLISH publish smoke-channel value
     default_output=$(redis-cli --raw --no-auth-warning ping 2>&1 || true)
     case "$default_output" in
         *WRONGPASS*|*NOAUTH*) ;;
         *) printf "%s\n" "default user unexpectedly authenticated" >&2; exit 1 ;;
     esac
-    IFS= read -r first_acl_line </tmp/growthos-redis/users.acl
-    if [ "$first_acl_line" != "user default off" ]; then
-        printf "%s\n" "generated ACL file does not disable the default user" >&2
+    exec 3</tmp/growthos-redis/users.acl
+    IFS= read -r first_acl_line <&3
+    IFS= read -r second_acl_line <&3
+    expected_acl_line="user growthos_api on >$REDISCLI_AUTH resetkeys ~growthos:development:lottery:strategy:projection:v1:* resetchannels -@all +ping +getrange +set +del"
+    if [ "$first_acl_line" != "user default off" ] ||
+       [ "$second_acl_line" != "$expected_acl_line" ] ||
+       IFS= read -r unexpected_acl_line <&3; then
+        printf "%s\n" "generated Redis ACL differs from the exact allowlist" >&2
         exit 1
     fi
+    exec 3<&-
+    for expected_config_line in \
+        "save \"\"" \
+        "appendonly no" \
+        "maxmemory 48mb" \
+        "maxmemory-policy allkeys-lru"; do
+        if ! grep -Fqx "$expected_config_line" /tmp/growthos-redis/redis.conf; then
+            printf "missing Redis config boundary: %s\n" "$expected_config_line" >&2
+            exit 1
+        fi
+    done
     redis-cli --raw --no-auth-warning --user growthos_api del "$allowed_key" >/dev/null
+    trap - 0
     unset REDISCLI_AUTH
 '; then
     fail 'redis business ACL allowlist or negative command/key checks failed'

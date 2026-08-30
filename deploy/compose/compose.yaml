@@ -163,7 +163,7 @@ services:
     logging: *json-logging
 
   redis:
-    image: growthos/redis:7.4.11
+    image: growthos/redis:7.4.11-lesson-24
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.redis
