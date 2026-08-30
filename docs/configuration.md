@@ -1,12 +1,12 @@
 # GrowthOS-Go 配置参考
 
-**状态：** 第 19 节已完成并验收
+**状态：** 第 21 节已完成并验收
 
-**更新日期：** 2026-08-29
+**更新日期：** 2026-08-30
 
-**来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)、[第 15 节：前后端第一次联调](course/part-02/lesson-15-first-fullstack-integration.md)、[第 16 节：Docker Compose 开发环境](course/part-02/lesson-16-docker-compose-development.md)、[第 18 节：第一次正式业务建表](course/part-03/lesson-18-lottery-schema.md)、[第 19 节：实现仓储层](course/part-03/lesson-19-lottery-repository.md)
+**来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)、[第 15 节：前后端第一次联调](course/part-02/lesson-15-first-fullstack-integration.md)、[第 16 节：Docker Compose 开发环境](course/part-02/lesson-16-docker-compose-development.md)、[第 18 节：第一次正式业务建表](course/part-03/lesson-18-lottery-schema.md)、[第 19 节：实现仓储层](course/part-03/lesson-19-lottery-repository.md)、[第 21 节：开放第一个 Lottery API](course/part-03/lesson-21-lottery-api.md)
 
-本页记录 `growth-api`、`growth-migrate`、Vite 开发/预览进程、显式 MySQL 集成测试与 Compose 开发栈真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取产品进程环境和明确指向的密码文件；HTTP、数据库、Migration 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码；Compose 再负责把本地文件秘密、容器网络地址和第 19 节一次性 MySQL 授权收敛作业装配起来。
+本页记录 `growth-api`、`growth-migrate`、Vite 开发/预览进程、显式 MySQL 集成测试与 Compose 开发栈真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取产品进程环境和明确指向的密码文件；HTTP、Lottery、数据库、Migration 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码；Compose 再负责把本地文件秘密、容器网络地址、development ephemeral feature 和两表 SELECT-only 授权收敛作业装配起来。
 
 ## 1. 加载规则
 
@@ -56,7 +56,7 @@ Compose 文件位于 `deploy/compose/compose.yaml`。仓库级 Make 目标默认
 
 `make compose-up` 会先运行 Secret 生成器。四个文件必须“全部存在或全部不存在”：完整集合会复用；部分集合直接失败；如果 `growthos_mysql_data` 已存在而完整 Secret 集缺失，脚本拒绝生成新值，避免持久化数据库与凭据静默失配。本地目录权限为 `0700`，文件为 `0444`；后者兼容 Docker Desktop 文件挂载给非 root 容器，真正的容器可见范围仍由逐服务只读挂载限制。它们是被 Git 和 Docker build context 排除的本地开发文件，不是加密 Secret Manager，也不支持热轮换。
 
-Compose 另有 `growthos_mysql_socket` named volume，只传递 MySQL Unix socket，不承载数据库事实。启动顺序为 `mysql → migrate → mysql-grants → api`。`mysql-grants` 不读取 `GROWTHOS_*` 环境变量，不加入任何网络，只以 UID 999 从只读 root Secret 和只读 socket 执行固定 allowlist：先撤销 `growthos_app` 旧权限，再只授予 `growthos.lottery_strategy` 与 `growthos.lottery_strategy_award` 的 `SELECT, INSERT`。作业同时要求 `SHOW GRANTS` 与精确 allowlist 完全一致，并断言 `@@GLOBAL.mandatory_roles` 为空；否则失败关闭且 API 不启动。这个开发作业不是通用 DBA 管理入口，也不能用来执行任意 SQL。
+Compose 另有 `growthos_mysql_socket` named volume，只传递 MySQL Unix socket，不承载数据库事实。启动顺序为 `mysql → migrate → mysql-grants → api`。`mysql-grants` 不读取 `GROWTHOS_*` 环境变量，不加入任何网络，只以 UID 999 从只读 root Secret 和只读 socket 执行固定 allowlist：先撤销 `growthos_app` 旧权限，再只授予 `growthos.lottery_strategy` 与 `growthos.lottery_strategy_award` 的 `SELECT`。作业同时要求 `SHOW GRANTS` 与精确 allowlist 完全一致，并断言 `@@GLOBAL.mandatory_roles` 为空；否则失败关闭且 API 不启动。这个开发作业不是通用 DBA 管理入口，也不能用来执行任意 SQL。
 
 ## 4. 通用进程配置
 
@@ -73,8 +73,12 @@ API 与 Migration 都读取 environment/log；只有 API 读取 HTTP 配置。
 | `GROWTHOS_HTTP_READ_TIMEOUT` | `15s` | `> 0` 且 `<= 5m` | 仅 API |
 | `GROWTHOS_HTTP_WRITE_TIMEOUT` | `30s` | `> 0` 且 `<= 10m` | 仅 API |
 | `GROWTHOS_HTTP_IDLE_TIMEOUT` | `60s` | `> 0` 且 `<= 10m` | 仅 API |
+| `GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED` | `false` | 只接受小写 `true` / `false`；staging/production 必须为 false | 仅 API |
+| `GROWTHOS_LOTTERY_SELECTION_TIMEOUT` | `3s` | `> 0` 且 `<= 30s`，并满足下述跨层预算 | 仅 API |
 
-`LoadMigration` 有意忽略所有 HTTP 变量。即使宿主环境存在非法 HTTP 地址或 timeout，也不能阻止独立迁移命令运行。
+`LoadMigration` 有意忽略所有 HTTP 与 Lottery 变量。即使宿主环境存在非法 HTTP 地址、feature flag 或 selection timeout，也不能阻止独立迁移命令运行。
+
+`GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED=true` 只表示在 development/test 注册临时 route，不是认证、授权或生产发布开关。staging/production 设置为 true 会使配置加载失败；默认 false 时 route 不注册。仓库 Compose 为学习与验收显式使用 development + true，不能复制为正式部署策略。
 
 ## 5. MySQL 共享连接配置
 
@@ -93,7 +97,7 @@ staging/production 必须使用 `verify_identity`。该模式验证证书链与 
 
 `appconfig.Load` 只要求 API 密码，不读取 Migrator 账号、密码或执行 timeout。
 
-第 19 节 Compose 运行时的 `growthos_app` 只可对 `lottery_strategy` 和 `lottery_strategy_award` 执行 `SELECT, INSERT`；它不能 UPDATE、DELETE、执行 DDL 或读写 `schema_migrations`。这是由真实 Create/FindByID SQL 推导的部署层最小权限，不是 `appconfig` 可配置的授权列表。未来增加更新、删除或新对象时必须重新从用例审核，不能预授予 schema wildcard DML。
+第 21 节 Compose 运行时的 `growthos_app` 只可对 `lottery_strategy` 和 `lottery_strategy_award` 执行 `SELECT`；它不能 INSERT、UPDATE、DELETE、执行 DDL 或读写 `schema_migrations`。这是由当前产品只调用 `StrategyReader.FindByID` 推导的部署层最小权限，不是 `appconfig` 可配置的授权列表。第 19 节 Repository Create 仍由可丢弃 schema 上的隔离测试 writer 验证，不要求长期运行身份保留 INSERT。未来增加写用例或新对象时必须重新审核，不能预授予 schema wildcard DML。
 
 | 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
 | --- | --- | --- | --- |
@@ -112,9 +116,15 @@ staging/production 必须使用 `verify_identity`。该模式验证证书链与 
 ```text
 GROWTHOS_MYSQL_PING_TIMEOUT + 1s
   <= GROWTHOS_HTTP_WRITE_TIMEOUT
+
+GROWTHOS_LOTTERY_SELECTION_TIMEOUT + 1s
+  <= GROWTHOS_MYSQL_READ_TIMEOUT
+
+GROWTHOS_LOTTERY_SELECTION_TIMEOUT + 1s
+  <= GROWTHOS_HTTP_WRITE_TIMEOUT
 ```
 
-1 秒是 readiness 失败写入 503 envelope 的固定响应预算。连接池设置在首次 Ping 前完成；首次 Ping 失败时池被关闭，API 不监听。
+readiness 的 1 秒为失败写入 503 envelope 的固定响应预算；selection 的两个 1 秒分别给依赖返回和 HTTP 响应留余量。Compose 当前是 selection 3s、MySQL read 5s、HTTP write 10s。selection timeout 是 cooperative deadline：Repository 会观察 context，但同步无 context 的本地 selector 不能被强制抢占，因此领域另以每个 Strategy 最多 1000 个 Award 限制不可取消区段。连接池设置在首次 Ping 前完成；首次 Ping 失败时池被关闭，API 不监听。
 
 ## 7. Migration 专属配置
 
@@ -150,6 +160,8 @@ GROWTHOS_HTTP_READ_HEADER_TIMEOUT=5s
 GROWTHOS_HTTP_READ_TIMEOUT=15s
 GROWTHOS_HTTP_WRITE_TIMEOUT=30s
 GROWTHOS_HTTP_IDLE_TIMEOUT=60s
+GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED=false
+GROWTHOS_LOTTERY_SELECTION_TIMEOUT=3s
 GROWTHOS_LOG_LEVEL=info
 GROWTHOS_LOG_FORMAT=json
 
@@ -188,6 +200,7 @@ make db-migrate
 
 - Vite 代理目标不是无凭据、无非根路径、无 query/fragment 的 HTTP(S) origin，或 `PORT` 非法；
 - 密码的直接来源与文件来源同时存在或同时缺失，文件路径为空、不可读，或解析后的密码为空/超过 1024 bytes；
+- Lottery flag 不是精确小写布尔值、selection timeout 越界、破坏 MySQL read/HTTP write 余量，或 staging/production 尝试启用 ephemeral route；
 - MySQL 地址缺少 host/port，数据库名或用户名不合法；
 - TLS 枚举、环境 TLS 组合或 CA 组合不合法；
 - duration/整数无法解析、越界或破坏 timeout/池关系；
@@ -232,7 +245,8 @@ GROWTHOS_WEB_API_PROXY_TARGET / PORT
 
 - `growth-api` 不读取 Migration Secret，也不执行 DDL；
 - `growth-migrate` 不读取 HTTP 或 API Secret/池参数；
-- Compose `mysql-grants` 不读取应用/Migration Secret，不使用 TCP 或容器网络，只在 Migration 完成后经共享 Unix socket 精确收敛应用授权，并在 mandatory role 存在时失败关闭；
+- `growth-migrate` 也不读取 Lottery feature/timeout；
+- Compose `mysql-grants` 不读取应用/Migration Secret，不使用 TCP 或容器网络，只在 Migration 完成后经共享 Unix socket 把运行应用精确收敛为两表 SELECT，并在 mandatory role 存在时失败关闭；
 - Vite 不读取 Go API/Migration Secret，浏览器也不读取代理目标；
 - `mysqlstore` 不读取环境变量，只接收类型化配置；
 - `dbmigration` 不拥有凭据，只接收已经打开且所有权明确的专用连接；
@@ -260,4 +274,6 @@ GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES=lesson-19-isolated-repository
 5. 跨组件 timeout/容量关系；
 6. 若改变安全、兼容或长期运维约束，新增或替代 ADR。
 
-当前没有配置热更新、远程配置中心、加密 Secret Manager 或秘密热轮换。第 16 节的本地生成器只解决可复现开发装配，第 19 节授权作业只解决当前两张表的 Compose 最小权限收敛；第 76 节若加入 Nacos，它也只能成为新的输入适配器，不能绕过本页类型、校验、账号隔离和秘密边界。
+当前没有配置热更新、远程配置中心、加密 Secret Manager 或秘密热轮换。第 16 节的本地生成器只解决可复现开发装配，第 21 节授权作业只解决当前两张表的 Compose 运行时 SELECT-only 收敛；第 76 节若加入 Nacos，它也只能成为新的输入适配器，不能绕过本页类型、校验、账号隔离和秘密边界。
+
+第 21 节的配置决策与真实证据见[课程](course/part-03/lesson-21-lottery-api.md)、[API](api/lessons/lesson-21.md)、[QA](qa/lessons/lesson-21.md)、[设计手记](design-thinking/lessons/lesson-21.md)、[面试问答](interview/lessons/lesson-21.md)和 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)。

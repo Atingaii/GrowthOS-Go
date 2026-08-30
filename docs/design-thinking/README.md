@@ -59,3 +59,4 @@
 - [第 18 节：把领域不变量分配给表、Repository 与运行边界](lessons/lesson-18.md)
 - [第 19 节：从完整聚合边界推导可恢复的仓储语义](lessons/lesson-19.md)
 - [第 20 节：从均匀整数区间推导无偏加权选择](lessons/lesson-20.md)
+- [第 21 节：从“能返回一个 Award”推导诚实的临时 API 边界](lessons/lesson-21.md)

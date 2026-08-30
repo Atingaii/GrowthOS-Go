@@ -91,3 +91,4 @@
 - [第 18 节：Lottery 表设计、Migration 与最小权限](lessons/lesson-18.md)
 - [第 19 节：Strategy 仓储、事务快照与错误语义](lessons/lesson-19.md)
 - [第 20 节：加权随机、无偏区间与安全边界](lessons/lesson-20.md)
+- [第 21 节：临时 Lottery API、HTTP 契约与真实纵向验收](lessons/lesson-21.md)

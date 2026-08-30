@@ -7,7 +7,7 @@
 ```text
 页面/组件
   ↓
-领域 API 模块（当前为 system，后续按 campaign、lottery、points 等划分）
+领域 API 模块（当前前端仅有 system；后端 lottery route 已存在但尚无前端模块）
   ↓
 统一 HTTP Client
   ↓
@@ -18,7 +18,9 @@ Vite 开发/预览代理，或 Compose Nginx 入口
 Go Gin API
 ```
 
-第 15 节已实现的真实链路只覆盖系统状态页：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 在宿主开发模式下代理到 Go API。第 16 节没有改变浏览器路径或 JSON 契约，只增加 Compose Nginx 入口：它动态解析 API 容器、隐藏上游同名请求 ID 后统一回写最终 `X-Request-ID`，因此正常响应和网关自身 502 都只有一个可关联 ID。页面组件不直接拼接请求，不读取代理目标，也不把 TypeScript 类型断言当成运行时校验。其他业务页面仍由集中 Mock 数据驱动；“探针已联调”不等于业务 API 已经存在。
+第 15 节已实现的真实前端链路只覆盖系统状态页：`systemApi` 分别调用同源的 `GET /health` 与 `GET /ready`，Vite 在宿主开发模式下代理到 Go API。第 16 节增加 Compose Nginx 入口，动态解析 API 容器、隐藏上游同名请求 ID 后统一回写最终 `X-Request-ID`。第 21 节后端已经实现 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`，但前端尚无 `lotteryApi`、DTO decoder 或页面状态管理，`/lottery` 仍是 `Math.random()` Mock。页面组件不得因为 route 已存在就直接拼接 `fetch` 绕过本约定。
+
+该后端 route 默认关闭且仅 development/test 可启用，返回的是不持久化、不可幂等重放的临时选择。前端接入前必须按[第 21 节 API 契约](lessons/lesson-21.md)实现 decimal-string ID decoder，并区分 reward、no_reward、HTTP error、gateway error 与取消；不能把它包装成正式 Draw 成功。其设计和证据见[课程](../course/part-03/lesson-21-lottery-api.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
 
 统一 Client 只接受以单个 `/` 开头、且不含反斜杠的同源绝对路径，请求使用 `same-origin` credentials/mode、`redirect: "error"` 与 `cache: "no-store"`。响应必须是可解析 JSON，并通过对应 API 模块的运行时 decoder；成功响应保留浏览器侧耗时和可用的 `X-Request-ID`，错误输出只使用公开 envelope 或前端稳定文案。
 

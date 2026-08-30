@@ -35,7 +35,7 @@
 
 ## 当前进度
 
-当前已完成第 1～20 节，共 20 节；第二部分和 M0 工程里程碑均已验收，第三部分已经完成最小 Lottery 领域对象、第一组业务表、Strategy Create/FindByID 仓储与无偏加权 Award 选择。
+当前已完成第 1～21 节，共 21 节；第二部分和 M0 工程里程碑均已验收，第三部分已经完成最小 Lottery 领域对象、第一组业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择，以及 development/test 专用的首个 ephemeral Lottery API。
 
 - [第 1 节：为什么要做 AI 原生大营销增长平台](part-01/lesson-01-why-ai-native-growth-platform.md) 已完成。
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
@@ -56,9 +56,10 @@
 - [第 17 节：最简单随机抽奖需要什么对象](part-03/lesson-17-lottery-domain-objects.md) 已完成并验收。
 - [第 18 节：第一次正式业务建表](part-03/lesson-18-lottery-schema.md) 已完成并验收。
 - [第 19 节：实现仓储层](part-03/lesson-19-lottery-repository.md) 已完成并验收。
-- [第 20 节：实现最简单概率抽奖](part-03/lesson-20-lottery-weighted-selection.md) 已完成并验收；下一节是第 21 节开放第一个 Lottery API。
-- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令；第 15 节让 React 系统状态页真实消费两个探针；第 16 节把 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位装配为仅暴露同源 Web 入口的可复现开发栈；第 17 节用纯 Go 领域对象定义 Lottery Strategy/Award；第 18 节创建两张业务表并收敛启动授权链；第 19 节以窄端口、父子写事务、只读 RR 快照和恢复校验实现 Strategy 仓储；第 20 节用 bounded crypto source 与减法桶实现完整 uint64 范围的加权 Award 选择。
-- 当前没有 Lottery 业务 API、Draw/Result 最终事实、真实 Lottery 前端、Strategy 更新/删除或 Redis 业务缓存。应用身份只对两张业务表拥有 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations`；Repository 与 Selector 尚未装配进 HTTP 产品链路，系统状态页使用真实探针数据，其他业务页面仍使用 Mock。不能把领域对象、表结构、仓储、内存选择或探针联调外推为在线抽奖已经完成，INV-03 仍未满足。
+- [第 20 节：实现最简单概率抽奖](part-03/lesson-20-lottery-weighted-selection.md) 已完成并验收。
+- [第 21 节：开放第一个 Lottery API](part-03/lesson-21-lottery-api.md) 已完成并验收；配套 [API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md) 已登记；下一节是第 22 节接入真实 React 抽奖页。
+- 第 11 节建立最小 Go HTTP 进程和无依赖 `GET /health`；第 12 节集中配置、`slog`、`request_id` 和统一错误 envelope；第 13 节增加 MySQL 启动连接、`GET /ready` 与独立 Migration 命令；第 15 节让 React 系统状态页真实消费两个探针；第 16 节把 Web、API、一次性 Migration、MySQL 与隔离的 Redis 占位装配为仅暴露同源 Web 入口的可复现开发栈；第 17 节用纯 Go 领域对象定义 Lottery Strategy/Award；第 18 节创建两张业务表并收敛启动授权链；第 19 节以窄端口、父子写事务、只读 RR 快照和恢复校验实现 Strategy 仓储；第 20 节用 bounded crypto source 与减法桶实现完整 uint64 范围的加权 Award 选择；第 21 节以 `EphemeralSelectionService` 和 HTTP adapter 组合出默认关闭、仅 development/test 可启用的 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`。
+- 当前已有一个真实后端 Lottery API，但它只产生不持久化的 ephemeral selection；正式 Draw/Result、认证、对象级授权、幂等、参与资格、库存、发奖与 Redis 业务缓存均未实现。运行身份只对两张业务表拥有 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要写 fixture 的历史 Repository 集成测试使用隔离测试身份。React `/lottery` 仍使用客户端 `Math.random()` Mock，只有系统状态页完成真实前端联调。不能把临时选择、64 个请求且最大并行 16 的 acceptance 或探针负载外推为在线抽奖闭环、64 并发/64 RPS 或业务 SLO，INV-03 仍未满足。
 - 第 16 节已经形成 M0：正式健康探针负载在本机 Docker Desktop 上以 100 RPS 持续 5 分钟完成 30,000/30,000 次请求，P99 为 4.1495 ms；该结果只证明当前工程探针和本地栈，不外推为业务 SLO。第 24、40、56、72、80、88、96 节继续形成后续里程碑。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 

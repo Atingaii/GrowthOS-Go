@@ -2,15 +2,15 @@
 
 **状态：** v1 分析基线
 
-**更新日期：** 2026-08-29
+**更新日期：** 2026-08-30
 
-**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17 节以[最小 Lottery 领域对象](../course/part-03/lesson-17-lottery-domain-objects.md)、第 18 节以[第一组 Lottery 业务表](../course/part-03/lesson-18-lottery-schema.md)、第 19 节以[Strategy 仓储](../course/part-03/lesson-19-lottery-repository.md)、第 20 节以[加权 Award 选择](../course/part-03/lesson-20-lottery-weighted-selection.md)校准实现状态
+**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17 节以[最小 Lottery 领域对象](../course/part-03/lesson-17-lottery-domain-objects.md)、第 18 节以[第一组 Lottery 业务表](../course/part-03/lesson-18-lottery-schema.md)、第 19 节以[Strategy 仓储](../course/part-03/lesson-19-lottery-repository.md)、第 20 节以[加权 Award 选择](../course/part-03/lesson-20-lottery-weighted-selection.md)、第 21 节以[临时 Lottery API](../course/part-03/lesson-21-lottery-api.md)校准实现状态
 
 ## 1. 地图用途
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。第 17 节的 `internal/lottery/domain` 是单仓库内第一个真实业务领域包，第 18 节的两张表是共享 MySQL schema 中由 Lottery 负责的首组持久化结构，第 19 节的 application 端口与 MySQL adapter 也仍是同一模块内的依赖倒置边界；第 20 节又在领域包内增加加权选择器，并由外层 `crypto/rand` adapter 实现领域拥有的 bounded random port。它们都不代表独立微服务或独立数据库。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论物理拆分。
+当前实现策略仍是 Modular Monolith。第 17 节的 `internal/lottery/domain` 是单仓库内第一个真实业务领域包，第 18 节的两张表是共享 MySQL schema 中由 Lottery 负责的首组持久化结构，第 19 节的 application 端口与 MySQL adapter 也仍是同一模块内的依赖倒置边界；第 20 节又在领域包内增加加权选择器，并由外层 `crypto/rand` adapter 实现领域拥有的 bounded random port；第 21 节通过 application use case 与专用 HTTP adapter 组合出 development/test ephemeral route。它们仍在同一进程和 schema 内，不代表独立微服务或独立数据库。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论物理拆分。
 
 ## 2. 划分依据
 
@@ -78,8 +78,8 @@ flowchart LR
 | 活动版本与运行状态 | Marketing | Feed 使用可投放摘要；Analytics 使用活动标识和快照 |
 | 审批结果与审计轨迹 | Governance | Marketing 将审批结果作为发布条件；AI 展示状态 |
 | 用户资格、参与次数与参与订单 | Participation | Lottery 接收已验证请求；Analytics 接收参与事件 |
-| 抽奖策略配置 | Lottery | Marketing 未来引用 Strategy；当前已有 Strategy/Award 领域对象、两张表、内部 Create/FindByID Repository 和纯内存加权选择器，但尚未装配业务 API 或运营入口 |
-| 一次抽奖的最终结果 | Lottery | Benefit 接收奖励结果；当前尚无 Draw/Result、结果持久化或 API，INV-03 未满足 |
+| 抽奖策略配置 | Lottery | Marketing 未来引用 Strategy；当前已有 Strategy/Award、两张表、内部 Create/FindByID Repository、加权选择器和只读 ephemeral API，但没有运营配置入口或发布模型 |
+| 一次抽奖的最终结果 | Lottery | Benefit 接收奖励结果；当前只有不持久化的临时选择，尚无正式 Draw/Result、结果查询或幂等 API，INV-03 未满足 |
 | 积分、优惠券等权益事实 | Benefit | Feed/Marketing 读取必要摘要；Analytics 接收领取和使用事件 |
 | 活动参与次数事实 | Participation | Benefit 可因奖励请求增加次数，但由 Participation 确认结果 |
 | Feed 候选、顺序、游标与频控 | Feed | Behavior 接收曝光采集数据；Marketing 查询触达摘要 |
@@ -117,7 +117,7 @@ flowchart LR
 
 `Campaign` 与 `Activity` 当前在中文产品文档中统一称“活动”。后续编码阶段再结合现有生态和团队语言选择代码名，不能同时制造两个同义聚合。
 
-### 7.1 第 17～20 节 Lottery 语言、持久化与选择机制落地
+### 7.1 第 17～21 节 Lottery 语言、持久化、选择与临时传输边界落地
 
 第 17 节把本地图中的一小段分析语言落成 `internal/lottery/domain`：
 
@@ -137,11 +137,13 @@ flowchart LR
 - 行 `updated_at` 不是聚合版本，Award 更新不会自动推进根行；
 - 两张表仍不能单独保证完整聚合合法性，必须由 Repository 在写前和恢复后通过领域规则闭合。
 
-第 19 节新增 `StrategyCreator.Create` / `StrategyReader.FindByID` 两个窄端口与 MySQL adapter：父子配置在一个事务中原子写入，根/子行在一个只读 RR 快照中读取，坏快照失败关闭；应用身份精确扩为两张表 `SELECT, INSERT`，仍不能 UPDATE、DELETE 或访问 `schema_migrations`。Repository 尚未装配到 HTTP 产品进程。
+第 19 节新增 `StrategyCreator.Create` / `StrategyReader.FindByID` 两个窄端口与 MySQL adapter：父子配置在一个事务中原子写入，根/子行在一个只读 RR 快照中读取，坏快照失败关闭；当时专用于隔离 Repository writer 验收的测试身份拥有两表 `SELECT, INSERT`，仍不能 UPDATE、DELETE 或访问 `schema_migrations`。第 21 节长期 runtime 已进一步收敛为 SELECT-only。
 
 第 20 节新增 `WeightedSelector`：多候选 Strategy 向领域拥有的 `BoundedRandomSource` 请求均匀 `[0,totalWeight)` 位置，再以无加法溢出的减法桶映射到 Award；生产 adapter 使用 `crypto/rand.Int`，支持完整 `uint64` 上界且不以取模引入偏差。单候选确定性返回，`no_reward` 是合法 Award。这个机制只选择瞬时候选，不拥有 Participation 资格、库存、Benefit 发放、DrawID 或结果事实。
 
-第 21～24 节才依次加入 API、真实页面、规则和缓存；在 Draw/Result 与幂等语义出现前，不能把仓储、Selector 或前端 Mock 抽奖解释为 Lottery 上下文已经形成最终结果事实，也不能在调用超时后无条件重新选择。
+第 21 节新增 `EphemeralSelectionService` 与 HTTP adapter：`POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 只在 development/test 显式启用时注册，以规范十进制 string 传递完整 uint64 identity，从只读 RR 快照选择并返回配置内 Award。运行身份只有两表 `SELECT`；它没有用户身份、对象级授权、幂等键、DrawID、结果持久化、库存或发奖。真实隔离 Compose acceptance 的 64 个多 Award 请求最大并行 16，只证明有界并发下返回配置内结果且数据指纹不变，不建立业务吞吐事实。
+
+第 22～24 节再依次加入真实页面、规则和缓存；在正式 Draw/Result 与幂等语义出现前，不能把 ephemeral route、仓储、Selector 或前端 `Math.random()` Mock 解释为 Lottery 上下文已经形成最终结果事实，也不能在调用超时后无条件重试并声称得到同一次结果。第 21 节完整证据见[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
 
 ## 8. 外部系统和防腐边界
 

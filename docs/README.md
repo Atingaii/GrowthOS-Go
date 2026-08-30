@@ -32,9 +32,11 @@
 
 ## 当前基线
 
-- 当前完成：第 1～20 节，共 20 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、第一组业务表、Strategy Create/FindByID 仓储与无偏加权 Award 选择，下一节是第 21 节开放第一个 Lottery API。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供 Strategy/Award 聚合、consumer-owned bounded random port 与零分配线性加权 Selector，`internal/lottery/application` 提供两个窄仓储端口，`internal/lottery/adapter/mysqlrepo` 用父子写事务和只读 RR 快照实现它们，`internal/lottery/adapter/randomsource` 使用 `crypto/rand.Int` 提供完整 uint64 bounded source。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，应用身份只可对两张业务表 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
+- 当前完成：第 1～21 节，共 21 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、两张业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择，以及 development/test 专用的首个 ephemeral Lottery API；下一节是第 22 节接入真实 React 抽奖页。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供 Strategy/Award 聚合、consumer-owned bounded random port 与零分配线性加权 Selector，`internal/lottery/application` 提供仓储端口和 `EphemeralSelectionService`，MySQL/crypto/HTTP adapters 已在 composition root 中装配。`POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 默认关闭，仅 development/test 可显式启用，只读 Strategy 并返回不持久化的选择。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，当前运行身份只可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：Lottery 业务 API、Draw/Result 持久化、真实 Lottery 前端、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现；Repository 与 Selector 也尚未装配进产品 HTTP 进程。Compose 中的 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，系统状态之外的业务域尚未真实联调，INV-03 仍无最终结果事实可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验；CSPRNG 选择也不能替代幂等、库存、运营治理或公平合规。
+- 当前明确未做：正式 Lottery Draw/Result API 与持久化、认证、对象级授权、幂等、参与资格、库存、发奖、真实 Lottery 前端、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现。后端 ephemeral route 已存在，但 React `/lottery` 仍使用 `Math.random()` Mock；Compose 中 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，INV-03 仍无最终结果事实可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验；CSPRNG 选择也不能替代幂等、库存、运营治理或公平合规。
+
+第 21 节完整证据链：[课程正文](course/part-03/lesson-21-lottery-api.md)、[API 契约](api/lessons/lesson-21.md)、[QA](qa/lessons/lesson-21.md)、[第一性原理手记](design-thinking/lessons/lesson-21.md)、[面试问答](interview/lessons/lesson-21.md)与 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)。隔离 Compose acceptance 的 64 个多 Award 请求最多并行 16 个，不是 64 并发、64 RPS 或生产容量结论。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

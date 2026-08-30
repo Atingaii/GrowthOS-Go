@@ -19,7 +19,7 @@
 18,3,第一次正式业务建表,已完成,docs/course/part-03/lesson-18-lottery-schema.md,docs/qa/lessons/lesson-18.md
 19,3,实现仓储层,已完成,docs/course/part-03/lesson-19-lottery-repository.md,docs/qa/lessons/lesson-19.md
 20,3,实现最简单概率抽奖,已完成,docs/course/part-03/lesson-20-lottery-weighted-selection.md,docs/qa/lessons/lesson-20.md
-21,3,开放第一个 Lottery API,计划中,,
+21,3,开放第一个 Lottery API,已完成,docs/course/part-03/lesson-21-lottery-api.md,docs/qa/lessons/lesson-21.md
 22,3,实现第一个 React 抽奖页,计划中,,
 23,3,需求升级抽奖策略需要规则,计划中,,
 24,3,第一次 Redis 缓存,计划中,,

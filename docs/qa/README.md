@@ -26,6 +26,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 18 节验收](lessons/lesson-18.md) | Lottery 两表结构、约束、latest 2 Migration、dirty 停止、身份权限与 Compose 授权启动链 | 通过 |
 | [第 19 节验收](lessons/lesson-19.md) | Strategy 窄仓储端口、父子事务、RR 快照、坏数据失败关闭、错误语义与两表精确 SELECT/INSERT 权限 | 通过 |
 | [第 20 节验收](lessons/lesson-20.md) | 无偏整数权重映射、完整 uint64、crypto bounded source、错误/并发边界与微基准 | 通过 |
+| [第 21 节验收](lessons/lesson-21.md) | development/test ephemeral API、完整 uint64 string DTO、SELECT-only 运行身份、Nginx 边界与隔离 Compose 纵向链 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |

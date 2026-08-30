@@ -24,5 +24,6 @@
 | 第 18 节 | [Lottery 首组业务表但无业务接口](lesson-18.md) | 已验收 |
 | 第 19 节 | [Strategy 仓储已实现但仍无业务接口](lesson-19.md) | 已验收 |
 | 第 20 节 | [加权 Award 选择已实现但仍无业务接口](lesson-20.md) | 已验收 |
+| 第 21 节 | [development/test 临时 Lottery Selection API](lesson-21.md) | 已验收 |
 
 新增章节记录时复制 [`lesson-template.md`](../lesson-template.md)，并在本表追加一行。

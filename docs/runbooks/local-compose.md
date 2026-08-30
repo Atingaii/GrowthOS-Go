@@ -1,6 +1,6 @@
 # GrowthOS 本地 Docker Compose 运维手册
 
-**适用范围：** 第 16～18 节单机 Docker Desktop/Engine 开发环境
+**适用范围：** 第 16～21 节单机 Docker Desktop/Engine 开发环境
 
 **默认入口：** `http://127.0.0.1:8088`
 
@@ -8,11 +8,11 @@
 
 **数据边界：** 只有本项目 `mysql_data` named volume 持久业务/迁移数据；`mysql_socket` named volume 只承载运行期 Unix socket；Redis 明确不持久；用户已有 MySQL、Redis、RabbitMQ、PostgreSQL 等资源不在本手册操作范围内
 
-架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)与[ADR-0016](../decisions/ADR-0016-lottery-repository-boundaries.md)，HTTP/部署契约见[第 16 节 API 记录](../api/lessons/lesson-16.md)与[第 19 节 API 记录](../api/lessons/lesson-19.md)，当前环境证据见[第 16 节 QA](../qa/lessons/lesson-16.md)和[第 19 节 QA](../qa/lessons/lesson-19.md)。
+架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)、[ADR-0016](../decisions/ADR-0016-lottery-repository-boundaries.md)与 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。当前 Lottery HTTP/部署契约见[第 21 节 API](../api/lessons/lesson-21.md)，环境证据见[第 21 节 QA](../qa/lessons/lesson-21.md)，学习推导见[课程](../course/part-03/lesson-21-lottery-api.md)、[设计手记](../design-thinking/lessons/lesson-21.md)和[面试问答](../interview/lessons/lesson-21.md)。
 
 ## 1. 目的
 
-本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括 Lottery Migration 与第 19 节按真实 Repository SQL 更新的应用授权收敛门。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
+本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括 Lottery Migration、第 21 节两表 SELECT-only 运行授权门、长期 smoke 与一次性 ephemeral API acceptance。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
 
 它不是生产发布手册，不授权操作者删除用户现有容器/volume、修改共享数据库账号、绕过 Secret guard，或把本地 HTTP/密码/TLS 配置复制到 staging/production。
 
@@ -235,7 +235,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 | `migrate` | exited, code 0 |
 | `mysql-grants` | exited, code 0 |
 
-不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。前者执行结构演进，后者只经 Unix socket 撤销旧应用授权并建立当前两表 `SELECT, INSERT` allowlist；两者职责不可互换。
+不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。前者执行结构演进，后者只经 Unix socket 撤销旧应用授权并建立当前两表 `SELECT` allowlist；两者职责不可互换。
 
 ### 7.2 手工只读检查
 
@@ -267,18 +267,40 @@ make compose-smoke
 - Migration 与 mysql-grants 两个 one-shot 均 exited 0；
 - Migrator 身份读取到 `schema_migrations version=2, dirty=0`；
 - 两张表存在预期的 `*_name_basic` 约束，不残留旧约束名；
-- 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT, INSERT`，`@@GLOBAL.mandatory_roles` 为空；
-- 应用身份能读两张业务表，精确 grants 包含 INSERT；UPDATE、DELETE 和 `schema_migrations` 访问均被拒绝，smoke 的负向语句不改变数据；
+- 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT`，`@@GLOBAL.mandatory_roles` 为空；
+- 应用身份能读两张业务表；INSERT、UPDATE、DELETE 和 `schema_migrations` 访问均被拒绝，smoke 的负向语句不改变数据；
 - `/health`、`/ready` 为 200 JSON；
 - SPA `/` 为 200；
-- 未知 `/api/...` 为 Go `route_not_found` 404 JSON；
+- 未知 `/api/...` 为 Go `route_not_found` 404 JSON；未播种、动态推导的 StrategyID 访问 ephemeral route 为 `lottery_strategy_not_found` 404；
 - 404 header/body request ID 一致；
 - API/MySQL/Redis/Migrate/mysql-grants 没有 published port；
 - Web 只有配置的 `127.0.0.1:<port>`。
 
 脚本用任务专用 `mktemp` 保存响应，并在退出时删除，不会留下 body/header 文件。
 
-### 8.2 代码 + Compose 验证
+### 8.2 第 21 节隔离 Lottery API acceptance
+
+长期 `growthos` project 的 smoke 故意不写业务 fixture；要验证真实成功选择、失败与网关恢复，使用一次性环境：
+
+```bash
+make compose-lottery-api-acceptance
+```
+
+该脚本创建随机 Compose project、任务专用 Secret 目录、MySQL data/socket volumes 和 acceptance image tags；由 migrator 身份写入隔离 fixture，随后把 runtime app 收敛为两表 SELECT-only。它会核对：
+
+- `reward`、`no_reward` 与 MaxUint64 identity 的最小 decimal-string DTO；
+- invalid ID/demo header/query/body/idempotency、方法与尾斜杠错误；
+- 非法 Host 是带 no-store/request ID 的 server-level 421，但不是 JSON envelope；
+- 经 API location 识别的空 chunked 与非空 `Trailer` 声明是 JSON 400；不受支持或非法 Transfer-Encoding 可能被 Nginx HTTP parser 更早以非 JSON 501/400 拒绝，不能声称所有 framing 错误都统一 JSON；
+- `HEAD` 在语义上匹配 405 与 `Allow: POST`，但 HEAD 的 wire response 没有 body；
+- 16 KiB + 1 的已知长度请求由 edge 返回 JSON 413；
+- 多 Award 批次**总计 64 个请求，最大并行度 16**，只返回配置内结果；这不是 64 个同时请求、64 RPS、定速负载或生产容量；
+- 调用前后两张 Lottery 业务表的内容 fingerprint 不变；这只说明该用例没有 Lottery 业务状态写路径，不排除访问日志、连接统计等技术副作用；
+- API stop 时 502/504 的 JSON、no-store 与 request ID 保持关联，恢复后重新通过检查。
+
+脚本退出时只清理由 label、Compose project 与精确 ID 共同证明归属本次任务的容器、网络、volumes、临时 Secret/响应和无其他引用的 acceptance images；不会删除长期 `growthos` volumes、Secret、用户容器或可复用依赖。若 cleanup 报错，先按脚本输出解析精确 project/label，不使用全局 prune。
+
+### 8.3 代码 + Compose 验证
 
 ```bash
 make compose-verify
@@ -286,7 +308,7 @@ make compose-verify
 
 它运行完整仓库 `make verify`、Compose up 和 smoke，但**不包含** 5 分钟 M0。用于日常回归时不能被误记成已执行完整负载门禁。
 
-### 8.3 固定 M0
+### 8.4 固定 M0
 
 ```bash
 make compose-m0
@@ -316,7 +338,7 @@ docker stats --no-stream
 
 不要把全局 `docker stats` 中其他用户容器混入 GrowthOS 报告；按 Compose `ps -q` 解析准确容器后再归属数据。单次 `--no-stream` 是瞬时快照，不是峰值或 leak 证明。
 
-### 8.4 可调辅助负载
+### 8.5 可调辅助负载
 
 开发时可单独执行：
 
@@ -343,7 +365,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 docker compose --project-name growthos --file deploy/compose/compose.yaml logs --tail=200 mysql
 ```
 
-Web access log 允许 path、request ID、status、upstream status、bytes、request/upstream time；不应出现 query string 或 Referer。Nginx error log 只保留 critical，避免默认请求级错误拼入原始 target/Referer。Go 日志不打印 DSN、密码、SQL、driver raw cause 或内部 Secret path；MySQL driver 使用 `NopLogger`。
+Web access log 允许规范化 path、request ID、status、upstream status、bytes、request/upstream time；因此 ephemeral route 的实际 StrategyID 会出现在 path 中。它不应出现 query string 或 Referer，但“没有 query”不等于“没有业务标识”，仍需控制日志访问和保留期。Nginx error log 只保留 critical，避免默认请求级错误拼入原始 target/Referer。Go 日志不打印 DSN、密码、SQL、driver raw cause 或内部 Secret path；MySQL driver 使用 `NopLogger`。
 
 ### 9.2 request ID 关联
 
@@ -381,7 +403,7 @@ make compose-migrate
 make compose-grants
 ```
 
-授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份的旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT, INSERT`，精确比较 `SHOW GRANTS`，并要求 `@@GLOBAL.mandatory_roles` 为空。任何多余权限、mandatory role 或 socket/Secret 错误都会非零退出。不要为“兼容”已有额外角色而放宽脚本；先由管理员评审有效权限来源。
+授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份的旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT`，精确比较 `SHOW GRANTS`，并要求 `@@GLOBAL.mandatory_roles` 为空。任何多余权限、mandatory role 或 socket/Secret 错误都会非零退出。不要为“兼容”已有额外角色而放宽脚本；第 19 节 Repository Create 的隔离 writer 测试也不是给长期 runtime 恢复 INSERT 的理由。
 
 遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status 和授权核对。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
 
@@ -557,7 +579,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 make compose-status
 ```
 
-先确认 Migration 已 clean latest 2，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。脚本要求 mandatory role 为空，并要求最终授权精确等于 USAGE + 两张 Lottery 表 `SELECT, INSERT`；任意额外角色/权限都会故意失败。不要把脚本切换到 TCP、授予 schema wildcard、改用 Migrator 身份启动 API 或删掉校验。
+先确认 Migration 已 clean latest 2，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。脚本要求 mandatory role 为空，并要求最终授权精确等于 USAGE + 两张 Lottery 表 `SELECT`；任意额外角色/权限都会故意失败。不要把脚本切换到 TCP、授予 schema wildcard、恢复 INSERT、改用 Migrator 身份启动 API 或删掉校验。
 
 ### 12.7 API 启动失败
 
@@ -681,7 +703,7 @@ rm -rf deploy/compose/secrets
 - Docker Engine、Compose、Go 版本和主机架构；
 - Compose project/file、Web loopback 端口；
 - 六个 service 最终状态：四个常驻 healthy，Migration 与 mysql-grants 两个 one-shot exit code 0；
-- `schema_migrations` clean latest 2、两张 Lottery 表存在、应用精确 `SELECT, INSERT` 授权和 mandatory role 为空；
+- `schema_migrations` clean latest 2、两张 Lottery 表存在、运行应用精确 `SELECT` 授权和 mandatory role 为空；
 - smoke 输出；
 - 两段 healthload 单行 JSON、退出码；
 - 资源快照及其“瞬时非峰值”限制；

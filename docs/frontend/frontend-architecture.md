@@ -2,13 +2,13 @@
 
 ## 定位
 
-`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。第 17～20 节虽已加入 Lottery 领域对象、两张业务表、内部 Strategy Repository、加权 Selector 与生产随机源，但仍没有业务 API、产品进程装配或前端适配，因此其余业务能力继续按后续章节逐步接入。
+`web/` 是统一的 React 单页应用，复刻既有 GrowthOS UI 设计。第 14 节完成整体框架、路由、布局和组件体系，第 15 节完成首个真实前后端切片：系统状态页通过 Vite 同源代理读取 Go API 的 liveness 与 readiness。第 17～20 节加入 Lottery 领域对象、两张业务表、Strategy Repository、加权 Selector 与生产随机源，第 21 节又把它们装配成一个 development/test 专用的后端 ephemeral API；但前端尚未增加 Lottery API module 或运行时 decoder，因此业务页面继续按后续章节逐步接入。
 
 ## 工作台
 
 | 工作台 | 路由 | 当前内容 |
 | --- | --- | --- |
-| 用户端 | `/`、`/feed`、`/campaigns`、`/lottery`、`/points`、`/coupons` | 使用 Mock 数据呈现增长触达与用户权益；`/lottery` 未调用 Go 领域模型或第 18 节两张表 |
+| 用户端 | `/`、`/feed`、`/campaigns`、`/lottery`、`/points`、`/coupons` | 使用 Mock 数据呈现增长触达与用户权益；后端已有 ephemeral Lottery API，但 `/lottery` 仍以 `Math.random()` 决定结果，未调用它 |
 | 运营端 | `/admin/*` | 活动、策略、奖品、账户、实验、分析、任务和审计入口 |
 | MCP Gateway | `/mcp/*` | 服务、Tools、权限和审计控制台入口 |
 | AI Operator | `/agent/*` | 工作区、任务、审批和历史入口 |
@@ -49,9 +49,11 @@ pnpm preview
 
 ## 当前事实与后续演进
 
-当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取是真实联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`。仓库已有 Strategy/Award 配置对象、两张表、第 19 节 Create/FindByID Repository，以及第 20 节 WeightedSelector/CryptoSource；但它们没有装配进 `growth-api`，也没有业务 API。`/lottery` 仍使用客户端 `Math.random()` 演示且部分文案描述后端概率、Redis 锁等未来能力，它不会调用真正的 Repository 或 Selector，不构成领域对象运行调用链，也不代表一次抽奖结果、Redis 锁或发奖已经实现。
+当前只有 `/system/status` 对 Go API `/health` 和由 MySQL 支撑的 `/ready` 的读取完成了真实 React 联调。抽奖、活动、积分、Feed、MCP、Agent 等业务页面仍主要使用 `src/mocks/growthOsMockData.ts`。仓库已有 Strategy/Award、两张表、Create/FindByID Repository、WeightedSelector/CryptoSource，以及 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 后端路由；但 `web/src/api` 尚无 Lottery adapter，`/lottery` 仍使用客户端 `Math.random()` 演示。页面部分文案提到后端概率、Redis 锁等未来能力，不代表它已经调用真正的 Repository/Selector，也不代表正式 Draw、Redis 锁、库存或发奖已实现。
 
 第 22 节接入第一个真实 React 抽奖页时，必须显式替换或隔离对应 Mock，通过同源 API 获取服务端决定的结果，并保留 `reward`、`no_reward` 与系统错误的不同语义。在此之前，不把前端 `LotteryPrize` 展示类型反向用作 Go 领域或数据库契约，也不把表的行级 `updated_at` 当成前端聚合版本、ETag 或缓存失效标记。
+
+第 21 节后端能力的准确边界见[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。它默认关闭、仅 development/test 可启用，而且不提供认证、幂等或持久 Draw；第 22 节不能在客户端偷偷重试后把新 selection 冒充同一次结果。
 
 第 15 节已做正常、MySQL 不可用和 API 离线三种状态的真实浏览器关联验收，并核对刷新、请求关联与可访问性。该验收只证明当前环境中的联调和展示契约，不构成性能、持续可用性或生产就绪声明。
 

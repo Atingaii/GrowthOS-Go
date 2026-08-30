@@ -2,7 +2,7 @@
 
 **状态：** v1 目标基线；M0 工程探针已实测，业务 SLO 尚未实测
 
-**更新日期：** 2026-08-29
+**更新日期：** 2026-08-30
 
 **来源章节：** [第 7 节：确定非功能需求](../course/part-01/lesson-07-non-functional-requirements.md)
 
@@ -20,17 +20,17 @@
 
 | 项目 | 当前事实 |
 | --- | --- |
-| Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～20 节新增 Lottery 领域、两表、内部 Strategy Repository、加权选择器与生产随机源，均尚未装配进 API，仍无业务 HTTP API |
-| 业务数据库 | MySQL 8.4 连接池、账号隔离和前向 Migration 机制已通过功能联调；`000001` / `000002` 创建 `lottery_strategy` / `lottery_strategy_award`，latest 2；Create/FindByID 用手写 SQL、写事务和只读 RR 快照；应用只有两表 `SELECT, INSERT`，不能 UPDATE、DELETE 或访问 `schema_migrations` |
-| Lottery 领域 | Strategy/Award 已有正 ID、名称、至少一个候选、AwardID 唯一、正整数相对权重、显式 reward/no_reward、总和溢出与 slice 所有权单元测试；Repository 已验证原子 Create、快照 FindByID、坏数据失败关闭、并发/取消和错误分类；WeightedSelector 与 CryptoSource 已验证精确整数桶、完整 `uint64`、拒绝取模偏差、随机源失败和并发前提；仍没有 Draw/Result、HTTP 运行链或业务性能实测 |
-| React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API，其余业务页面仍使用 Mock；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
+| Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～20 节新增 Lottery 领域、两表、Repository、选择器与生产随机源，第 21 节把它们装配为默认关闭、仅 development/test 可启用的 ephemeral HTTP API |
+| 业务数据库 | MySQL 8.4 连接池、账号隔离和前向 Migration 机制已通过功能联调；`000001` / `000002` 创建 `lottery_strategy` / `lottery_strategy_award`，latest 2；Create/FindByID 用手写 SQL、写事务和只读 RR 快照；当前运行应用只有两表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`，历史 writer 集成测试使用隔离身份 |
+| Lottery 领域 | Strategy/Award、Repository、WeightedSelector 与 CryptoSource 已覆盖不变量、快照、错误和边界；第 21 节通过 `EphemeralSelectionService` 与 HTTP adapter 形成 Nginx→Go→MySQL→CryptoSource 真实链路，并验证完整 uint64 string DTO、1000 Award 上限与 cooperative timeout；仍没有认证、资格、Draw/Result、幂等、库存、发奖或业务性能实测 |
+| React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API。后端 Lottery ephemeral API 已存在，但尚无前端 Lottery API module，`/lottery` 仍使用 `Math.random()` Mock；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
 | 前端质量门 | Vitest、TypeScript typecheck 与 Vite build 已纳入验证；真实浏览器核对正常、数据库不可用和 API 离线的状态展示与可访问性 |
 | 性能实测 | M0 `/health` 在本机 Docker Desktop 上以 100 RPS 持续 5 分钟：30,000/30,000 成功、P99 4.1495 ms；`/ready` 20 RPS 持续 30 秒：600/600 成功、P99 6.841375 ms。仅代表工程探针，不代表业务接口 |
 | 可用性实测 | 两个短窗口内错误、异常状态和丢弃均为 0；没有长稳、跨主机、灾备或生产可用性证据 |
 | 恢复演练 | 已演练 MySQL、API、Redis 单点停止与恢复；验证 liveness/readiness 分离、SPA 存活和 Nginx 动态重解析。未验证宿主机故障或数据灾难恢复 |
-| 安全与故障演练 | 已验证应用仅两表 `SELECT, INSERT`、无 UPDATE/DELETE/`schema_migrations` 权限，授权作业无网络且只经 socket，并对精确 grants 与空 mandatory roles 失败关闭；还验证唯一回环端口、内部网络隔离、非 root/只读/capability 边界、日志 query/Referer 脱敏和 502 请求关联；不等于生产渗透测试 |
+| 安全与故障演练 | 已验证当前运行应用仅两表 `SELECT`、无 INSERT/UPDATE/DELETE/`schema_migrations` 权限，授权作业无网络且只经 socket，并对精确 grants 与空 mandatory roles 失败关闭；还验证唯一回环端口、内部网络隔离、非 root/只读/capability、受限 Host/framing/size、日志 query/Referer 脱敏和 502/504 请求关联；不等于认证、对象授权或生产渗透测试 |
 
-第 13 节真实 MySQL 8.4.11 集成测试证明身份、连接、探针和 Migration 机制能工作；第 15 节真实浏览器关联验收证明系统状态页能区分正常、数据库不可用和 API 离线；第 16 节再形成可复现 Compose 栈、短时故障演练和 M0 探针负载基线；第 17～18 节证明 Lottery 配置对象与两表约束；第 19 节以独立 MySQL 8.4.11 验证 Repository 原子性、并发/取消、RR 快照、坏数据、执行计划和精确权限；第 20 节证明纯内存加权映射、完整 `uint64` 边界和生产随机 adapter 的局部契约。这些都是有界证据：Repository 测试没有 HTTP 调用或业务负载，算法微基准不包含 SQL、网络、序列化、Draw 持久化或并发业务争用，探针没有业务查询，五分钟也没有覆盖连接池长期抖动、数据增长、宿主机故障或灾备，因此不能把下面任何业务候选 SLO 标为已达到。
+第 13 节真实 MySQL 8.4.11 集成测试证明身份、连接、探针和 Migration 机制能工作；第 15 节真实浏览器关联验收证明系统状态页能区分正常、数据库不可用和 API 离线；第 16 节再形成可复现 Compose 栈、短时故障演练和 M0 探针负载基线；第 17～18 节证明 Lottery 配置对象与两表约束；第 19 节以独立 MySQL 8.4.11 验证 Repository 原子性、并发/取消、RR 快照、坏数据、执行计划和隔离 writer 权限；第 20 节证明纯内存加权映射、完整 `uint64` 边界和生产随机 adapter；第 21 节的独立 Compose 环境证明受限 HTTP 纵向链、网关故障、没有 Lottery 业务状态写路径，且调用前后两张业务表 fingerprint 不变。访问日志和连接统计等技术副作用仍可能发生。其多 Award 批次总计 64 个请求、最大并行度 16，不是 64 个同时请求、64 RPS 或生产压测。算法微基准不包含 SQL、网络、序列化、Draw 持久化或业务争用，acceptance 没有定速、延迟分位或长稳口径，探针也没有业务查询，因此不能把下面任何业务候选 SLO 标为已达到。
 
 ### M0 工程探针实测
 
@@ -132,12 +132,15 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 | 第 18 节持久化前置 | 两表 DDL、约束、latest 2/dirty、应用只读权限与 Compose 授权启动门 | 已验证 Schema/权限，不含 Repository、业务写入、抽奖执行或业务 SLO |
 | 第 19 节仓储前置 | 父子原子 Create、RR/read-only FindByID、恢复校验、并发/取消、1205、执行计划与精确权限 | 已在隔离 MySQL 8.4.11 验证；尚无算法、HTTP 业务负载、Draw/Result 或业务 SLO |
 | 第 20 节算法前置 | 精确整数桶、完整 `uint64`、crypto rejection、错误边界、并发路径和本机微基准 | 已验证纯内存 selector 与随机 adapter；不含 HTTP、SQL、Draw/Result、幂等重试或业务 SLO |
+| 第 21 节临时 API 前置 | feature gate、最小 DTO、两表 SELECT-only、Nginx→Go→MySQL→CryptoSource、网关故障、数据指纹与有界并发 | 已在隔离 Compose 验证 64 个请求、最大并行 16；没有定速 RPS/延迟分位、正式 Draw、认证、幂等、React 联调或业务 SLO |
 | M1 · 第 24 节 | 抽奖算法与缓存性能基线 | 待验证 |
 | M2 · 第 40 节 | 活动参与、库存、锁和幂等报告 | 待验证 |
 | M4 · 第 72 节 | Feed、事件接收与分析水位报告 | 待验证 |
 | M5 · 第 80 节 | 分布式峰值和分片依据 | 待验证 |
 | M6 · 第 88 节 | MCP 权限、审计和网关开销 | 待验证 |
 | M7 · 第 96 节 | 12 小时稳定性、灾备和故障演练报告 | 待验证 |
+
+第 21 节证据边界可追溯到[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)与 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
 
 ## 11. 变更触发条件
 

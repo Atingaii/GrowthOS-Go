@@ -2,15 +2,15 @@
 
 **状态：** V0 逻辑设计基线
 
-**更新日期：** 2026-08-29
+**更新日期：** 2026-08-30
 
-**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)
+**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；当前实现状态由[第 21 节](../course/part-03/lesson-21-lottery-api.md)校准
 
 ## 1. 文档目的
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架、第 11～16 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈，第 17～18 节的 Lottery Strategy/Award 领域对象与两张业务表，第 19 节 Create/FindByID 窄仓储、聚合写事务、只读 RR 快照和精确两表 `SELECT, INSERT` 权限，以及第 20 节完整 `uint64` 边界的加权 Selector 与 `crypto/rand` adapter。除系统探针外的前端业务页面仍使用 Mock；Repository 与 Selector 尚未装配进产品进程，业务 API、Draw/Result、Redis 业务调用、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
+V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架、第 11～16 节已验收的 Gin 进程、`GET /health`、`GET /ready`、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈，第 17～18 节的 Lottery Strategy/Award 领域对象与两张业务表，第 19 节 Create/FindByID 窄仓储与聚合事务/快照，第 20 节完整 `uint64` 边界的加权 Selector 与 `crypto/rand` adapter，以及第 21 节只读、默认关闭且仅 development/test 可启用的 ephemeral selection API。当前 Compose 运行账号仅有两表 `SELECT`。React `/lottery` 仍使用 `Math.random()` Mock；正式 Draw/Result、认证、幂等、资格、库存、发奖、Redis 业务调用、MQ、MCP Gateway 与 AI Agent 运行时仍未实现。
 
 ## 2. 图例与状态
 
@@ -184,17 +184,18 @@ flowchart LR
 
 ## 7. 第一版运行形态
 
-第 9～20 节的当前形态是一个模块化单体，而不是上图中每个方框一个服务；领域、表、仓储和选择器代码已经存在，但尚未装配成 HTTP 业务运行链路：
+第 9～21 节的当前形态是一个模块化单体，而不是上图中每个方框一个服务；领域、表、仓储和选择器已经装配成一条受限的 ephemeral HTTP 纵向链，但没有形成正式 Draw：
 
 ```mermaid
 flowchart LR
     BROWSER[浏览器]
     WEB[React Web\n系统状态与业务页面]
     MOCK[前端 Mock 数据\n当前业务演示]
-    API[Go Gin API\n工程探针运行时]
+    API[Go Gin API\n探针 + ephemeral Lottery route]
     MIGRATE[growth-migrate\n独立 up / status]
     GRANTS[mysql-grants\n无网络 socket 授权作业]
-    MODULES[Lottery domain/application\n聚合、窄端口与加权 Selector]
+    USECASE[EphemeralSelectionService\n只读快照 + 临时选择]
+    DOMAIN[Lottery domain\n聚合与加权 Selector]
     RANDOM[CryptoSource\n均匀 bounded random]
     REPOSITORY[MySQL Repository\nCreate / FindByID]
     TABLES[(MySQL 8.4\nlottery_strategy\nlottery_strategy_award)]
@@ -202,30 +203,31 @@ flowchart LR
 
     BROWSER --> WEB
     WEB -->|同源 GET /health、/ready\nVite（宿主）/Nginx（Compose）代理| API
-    WEB -->|业务页面，当前| MOCK
-    API -.尚未装配业务用例.-> MODULES
-    API -.尚未注入.-> REPOSITORY
-    API -->|启动 Ping 与 /ready\n尚无业务 SQL| TABLES
+    WEB -->|Lottery 页面，当前 Math.random| MOCK
+    API -->|feature 打开时 POST ephemeral-selections| USECASE
+    API -->|启动 Ping 与 /ready| TABLES
+    USECASE -->|StrategyReader.FindByID| REPOSITORY
+    USECASE -->|选择配置内 Award| DOMAIN
     MIGRATE -->|000001 / 000002\nclean latest 2| TABLES
     TABLES -->|Migration 完成后| GRANTS
-    GRANTS -->|仅授予应用两表 SELECT、INSERT\n再允许 API 启动| API
-    REPOSITORY -->|父子写事务\n只读 RR 快照| TABLES
-    REPOSITORY -->|Restore 后返回合法聚合| MODULES
-    RANDOM -->|实现领域拥有的随机端口| MODULES
-    MODULES -.后续派生缓存.-> REDIS
+    GRANTS -->|仅授予运行应用两表 SELECT\n再允许 API 启动| API
+    REPOSITORY -->|当前运行链只读 RR 快照| TABLES
+    REPOSITORY -->|Restore 后返回合法聚合| USECASE
+    RANDOM -->|实现领域拥有的随机端口| DOMAIN
+    DOMAIN -.后续派生缓存.-> REDIS
 ```
 
-宿主开发模式由 Vite 精确代理 `/health`、`/ready` 和预留的 `/api` 路径边界；Compose 模式则由只发布 `127.0.0.1:8088` 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。Compose 启动链是 `mysql → migrate → mysql-grants → api`；授权作业 `network_mode: none`，只经 Unix socket 运行，并在 grants 不是精确 allowlist 或 `@@GLOBAL.mandatory_roles` 非空时失败关闭。当前浏览器到 API 的实线只代表两个系统探针已经真实接通；Lottery Repository 已在单元、真实 MySQL 与 Compose 权限层验证，Selector/CryptoSource 已在纯内存、错误注入、边界、并发和微基准层验证，但 `growth-api` 尚未构造或调用它们，`/api` 尚无业务接口，Redis 也没有 API client 或业务数据，Mock 节点不属于服务端事实源。
+宿主开发模式由 Vite 精确代理 `/health`、`/ready` 和 `/api` 路径边界；Compose 模式则由只发布 `127.0.0.1:8088` 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。Compose 启动链是 `mysql → migrate → mysql-grants → api`；授权作业 `network_mode: none`，只经 Unix socket 运行，并在两表 `SELECT` grants 不是精确 allowlist 或 `@@GLOBAL.mandatory_roles` 非空时失败关闭。系统状态页真实调用两个探针；Lottery 后端路由也真实贯通 Nginx→Go→MySQL→CryptoSource，但 React 尚无 Lottery API module，所以图中 Lottery 页面仍连向 Mock。隔离 acceptance 的 64 个多 Award 请求最多并行 16 个，只验证返回配置内结果、网关契约和数据指纹不变，不是 64 并发、64 RPS 或产品 SLO。Redis 仍没有 API client 或业务数据，Mock 节点不属于服务端事实源。
 
 ### 7.1 当前、近期和远期边界
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收；第 17～20 节 Strategy/Award 领域、两表 Schema/latest 2、Create/FindByID Repository、精确 SELECT/INSERT 授权、WeightedSelector 与 CryptoSource 已验收 | 已存在的能力按台账和 QA 核查 |
-| 第 21～72 节 | Lottery API/页面/规则/缓存、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
+| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、React UI 框架与业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收；第 17～21 节 Strategy/Award、两表 Schema/latest 2、Create/FindByID Repository、WeightedSelector/CryptoSource、两表 SELECT-only 运行身份与受限 ephemeral API 已验收 | 已存在的能力按台账和 QA 核查 |
+| 第 22～72 节 | Lottery 真实页面/规则/缓存、正式 Draw 演进、活动、账户、库存、MQ、权益、Feed、行为与分析 | 随需求演进 |
 | 第 73～96 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 
-这里不承诺 Redis 已经承载业务缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；Compose 的隔离 Redis 占位不等于业务接入，Strategy/Award 领域、两张表、Repository 和 Selector 也不等于可在线抽奖或已经形成最终结果事实。表内 `updated_at` 仅是行元数据，不能被解释为聚合版本或缓存水位。
+这里不承诺 Redis 已经承载业务缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；Compose 的隔离 Redis 占位不等于业务接入，ephemeral route 也不等于带认证、幂等、资格、库存、发奖和结果查询的正式在线抽奖。表内 `updated_at` 仅是行元数据，不能被解释为聚合版本或缓存水位。
 
 ## 8. 数据与信任边界
 
@@ -279,4 +281,6 @@ flowchart LR
 
 ## 12. 下一阶段输入
 
-第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境；第 17～18 节建立 Lottery 聚合与两张业务表；第 19 节用 Create/FindByID 窄端口、原子写事务、只读 RR 快照和领域恢复闭合仓储边界；第 20 节再以 bounded random port、`crypto/rand.Int` 和减法桶闭合最小加权选择机制。下一步第 21 节开放首个 Lottery API 时，必须先解决 composition root 如何共享数据库池与 adapter，并避免把无 DrawID、结果持久化和幂等语义的瞬时选择伪装为可安全重试的最终抽奖。继续遵守 V0 的真实状态表达：Repository/Selector 存在不等于在线业务，行时间戳不等于聚合版本，环境中的 Redis 占位不等于业务缓存，未来服务和基础设施不能提前伪装成交付物。
+第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境；第 17～18 节建立 Lottery 聚合与两张业务表；第 19 节用 Create/FindByID 窄端口、原子写事务、只读 RR 快照和领域恢复闭合仓储边界；第 20 节以 bounded random port、`crypto/rand.Int` 和减法桶闭合最小加权选择机制；第 21 节再通过共享 pool、只读 port、feature gate 和专用 DTO 形成 development/test ephemeral API。下一步第 22 节接入真实 React 页面时，必须替换或隔离 `Math.random()` Mock，并保持 reward、no_reward、系统失败与“未形成正式 Draw”的诚实语义。继续遵守 V0 的真实状态表达：可调用的临时选择不等于最终结果，行时间戳不等于聚合版本，环境中的 Redis 占位不等于业务缓存，未来服务和基础设施不能提前伪装成交付物。
+
+第 21 节的详细边界见[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)、[面试问答](../interview/lessons/lesson-21.md)和 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
