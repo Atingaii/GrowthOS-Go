@@ -11,7 +11,7 @@
 - **基准提交：** `90844c1`（第 28 节已验收 tip）
 - **当前实现序列：** `041dc30`、`27bd514`、`0ca25d2`、`51dbd61`、`a173d8b`、`3863b06`、`ab056ba`、`515d776`
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** product/ADR、共享 typed branch、共享 fact session、domain evaluator/decision/path、application exact-graph orchestration、低披露 error 与架构停止线已经形成。定向普通/race/20 轮 shuffle/vet、最终 10 秒 fuzz、post-doc `make verify`、全仓 race、atomic coverage、Web test/typecheck/build、第 28 节真实 MySQL 回归、doccheck/diff/停止线/线性历史/main 与最终产物清理均已实际通过；只剩最终证据提交后的同名远端 ref 与累计分支冻结需要核对
+- **当前记录状态：** product/ADR、共享 typed branch、共享 fact session、domain evaluator/decision/path、application exact-graph orchestration、低披露 error 与架构停止线已经形成。定向普通/race/20 轮 shuffle/vet、最终 10 秒 fuzz、post-doc `make verify`、全仓 race、atomic coverage、Web test/typecheck/build、第 28 节真实 MySQL 回归、doccheck/diff/停止线/线性历史/main、最终产物清理、同名远端 ref 与累计分支 fast-forward 均已实际通过
 
 > 本节验收的是“给定 exact validated immutable graph 和一份权威会员事实时，Lottery 能否在有界 context 内形成唯一完整 Strategy route”。它不验收 Activity 发布、公开 API、真实会员 adapter、Strategy/Award selection、正式 Draw、会话、RBAC、UI 或浏览器闭环。课程标题中的“引擎”不能被用来外推通用 Rule Engine/DSL 已完成。
 
@@ -135,7 +135,7 @@
 | no generic engine/fact bag | AST architecture guard | ACTUAL-PASS（application定向门禁） | 未来永远不需要扩展 |
 | no runtime/HTTP/Web/Compose wiring | production-source identifier guard | ACTUAL-PASS（application定向门禁） | 生产部署/浏览器已测试 |
 | repository/frontend regression | 全仓普通/race 与 Web test/typecheck/build | ACTUAL-PASS；最终聚合 `make verify` 仍待文档收口后复跑 | 当前可以宣称 accepted tip |
-| remote/cumulative refs | push 后 exact refs | FINAL-FREEZE-PENDING | 远端与累计分支已冻结 |
+| remote/cumulative refs | push 后 exact refs | ACTUAL-PASS | 不能推导 future commit 自动同步 |
 
 ## 5. 按提交核查真实演进
 
@@ -525,8 +525,8 @@ web/dist/assets/index-DtgKhDQL.js
 | runtime stop-line diff | 精确检查 cmd/web/http/appconfig/compose/migrations | FINAL-CANDIDATE-PASS；目标 diff 无输出 |
 | 线性历史 | base ancestor + `rev-list --merges` | FINAL-CANDIDATE-PASS；base 是 ancestor、零 merge commit |
 | task artifacts | 枚举并精确清理 coverage profiles、Web dist 与 disposable MySQL | FINAL-CANDIDATE-PASS |
-| remote lesson branch | local HEAD 与同名 origin ref 相等 | FINAL-FREEZE-PENDING |
-| cumulative branch | `codex/complete-implementation` fast-forward 到 accepted tip | FINAL-FREEZE-PENDING |
+| remote lesson branch | 冻结证据提交 push 后 local HEAD 与同名 origin ref 相等 | ACTUAL-PASS；最终仍以实际 ref 为准 |
+| cumulative branch | `codex/complete-implementation` fast-forward 到章节 accepted tip | ACTUAL-PASS；local/origin 已对齐 |
 | main 不变 | local/origin main 均为 `3ec52a2031bef80d3b364dc94d7e8396bc9a1d6b` | FINAL-CANDIDATE-PASS |
 
 ## 14. Final gate建议命令
@@ -682,8 +682,8 @@ post-doc final gate 再次生成的同 6 个 Web dist 文件也已逐个删除�
 - [x] post-doc final candidate `make verify` 聚合复跑；
 - [x] `90844c1..HEAD` diff/stop-line/线性历史核对；
 - [x] final gate 再生成的任务自有产物已精确清理；
-- [ ] 冻结提交 push 后同名远端 SHA 核对；
-- [ ] 累计 `codex/complete-implementation` fast-forward；
+- [x] 冻结提交 push 后同名远端 SHA 核对；
+- [x] 累计 `codex/complete-implementation` fast-forward；
 - [x] main/local origin 保持 `3ec52a2031bef80d3b364dc94d7e8396bc9a1d6b` 不变。
 
-在最后两项真实完成前，本节可以称为“完整候选本地验收通过”，但不能称为远端 accepted tip 与累计学习分支均已冻结。最终 SHA 不能安全预写在产生该 SHA 的提交内容里，应以实际 Git refs 和根任务最终交接记录为准。
+冻结证据提交 `e74037e` 推送后，已实际核对本地 HEAD、同名远端分支与 `codex/complete-implementation` 三者相等，`main` / `origin/main` 仍为 `3ec52a2`。本段是唯一后续的远端引用记录；它推送后再次把章节分支和累计分支对齐到本文所在的实际 tip。最终 accepted tip 仍以同名远端引用为准，不在会改变自身 SHA 的文档中虚构自身 SHA，也不把内部 evaluator 的成功外推为发布、Activity、认证、权限或正式 Draw 已完成。
