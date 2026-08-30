@@ -621,7 +621,7 @@ for completed_service in migrate mysql-grants; do
         fail "$completed_service did not complete successfully"
     fi
 done
-ok 'all lesson-21 Compose services reached their expected healthy/completed states'
+ok 'all Compose services for the lesson-21 API contract reached their expected healthy/completed states on the lesson-22 snapshot'
 
 resolve_container api
 api_image=$(docker inspect --format '{{.Config.Image}}' "$resolved_container_id")
@@ -905,12 +905,12 @@ assert_error_response() {
 }
 
 request GET /health 200 - - -
-if ! jq -e '.status == "ok" and .version == "lesson-21" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/health did not identify the lesson-21 build'
+if ! jq -e '.status == "ok" and .version == "lesson-22" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/health did not identify the lesson-22 build'
 fi
 request GET /ready 200 - - -
-if ! jq -e '.status == "ready" and .version == "lesson-21" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/ready did not identify the ready lesson-21 build'
+if ! jq -e '.status == "ready" and .version == "lesson-22" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/ready did not identify the ready lesson-22 build'
 fi
 ok 'health and readiness succeeded through the web proxy'
 

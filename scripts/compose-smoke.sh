@@ -159,24 +159,24 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-21' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-21"
+if [ "$inspected_value" != 'growthos/migrate:lesson-22' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-22"
 fi
-ok 'migrate image identifies the lesson-21 Lottery API-compatible build'
+ok 'migrate image identifies the lesson-22 React Lottery-compatible build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-21' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-21"
+if [ "$inspected_value" != 'growthos/api:lesson-22' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-22"
 fi
-ok 'api image identifies the lesson-21 Lottery API release'
+ok 'api image identifies the lesson-22 React Lottery release snapshot'
 
 resolve_container web
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/web:lesson-21' ]; then
-    fail "web image is $inspected_value instead of growthos/web:lesson-21"
+if [ "$inspected_value" != 'growthos/web:lesson-22' ]; then
+    fail "web image is $inspected_value instead of growthos/web:lesson-22"
 fi
-ok 'web image identifies the lesson-21 hardened API gateway build'
+ok 'web image identifies the lesson-22 real React Lottery page build'
 
 # The dollar-prefixed expressions belong to the container shell.
 # shellcheck disable=SC2016
@@ -399,10 +399,10 @@ assert_json_response() {
 
 request /health 200 application/json
 assert_json_response /health
-if ! jq -e '.status == "ok" and .version == "lesson-21"' "$response_body" >/dev/null 2>&1; then
-    fail '/health did not identify the lesson-21 API build'
+if ! jq -e '.status == "ok" and .version == "lesson-22"' "$response_body" >/dev/null 2>&1; then
+    fail '/health did not identify the lesson-22 API build'
 fi
-ok '/health returned HTTP 200, JSON, and the lesson-21 build through the web proxy'
+ok '/health returned HTTP 200, JSON, and the lesson-22 build through the web proxy'
 
 request /ready 200 application/json
 assert_json_response /ready
@@ -485,7 +485,7 @@ cache_control_count=$(header_count 'Cache-Control' "$response_headers")
 if [ "$cache_control_count" -ne 1 ] || [ "$cache_control" != 'no-store' ]; then
     fail 'the ephemeral selection route must return exactly one Cache-Control: no-store header'
 fi
-ok 'the lesson-21 ephemeral selection route reached MySQL and returned the correlated no-store 404 contract'
+ok 'the ephemeral selection route reached MySQL and returned the correlated no-store 404 contract'
 
 published_ports() {
     # The dollar-prefixed names belong to Docker's Go template, not this shell.
