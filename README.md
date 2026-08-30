@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-25%20lessons%20completed-2563EB?style=flat-square" alt="已完成 25 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-26%20lessons%20completed-2563EB?style=flat-square" alt="已完成 26 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～25 节，共 25 节：M0 Compose 工程基线与 M1 Strategy 缓存本地基线均已验收。第 17～24 节依次建立 Lottery 领域模型、两张 MySQL 表、Strategy 仓储、无偏加权选择、development/test ephemeral API、真实 React 消费者、规则所有权停止线和可选 Redis Strategy 读取投影；第 25 节首次在 Participation domain/application 中以权威注册事实、显式 freshness、含边界 cutoff 和类型化失败语义实现可执行的新用户资格判断。它尚未接入事实 adapter、HTTP、React、Lottery 或真实主体。当前仍没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、完整参与资格链、库存或发奖；其余用户、Admin、MCP 与 Agent 工作台仍是明确 Mock/本地交互。资格单测通过、缓存命中和可见的 ephemeral selection 都不等于在线抽奖闭环。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～26 节，共 26 节：M0 Compose 工程基线与 M1 Strategy 缓存本地基线均已验收。第 17～24 节建立 Lottery 领域、两表、仓储、无偏选择、ephemeral API/React、规则所有权与 Redis Strategy 投影；第 25～26 节在 Participation 中先实现权威注册事实的新用户判断，再增加最小风险 screening 事实与固定“新用户 → 风险准入”短路链。两节点共享一次 logical as-of，拒绝、技术失败与取消保持分离；但它仍无生产 fact adapter、HTTP/React/Lottery 装配或可信主体。当前没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、在线资格门控、库存或发奖；资格单测通过、缓存命中和可见的 ephemeral selection 都不等于在线抽奖闭环。
 
 ## 项目简介
 
@@ -159,6 +159,8 @@ curl --request POST \
 
 第 25 节在新的 `internal/participation` 边界实现首个资格纵切：外部用户目录仍拥有注册原始事实，Participation 通过 consumer-owned `RegistrationFactReader` 读取带来源、修订和观察时刻的快照，用一次受控服务端时刻校验未来时间、主体匹配和最大陈旧时间，再按含边界的注册 cutoff 返回 `eligible` / `ineligible` 或“无法可信决定”的类型化技术错误。事实缺失、过期、损坏和依赖故障不会被伪装成用户不合格；同时没有提前抽象通用 `Rule`、责任链或规则引擎。完整证据见[规则基线](docs/product/new-user-eligibility-v1.md)、[课程](docs/course/part-04/lesson-25-user-eligibility.md)、[ADR-0021](docs/decisions/ADR-0021-participation-new-user-eligibility.md)、[API 零变化记录](docs/api/lessons/lesson-25.md)、[QA](docs/qa/lessons/lesson-25.md)、[设计手记](docs/design-thinking/lessons/lesson-25.md)和[面试问答](docs/interview/lessons/lesson-25.md)。本节没有事实 adapter、Migration、HTTP/React 接入、身份认证或 Lottery 编排，现有 ephemeral route 仍不执行资格判断。
 
+第 26 节以已登记的风险 screening 为第二条真实 Participation 规则：风险 authority 只提供 `passed/blocked`、source-owned assessed-at 与版本，Participation 再形成场景准入。`EligibilityPrerequisiteChain` 在事实读取前捕获一次受控 logical as-of，固定先检查新用户，只有确认通过才访问风险 reader；tail 零调用、freshness 纳秒边界、取消、typed-nil、trace copy、64 并发和 race 均有专项测试。完整证据见[规则链基线](docs/product/participation-prerequisite-chain-v1.md)、[课程](docs/course/part-04/lesson-26-responsibility-chain.md)、[ADR-0022](docs/decisions/ADR-0022-participation-prerequisite-chain.md)、[API 零变化记录](docs/api/lessons/lesson-26.md)、[QA](docs/qa/lessons/lesson-26.md)、[设计手记](docs/design-thinking/lessons/lesson-26.md)和[面试问答](docs/interview/lessons/lesson-26.md)。它是固定 ordered gate chain，不是动态规则引擎，也尚未进入现有 Lottery 运行链。
+
 ### React 前端框架
 
 `web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛桌面侧栏、移动抽屉、顶栏、搜索、主题、通知样例、内容宽度和可访问交互，并重构为高密度、扁平的工作台信息架构。真实前端链路目前只有两类：`/system/status` 消费 Go 的 `GET /health` 与 `GET /ready`；`/lottery` 通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 消费 development/test ephemeral selection API。活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用带时间标签的 Mock 快照或浏览器内本地状态，不是实时后端数据。工作台分组也不是身份或权限系统；当前没有登录认证、RBAC、租户/对象级数据范围或服务端授权强制。
@@ -219,7 +221,7 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化配置、`slog`、请求关联、统一错误、健康/readiness、`sqlx` 与可选 Redis pool；Lottery Strategy/Award、仓储、cache-aside、无偏 Selector、crypto adapter 和 development/test ephemeral API；Participation 新用户资格 domain/application 切片 | 事实 adapter、资格组合、正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化配置、`slog`、请求关联、统一错误、健康/readiness、`sqlx` 与可选 Redis pool；Lottery Strategy/Award、仓储、cache-aside、无偏 Selector、crypto adapter 和 development/test ephemeral API；Participation 新用户/风险准入与固定短路链 | 真实 fact adapter、规则路由/Activity、正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时解码；系统状态页和 ephemeral Lottery 页面已真实联调；第 24 节缓存不扩张浏览器契约 | 第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
 | 数据 | MySQL 8.4、API/Migrator 身份隔离、latest 2 前向 Migration、两张 Lottery 表、事务创建/RR 快照；运行身份仅两表 `SELECT`；Redis 只保存版本化 Strategy 投影，48 MiB `allkeys-lru`、无持久化、最小 ACL | Draw/Result、库存与发奖事实、更新/聚合版本及精准缓存失效、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
@@ -237,7 +239,7 @@ make verify
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 已完成：Strategy/Award、两表、仓储、选择、API/React、规则边界与 Redis 读取投影/M1 均已验收 |
-| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25 节首个 Participation 资格切片已验收；第 26 节继续以第二条真实规则反推最小责任链，第 31～35 节再形成跨工作台统一访问控制 |
+| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～26 节已形成两个具体 Participation gate 与最小线性短路链；第 27 节开始用真实路由暴露其局限，第 31～35 节再形成统一访问控制 |
 | 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
 | 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |
 | 7 | 54～61 | 积分、优惠券、返利与权益中心 | 计划中 |

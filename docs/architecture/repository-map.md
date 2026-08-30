@@ -5,7 +5,7 @@
 
 本文件描述当前仓库，而不是第 101 节的目标仓库。目录随需求演进，改动目录职责时必须同步更新本文件。
 
-第 9 节已验收仓库工程基线。第 11～12 节落实 Gin 进程、配置、结构化日志、请求关联和错误适配；第 13 节加入 MySQL 连接池、独立 Migration 命令、数据库 readiness 与真实 MySQL 8.4 验收；第 14～15 节完成 React 框架和首个真实前后端系统探针切片；第 16 节把这些能力装配为隔离的 Compose M0 开发栈；第 17～18 节落地 Strategy/Award 聚合与两张业务表；第 19 节以 application 窄端口和 MySQL Strategy Repository 闭合持久化边界；第 20 节新增 consumer-owned bounded random port、加权 Selector 与 crypto adapter；第 21 节把只读 Repository、Selector 和专用 HTTP adapter 装配为 development/test ephemeral selection API；第 22 节通过 Lottery API adapter、运行时 decoder 与请求状态 Hook 形成真实 React 消费者，并用共享 `WorkspaceShell` 收敛四类工作台；第 23 节只新增规则需求、ADR 和学习证据；第 24 节以 Lottery-owned cache-aside 装饰器、窄 Redis client 与最小 ACL 加速 Strategy 读取投影；第 25 节首次建立 Participation domain/application，以权威注册事实和具体 cutoff policy 形成可执行资格决定。当前仍没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、完整资格组合、库存或发奖；第 25 节资格切片没有 adapter、HTTP 或 Lottery 装配，除系统探针与 Lottery selection 外，工作台业务数据仍为明确 Mock/本地状态。
+第 9～24 节依次形成 Gin/MySQL/React/Compose 工程基线及 Lottery 领域、两表、仓储、选择、ephemeral API/React 和 Redis Strategy 投影。第 25 节首次建立 Participation 新用户资格；第 26 节增加风险 screening 准入，并用单一 logical as-of、固定顺序、短路、类型化失败和有界 trace 组合成最小前置资格链。当前仍没有生产 fact adapter、正式 Draw/Result、登录认证、RBAC/对象级授权、Activity、在线资格门控、库存或发奖；Participation 代码没有 HTTP、Lottery 或 composition-root 装配，其他工作台业务数据仍为明确 Mock/本地状态。
 
 | 路径 | 当前职责 | 引入产品代码的章节 |
 | --- | --- | --- |
@@ -28,8 +28,8 @@
 | `internal/lottery/adapter/strategycache` | Lottery-owned StrategyReader cache-aside 装饰器：版本化投影、完整 uint64 string、2 MiB/1000 Award 边界、TTL jitter、同 key fill 合并、坏值精确删除与 fail-open；不拥有 Redis client | 第 24 节 |
 | `internal/lottery/adapter/randomsource` | 以 `crypto/rand.Int` 实现均匀 `[0,upper)` 的生产随机适配器；支持完整 uint64、稳定错误与并发共享，不负责权重映射或 Draw 审计 | 第 20 节 |
 | `internal/lottery/adapter/httpapi` | 注册默认关闭的 ephemeral selection route，校验规范 uint64 path、demo header/query/body framing，映射最小 string DTO、稳定错误、timeout、no-store 与 Request ID | 第 21 节 |
-| `internal/participation/domain` | 持久化/传输无关的 ParticipantRef、权威注册事实快照、版本化且含边界的新用户 policy、稳定 outcome/reason 与纯资格 evaluator | 第 25 节 |
-| `internal/participation/application` | consumer-owned `RegistrationFactReader` / `Clock` 窄端口与新用户资格用例；验证主体匹配、事实新鲜度、未来时间、取消竞态和安全错误分类，不依赖 adapter/HTTP/Lottery | 第 25 节 |
+| `internal/participation/domain` | 持久化/传输无关的 ParticipantRef、注册/风险事实快照、具体新用户/风险准入 policy 与 decision、RuleSetRevision、稳定 reason 和纯 evaluator | 第 25～26 节 |
+| `internal/participation/application` | consumer-owned registration/risk fact ports、受控 Clock、standalone 新用户用例，以及固定“新用户→风险”短路链；验证 shared as-of、freshness、取消、单类错误与 trace，不依赖 adapter/HTTP/Lottery | 第 25～26 节 |
 | `internal/*` | Lottery、Participation 之外仍预留的私有领域与基础设施边界；占位不代表实现 | 随对应领域章节引入 |
 | `pkg` | 可被外部导入的少量稳定 Go 包 | 仅在确有跨模块公共契约时 |
 | `configs/growth-api.env.example` | 不自动加载且不给密码赋值的 API/Migration 公开环境变量示例 | 第 12～13 节 |
@@ -48,7 +48,7 @@
 | `web/src/pages/user/lottery` | `/lottery` 页面与 selection Hook：规范 StrategyID、显式状态机、pending 抑制、取消和旧响应隔离；不产生浏览器随机结果 | 第 22 节 |
 | `web/src/pages/system/status` | `/system/status` 页面、并行探针 hook、取消/竞态控制和组件测试 | 第 15 节 |
 | `web/vite.config.ts` | dev/preview 的 `127.0.0.1` 严格端口和 `/health`、`/ready`、`/api` 精确同源代理 | 第 15 节 |
-| `docs` | 产品、架构、决策、QA、第一性原理设计推导、面试问答和课程事实；第 24 节增加 Redis Strategy 缓存 ADR/运维证据，第 25 节增加 Participation 新用户资格规则基线与 ADR | 全程 |
+| `docs` | 产品、架构、决策、QA、第一性原理设计推导、面试问答和课程事实；第 24 节增加 Redis 缓存证据，第 25～26 节增加 Participation 新用户资格、风险准入与最小责任链证据 | 全程 |
 | `docs/design-thinking` | 按章节保存事实到机制的推导、备选方案、失败模型、风险账本与重决策条件 | 第 13 节起，历史章节回填 |
 | `docs/interview` | 按章节保存可口述问答、追问、项目证据、选型边界与分级外部来源 | 第 13 节起，历史章节回填 |
 | `docs/runbooks` | MySQL Migration、本地 Compose 与 Redis Strategy 缓存的运行、发布、故障停止条件、恢复和数据清理纪律 | 第 13、16、24 节 |

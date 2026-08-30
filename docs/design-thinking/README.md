@@ -64,3 +64,4 @@
 - [第 23 节：从“抽奖要加规则”推导事实所有权与演进停止线](lessons/lesson-23.md)
 - [第 24 节：从可重建 Strategy 事实推导 Redis 读取投影边界](lessons/lesson-24.md)
 - [第 25 节：从“新用户才能抽”推导可信资格决定边界](lessons/lesson-25.md)
+- [第 26 节：让第二条真实规则证明责任链，而不是让模式替业务找理由](lessons/lesson-26.md)

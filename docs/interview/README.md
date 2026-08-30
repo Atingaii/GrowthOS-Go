@@ -96,3 +96,4 @@
 - [第 23 节：Lottery 规则需求、事实所有权与渐进式规则系统](lessons/lesson-23.md)
 - [第 24 节：Redis Strategy 缓存、故障降级与证据边界](lessons/lesson-24.md)
 - [第 25 节：权威注册事实、资格决定与渐进式规则演进](lessons/lesson-25.md)
+- [第 26 节：责任链前置规则、确定短路与可解释失败](lessons/lesson-26.md)
