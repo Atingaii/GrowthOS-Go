@@ -42,7 +42,7 @@ var selectStrategyRoutingEdgesSQL = fmt.Sprintf(`
 	SELECT from_node_id, branch_code, to_node_id, is_default
 	FROM lottery_strategy_routing_edge
 	WHERE graph_id = ? AND revision = ?
-	ORDER BY from_node_id, branch_code, to_node_id
+	ORDER BY from_node_id, branch_code
 	LIMIT %d`, domain.MaxStrategyRoutingGraphEdges+1)
 
 var errStoredStrategyRoutingGraphNodeLimit = errors.New("stored strategy routing graph node limit exceeded")
