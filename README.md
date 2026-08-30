@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-23%20lessons%20completed-2563EB?style=flat-square" alt="已完成 23 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-24%20lessons%20completed-2563EB?style=flat-square" alt="已完成 24 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～23 节，共 23 节：M0 Compose 开发环境已验收，第 17～21 节依次建立 Lottery `Strategy` / `Award` 领域模型、两张 MySQL 表、Strategy 仓储、无偏加权选择和 development/test 专用 ephemeral API；第 22 节由 React `/lottery` 通过同源、无请求体且不自动重试的 POST 真实消费该 API；第 23 节再以 32 条需求和 ADR 固定 Activity、Participation、Lottery、Benefit（含内部库存子能力）与 Governance 的决定所有权、原始事实来源和失败语义，但没有提前新增规则运行时代码。服务端仍只返回不持久化的临时 Award 选择，页面也只表达“候选被选中”。当前没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖或 Redis 业务缓存；其余用户、Admin、MCP 与 Agent 工作台仍是明确标注的 Mock 快照或浏览器本地交互。一个可调用且可见的 ephemeral selection 仍不等于在线抽奖闭环。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～24 节，共 24 节：M0 Compose 工程基线与 M1 Strategy 缓存本地基线均已验收。第 17～23 节依次建立 Lottery 领域模型、两张 MySQL 表、Strategy 仓储、无偏加权选择、development/test ephemeral API、真实 React 消费者与规则所有权停止线；第 24 节再以 MySQL 为唯一事实源，为完整 Strategy 聚合增加可选 Redis cache-aside、严格版本化 codec、TTL/jitter、同 key 回源合并、故障降级和最小 ACL。公开 HTTP/前端契约不变。当前仍没有正式 Draw/Result、登录认证、RBAC/对象级授权、幂等、参与资格、库存或发奖；其余用户、Admin、MCP 与 Agent 工作台仍是明确 Mock/本地交互。缓存命中和可见的 ephemeral selection 都不等于在线抽奖闭环。
 
 ## 项目简介
 
@@ -155,6 +155,8 @@ curl --request POST \
 
 第 23 节把“活动有效、新用户且有次数、风险允许、按会员路由、奖励可分配、仍可能未中奖”拆成可追踪需求，明确业务资格拒绝、合法 `no_reward`、资源不可用、技术失败/结果未知和授权拒绝不能互相冒充。现阶段没有足够真实消费者支撑通用 `Rule`、规则树或 DSL，因此本节只交付[规则需求基线](docs/product/lottery-rule-requirements-v1.md)、[ADR-0019](docs/decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)、[课程](docs/course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[API 零变化记录](docs/api/lessons/lesson-23.md)、[QA](docs/qa/lessons/lesson-23.md)、[设计手记](docs/design-thinking/lessons/lesson-23.md)和[面试问答](docs/interview/lessons/lesson-23.md)。
 
+第 24 节只缓存可由 MySQL 和领域构造器完整重建的 Strategy 读取投影，不缓存资格、权限、库存、随机选择或 Draw/Result。cache hit 仍需严格解码与领域恢复；miss、Redis 错误和 poison value 在有界预算内回源，not-found 不做负缓存。Compose 只允许 API/Redis 进入 internal cache 网络，业务 Redis 用户仅能操作版本化前缀下的 `PING/GETRANGE/SET/DEL`，默认用户、扫描、管理与 Pub/Sub 均关闭。完整证据见[课程](docs/course/part-03/lesson-24-redis-strategy-cache.md)、[ADR-0020](docs/decisions/ADR-0020-lottery-strategy-cache-aside.md)、[API](docs/api/lessons/lesson-24.md)、[QA](docs/qa/lessons/lesson-24.md)、[设计手记](docs/design-thinking/lessons/lesson-24.md)、[面试问答](docs/interview/lessons/lesson-24.md)和[运维手册](docs/runbooks/redis-strategy-cache.md)。
+
 ### React 前端框架
 
 `web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛桌面侧栏、移动抽屉、顶栏、搜索、主题、通知样例、内容宽度和可访问交互，并重构为高密度、扁平的工作台信息架构。真实前端链路目前只有两类：`/system/status` 消费 Go 的 `GET /health` 与 `GET /ready`；`/lottery` 通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 消费 development/test ephemeral selection API。活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用带时间标签的 Mock 快照或浏览器内本地状态，不是实时后端数据。工作台分组也不是身份或权限系统；当前没有登录认证、RBAC、租户/对象级数据范围或服务端授权强制。
@@ -172,20 +174,20 @@ cd web && pnpm run dev
 
 ### Docker Compose M0 开发环境
 
-第 22 节前端联调继续沿用不会占用宿主机 MySQL/Redis 端口的本地路径。需要 Docker Desktop 与 Compose 插件；仓库只发布 Web 的回环端口 `127.0.0.1:8088`，API、MySQL、Redis、Migration 与授权作业不发布宿主机端口。首次启动会在被 Git 忽略的目录生成本地 Secret 文件：
+第 24 节仍沿用不会占用宿主机 MySQL/Redis 端口的本地路径。需要 Docker Desktop 与 Compose 插件；仓库只发布 Web 的回环端口 `127.0.0.1:8088`，API、MySQL、Redis、Migration 与授权作业不发布宿主机端口。首次启动会在被 Git 忽略的目录生成本地 Secret 文件：
 
 ```bash
 make compose-up
 make compose-smoke
 ```
 
-访问 `http://127.0.0.1:8088/system/status` 查看真实系统状态。启动顺序为 `mysql → migrate → mysql-grants → api`：迁移先到 clean latest 2，随后授权作业只经共享 Unix socket、在 `network_mode: none` 下把应用权限收敛为两张表的 `SELECT` allowlist；精确 grants 不匹配或 `@@GLOBAL.mandatory_roles` 非空都会失败关闭。`compose-smoke` 会检查 Web/API/MySQL/Redis 四个常驻服务健康、`migrate` 与 `mysql-grants` 两个一次性服务成功退出，以及迁移版本、精确授权、两个探针、SPA、统一 404、未播种 Strategy 的 ephemeral 404 和端口隔离。第 21 节真实成功/失败链路使用会自行验证所有权并清理的独立环境：
+访问 `http://127.0.0.1:8088/system/status` 查看真实系统状态。启动门仍为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，不进入 API readiness。`compose-smoke` 会检查四个常驻服务、两个 one-shot、latest 2、MySQL SELECT-only、Redis internal 网络/Secret/ACL/内存策略、探针、HTTP 契约和端口隔离。第 24 节真实成功/失败/cache/fault 链路使用会自行验证所有权并清理的独立环境：
 
 ```bash
 make compose-lottery-api-acceptance
 ```
 
-该 acceptance 不写长期 `growthos` 数据；其 64 个多 Award 请求最多同时运行 16 个，不是吞吐或生产容量声明。完整 M0 门禁仍执行健康探针 100 RPS × 5 分钟以及 readiness 20 RPS × 30 秒：
+该 acceptance 不写长期 `growthos` 数据；它验证 ACL、poison 修复、Redis/MySQL warm/cold 故障恢复与三组 50 RPS×10s M1 路径。三组均 500/500 成功，warm-cache 的 MySQL prepared execute 为 0，cache-disabled/Redis-down 均为 1000；这不是正式 Draw SLO 或生产容量。完整 M0 门禁仍执行健康探针 100 RPS×5 分钟以及 readiness 20 RPS×30 秒：
 
 ```bash
 make compose-m0
@@ -215,9 +217,9 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化环境配置、`slog`、请求关联、统一 HTTP 错误、`GET /health`、`GET /ready`、`sqlx` 连接池；Lottery Strategy/Award、Create/FindByID 仓储、无偏加权 Selector、crypto random adapter，以及 development/test 专用 ephemeral selection API；第 23 节已冻结规则事实所有权与演进停止线 | 正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
-| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时契约解码；系统状态页和 ephemeral Lottery 页面已真实联调，其余工作台为明确 Mock/本地状态 | 第 24 节先形成 Strategy 读取缓存；第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
-| 数据 | MySQL 8.4 连接、API/Migrator 身份隔离、latest 2 嵌入式前向 Migration；`lottery_strategy` / `lottery_strategy_award` 两张业务表；手写 SQL 以事务创建和 RR 快照读取聚合；当前运行应用仅有两表 `SELECT` 且无 `schema_migrations` 权限；Compose 含隔离且易失的 Redis 环境占位 | Draw/Result、库存与发奖事实、更新/版本化、Redis 缓存、ClickHouse、OpenSearch |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化配置、`slog`、请求关联、统一错误、健康/readiness、`sqlx` 与可选 Redis pool；Lottery Strategy/Award、仓储、cache-aside、无偏 Selector、crypto adapter 和 development/test ephemeral API | 正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
+| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时解码；系统状态页和 ephemeral Lottery 页面已真实联调；第 24 节缓存不扩张浏览器契约 | 第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
+| 数据 | MySQL 8.4、API/Migrator 身份隔离、latest 2 前向 Migration、两张 Lottery 表、事务创建/RR 快照；运行身份仅两表 `SELECT`；Redis 只保存版本化 Strategy 投影，48 MiB `allkeys-lru`、无持久化、最小 ACL | Draw/Result、库存与发奖事实、更新/聚合版本及精准缓存失效、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
 | 交付 | 本地质量门禁、隔离 Compose 开发栈、smoke、故障演练与 M0 定速负载门禁 | GitHub Actions、Kubernetes、可观测体系 |
@@ -232,7 +234,7 @@ make verify
 | --- | --- | --- | --- |
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
-| 3 | 17～24 | 从两张表开始做抽奖 | 进行中：第 23 节规则需求、事实所有权和零代码漂移已验收；第 24 节进入 Strategy 读取缓存与 M1 基线 |
+| 3 | 17～24 | 从两张表开始做抽奖 | 已完成：Strategy/Award、两表、仓储、选择、API/React、规则边界与 Redis 读取投影/M1 均已验收 |
 | 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 计划中：第 31～35 节先形成跨工作台统一访问控制，再交付真实运营后台 |
 | 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
 | 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |

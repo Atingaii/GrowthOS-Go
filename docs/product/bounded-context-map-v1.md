@@ -10,7 +10,7 @@
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。第 17～22 节在单仓库内逐步建立 Lottery domain、共享 MySQL 中的两张表、application 端口、MySQL/随机/HTTP adapters 和 React 消费者；第 24 节的 `strategycache` 只是 Lottery adapter 下对 `StrategyReader` 的技术装饰，`redisstore` 是 infrastructure client。Redis 不是新的限界上下文、事实所有者或通用“缓存领域”，Strategy 的权威事实仍归 Lottery/MySQL。它们仍在同一进程/schema 与单一前端应用内，不代表独立微服务或独立数据库。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论物理拆分。
+当前实现策略仍是 Modular Monolith。第 17～22 节在单仓库内逐步建立 Lottery domain、API 进程中的 application/adapters、共享 MySQL schema 中的两张表和 React 消费者；第 24 节的 `strategycache` 只是 Lottery adapter 下对 `StrategyReader` 的技术装饰，`redisstore` 是 infrastructure client。Redis 运行在独立技术进程并保存可丢弃投影，但它不是新的限界上下文、事实所有者、独立业务事实库或通用“缓存领域”；Strategy 的权威事实仍归 Lottery/MySQL。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论业务模块的物理拆分。
 
 ## 2. 划分依据
 

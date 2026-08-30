@@ -261,7 +261,7 @@ http://127.0.0.1:8088/system/status
 make compose-smoke
 ```
 
-脚本只读检查：
+脚本对 MySQL 与业务事实保持只读；为证明 Redis ACL，会在专用 StrategyID=0 key 上执行一次 `SET ... EX 30` / `GETRANGE` / 精确 `DEL`，并在退出路径清理该探针。检查包括：
 
 - Web/API/MySQL/Redis 四个常驻服务 running + healthy；
 - Migration 与 mysql-grants 两个 one-shot 均 exited 0；

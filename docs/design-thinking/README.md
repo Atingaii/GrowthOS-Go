@@ -62,3 +62,4 @@
 - [第 21 节：从“能返回一个 Award”推导诚实的临时 API 边界](lessons/lesson-21.md)
 - [第 22 节：从临时选择纵向切片到可信的 GrowthOS 工作台](lessons/lesson-22.md)
 - [第 23 节：从“抽奖要加规则”推导事实所有权与演进停止线](lessons/lesson-23.md)
+- [第 24 节：从可重建 Strategy 事实推导 Redis 读取投影边界](lessons/lesson-24.md)

@@ -52,7 +52,7 @@ GrowthOS-Go 要把一次性项目沉淀成三层能力：
 
 第 23 节没有新增 `Rule`、`RuleEngine`、通用上下文、Migration、API、Redis 或前端判断。现阶段只有一个真实终端选择消费者，提前把规则字段塞进 `Strategy` 会让两表 Repository 只能恢复残缺聚合；通用执行接口至少要等第 25 节出现首个真实资格事实、第 26 节出现两个以上具体规则后，再由消费者反推。完整需求见 [Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)，长期停止线见 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)。
 
-第 24 节只加速 Strategy 读取投影：`strategycache.Reader` 装饰 application-owned `StrategyReader`，MySQL 始终是事实源；Redis 保存版本化 JSON v1，不保存用户资格、一次选择、Draw/Result 或 not-found。命中时恢复并重新校验聚合，miss、超时、协议错误、poison value 和写失败都在有界预算内回源；坏值只删除精确 key，TTL 不超过 5 分钟并带最多 10% jitter。同 key cold fill 合并避免击穿，但不同 key 不共享全局锁。Compose 只允许 API/Redis 进入 internal cache 网络，业务 ACL 仅有版本化前缀内 `PING/GETRANGE/SET/DEL`，默认用户和扫描/管理/channel 命令全部关闭。长期边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。
+第 24 节只加速 Strategy 读取投影：`strategycache.Reader` 装饰 application-owned `StrategyReader`，MySQL 始终是事实源；Redis 保存版本化 JSON v1，不保存用户资格、一次选择、Draw/Result 或 not-found。命中时恢复并重新校验聚合；miss、超时、协议错误和 poison value 在有界预算内回源。成功回源后才 best-effort 写 Redis，SET 失败直接返回已经取得的 source 结果；坏值只删除精确 key，TTL 不超过 5 分钟并带最多 10% jitter。同 key cold fill 合并避免击穿，但不同 key 不共享全局锁。Compose 只允许 API/Redis 进入 internal cache 网络，业务 ACL 仅有版本化前缀内 `PING/GETRANGE/SET/DEL`，默认用户和扫描/管理/channel 命令全部关闭。长期边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。
 
 数据库只承担它能可靠表达的子集：正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性以及基础名称形态。`*_name_basic` 只拒绝空串和首尾 ASCII U+0020 空格，不等价于领域层完整名称契约；外键不能保证至少一个 Award，单行约束也不能验证跨行总权重是否溢出。两表的 `updated_at` 是行级元数据，不是聚合版本，Award 更新不会自动推进 Strategy 时间戳。
 

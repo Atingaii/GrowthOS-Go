@@ -20,6 +20,7 @@
 | 运行配置 | [配置参考](configuration.md) | `GROWTHOS_` 环境变量、默认值、校验与秘密边界 |
 | 数据库运维 | [MySQL Migration 运维手册](runbooks/mysql-migrations.md) | 身份隔离、前向发布、故障停止条件与清理 |
 | 本地开发栈 | [Docker Compose 运维手册](runbooks/local-compose.md) | Secret 生成、启停、M0 验收、故障定位与数据重置边界 |
+| Strategy 缓存运维 | [Redis Strategy Cache 运维手册](runbooks/redis-strategy-cache.md) | 缓存开关、精确 key、ACL、故障降级、恢复与安全清理 |
 | 当前工程 | [仓库地图](architecture/repository-map.md) | 目录边界与当前阶段能力 |
 | 前端工程 | [前端架构](frontend/frontend-architecture.md) | 四类工作台、路由、运行方式和 UI 基线 |
 | API 契约 | [API 文档](api/README.md) | 按章节查看前端 API 新增、调整和联调状态 |
@@ -33,11 +34,11 @@
 
 ## 当前基线
 
-- 当前完成：第 1～23 节，共 23 节；第二阶段 M0 已验收，第三阶段已完成最小 Lottery 领域建模、两张业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API、真实消费该 API 的 React `/lottery` 页面和共享工作台壳层，并以 32 条需求与 ADR 冻结规则事实所有权、失败语义和演进停止线。第 24 节只为可重建 Strategy 读取投影引入 Redis。公共访问控制仍按第 31～35 节推进：先有资格、Activity 与真实受保护资源，再依次建立跨用户端、运营端、MCP 和 Agent 的统一主体—资源—动作—范围模型、会话认证、服务端强制、前端权限感知与越权验收，并在第 36 节首个真实运营后台复用。当前尚未实现认证或授权。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx` 连接池和独立前向 Migration 命令；`000001` / `000002` 创建 `lottery_strategy` 与 `lottery_strategy_award`，latest 为 2；`internal/lottery/domain` 提供 Strategy/Award 聚合、consumer-owned bounded random port 与零分配线性加权 Selector，`internal/lottery/application` 提供仓储端口和 `EphemeralSelectionService`，MySQL/crypto/HTTP adapters 已在 composition root 中装配。`POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 默认关闭，仅 development/test 可显式启用，只读 Strategy 并返回不持久化的选择；React `/lottery` 已通过专用 adapter、decoder 和请求状态 Hook 真实消费它。共享 `WorkspaceShell` 统一四类工作台的侧栏、顶栏、搜索、主题和移动抽屉，但不承担身份或授权。Compose 以 `mysql → migrate → mysql-grants → api` 装配，四个常驻服务健康、两个 one-shot 成功退出；授权作业只经 Unix socket 且无网络，当前运行身份只可对两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`，精确 grants 不匹配或 mandatory role 非空都会失败关闭。
+- 当前完成：第 1～24 节，共 24 节；第二阶段 M0 与第三阶段 M1 均已验收。第三阶段已完成最小 Lottery 领域建模、两张业务表、Strategy Create/FindByID 仓储、无偏加权 Award 选择、development/test 专用 ephemeral Lottery API、真实 React `/lottery` 消费者、规则事实所有权停止线，以及第一个可重建 Strategy Redis 读取投影。第 25 节开始形成资格规则；公共访问控制仍按第 31～35 节推进，在第 36 节首个真实运营后台复用。当前尚未实现认证或授权。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx`/Redis pool 和独立前向 Migration 命令；`000001` / `000002` 创建两张 Lottery 表，latest 为 2。`StrategyReader` 可按开关被 cache-aside 装饰：MySQL 是唯一事实源，Redis 保存严格版本化完整聚合投影，限制 2 MiB/1000 Award/TTL≤5m，miss、坏值和 Redis 错误有界回源。`POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections` 的公开契约与 React 消费者不因缓存改变。Compose 仍以 `mysql → migrate → mysql-grants → api` 为启动门，Redis 不进入 readiness；只有 API/Redis 位于 internal cache 网络并消费 Redis Secret，业务 ACL 只允许版本化前缀内 `PING/GETRANGE/SET/DEL`。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：正式 Lottery Draw/Result API 与持久化、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖、Strategy 更新/删除/Upsert、Redis 业务缓存、MQ、微服务和 Java 实现。React `/lottery` 已真实调用后端，但它只展示不可恢复的 ephemeral Award 选择；活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 工作台仍是明确标注的 Mock 快照或浏览器本地交互。Compose 中 Redis 仍是隔离且易失的环境占位，不在 API readiness 中，INV-03 仍无最终结果事实可供验证。两表行级 `updated_at` 不是聚合版本；数据库的 `*_name_basic` 只覆盖空串与首尾 ASCII 空格，完整聚合合法性由 Repository 恢复时重新校验；CSPRNG 选择也不能替代幂等、库存、运营治理或公平合规。
+- 当前明确未做：正式 Lottery Draw/Result API 与持久化、登录认证、RBAC/对象级授权、幂等、参与资格、库存、发奖、Strategy 更新/删除/Upsert及其精确缓存失效、MQ、微服务和 Java 实现。React `/lottery` 已真实调用后端，但它只展示不可恢复的 ephemeral Award 选择；活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 工作台仍是明确 Mock/本地交互。Redis 当前只缓存 Strategy 读取投影，不缓存资格、权限、库存、随机选择或最终结果，也不是备份/事实源；M1 三组 50 RPS×10s 只是本机路径证据，不是业务 SLO。INV-03 仍无最终结果事实可供验证。
 
-第 23 节完整证据链：[规则需求基线](product/lottery-rule-requirements-v1.md)、[ADR-0019](decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)、[课程正文](course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[API 零变化记录](api/lessons/lesson-23.md)、[QA](qa/lessons/lesson-23.md)、[第一性原理手记](design-thinking/lessons/lesson-23.md)和[面试问答](interview/lessons/lesson-23.md)。第 21 节后端边界仍由 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；第 22 节真实 React 联调和第 23 节规则分析都没有把它升级成正式 Draw。
+第 24 节完整证据链：[ADR-0020](decisions/ADR-0020-lottery-strategy-cache-aside.md)、[课程正文](course/part-03/lesson-24-redis-strategy-cache.md)、[API 零变化记录](api/lessons/lesson-24.md)、[QA](qa/lessons/lesson-24.md)、[第一性原理手记](design-thinking/lessons/lesson-24.md)、[面试问答](interview/lessons/lesson-24.md)和[运维手册](runbooks/redis-strategy-cache.md)。第 21 节后端边界仍由 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；缓存没有把 ephemeral selection 升级成正式 Draw。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。

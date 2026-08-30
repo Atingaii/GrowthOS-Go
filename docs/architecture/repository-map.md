@@ -35,7 +35,7 @@
 | `migrations/sql` | 严格命名的前向 `.up.sql`；`000001` 建 `lottery_strategy`，`000002` 建 `lottery_strategy_award`，当前 latest 为 2 | 第 13 节机制，第 18 节业务结构 |
 | `migrations/lottery_schema_integration_test.go` | 只在双显式授权的隔离 schema 上，以专用 writer 测试身份验证两表结构、Repository 所需 SELECT/INSERT、负向权限与回滚清理；不定义当前运行账号权限 | 第 18～19 节 |
 | `scripts/generate-compose-secrets.sh` | 完整 Secret 集合生成/验证；部分集合与“旧 MySQL volume + 缺凭据”状态 fail closed，阻止静默错配 | 第 16 节 |
-| `scripts/compose-smoke.sh` | 四常驻/两 one-shot 状态、latest 2、两表 SELECT-only、Redis 网络/Secret/ACL/内存策略、探针/ephemeral 404、HTTP 契约与宿主机端口隔离的只读冒烟检查 | 第 16、18～19、21、24 节 |
+| `scripts/compose-smoke.sh` | 四常驻/两 one-shot 状态、latest 2、两表 SELECT-only、Redis 网络/Secret/ACL/内存策略、探针/ephemeral 404、HTTP 契约与端口隔离；对 MySQL/业务事实只读，仅写入并精确清理一个有 TTL 的 Redis ACL 探针 key | 第 16、18～19、21、24 节 |
 | `scripts/compose-lottery-api-acceptance.sh` | 以随机 project/secret/volume/image 创建一次性真实纵向环境，验证 Lottery/cache success/failure、ACL、poison、自愈、Redis/MySQL/网关故障恢复、M1 三基线、数据指纹与所有权校验清理 | 第 21、24 节 |
 | `deploy/compose` | Web/API/MySQL/Redis 四个常驻服务，Migrate/mysql-grants 两个 one-shot，三张隔离网络、MySQL data/socket named volume、API/Redis 文件秘密、ephemeral/cache 配置和仅回环 Web 端口 | 第 16、18～19、21、24 节 |
 | `deploy/compose/mysql/grants` | 只经 MySQL Unix socket、`network_mode: none` 运行的应用授权收敛脚本；当前只允许两张 Lottery 表 `SELECT`，mandatory role 非空时失败关闭 | 第 18～19、21 节 |

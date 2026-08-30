@@ -51,7 +51,7 @@
 | cache disabled / direct-MySQL | 50 RPS × 10s | 500 / 500 | 0 / 0 / 0 | 50.076986 | 2.390709 / 5.382042 / 9.747167 / 25.003417 ms | MySQL execute `1000`；source load `500`；cache event `0` |
 | Redis down | 50 RPS × 10s | 500 / 500 | 0 / 0 / 0 | 50.050506 | 2.602833 / 5.777708 / 8.222959 / 10.596541 ms | MySQL execute `1000`；source load/fill leader `500/500`；joined `0`；限流 read-error log `1` |
 
-MySQL 计数来自 Performance Schema 的 prepared statement `statement/com/Execute`，因为当前 Go driver 会把带参数的两条 Strategy SELECT 作为 prepared execute；脚本同时核对运行身份仍为精确 SELECT-only，查询 fingerprint 未变。三组在同一个 2026-08-30 本地开发环境顺序执行，不能作为跨版本显著性检验、云环境容量结论或 SLO；完整口径与原始单行 JSON 见[第 24 节 QA](../qa/lessons/lesson-24.md)。
+MySQL 计数来自 Performance Schema 的 prepared statement `statement/com/Execute`，因为当前 Go driver 会把带参数的两条 Strategy SELECT 作为 prepared execute；脚本同时核对运行身份仍为精确 SELECT-only，查询 fingerprint 未变。三组在同一个 2026-08-30 本地开发环境顺序执行，不能作为跨版本显著性检验、云环境容量结论或 SLO；完整汇总口径与证据边界见[第 24 节 QA](../qa/lessons/lesson-24.md)。
 
 ## 3. 服务等级候选目标
 

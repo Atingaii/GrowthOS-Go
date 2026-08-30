@@ -37,6 +37,7 @@
 | 第 21 节 | 新增仅 development/test 可启用的 `POST /api/v1/lottery/strategies/:strategy_id/ephemeral-selections`；后端真实调用 MySQL + Selector，前端接入由第 22 节完成 | 已验收 | [第 21 节 API 记录](lessons/lesson-21.md) |
 | 第 22 节 | 不新增 Go 路由；React `/lottery` 通过 bodyless POST、Lottery adapter、运行时 decoder 与请求状态 Hook 真实消费第 21 节 ephemeral API | 已验收 | [第 22 节 API 记录](lessons/lesson-22.md) |
 | 第 23 节 | 只建立 Lottery 规则需求、事实所有权和求值边界；现有 route、DTO、错误语义与前端消费者均不变 | 已验收 | [第 23 节 API 记录](lessons/lesson-23.md) |
+| 第 24 节 | 不新增或修改公开 HTTP 契约；在服务端 `StrategyReader` 后增加可选 Redis 读取投影，缓存细节不进入浏览器 DTO/header/error | 已验收 | [第 24 节 API 记录](lessons/lesson-24.md) |
 
 ## 阅读方式
 
