@@ -8,7 +8,6 @@ import {
   Database,
   Hash,
   LoaderCircle,
-  Search,
   Server,
   ShieldCheck,
   Sparkles,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import type { ApiClientError } from "../../../api/httpClient";
 import { isCanonicalUint64ID } from "../../../api/lotteryApi";
+import { PageHeader } from "../../../components/common/ProductPage";
 import { useEphemeralLotterySelection } from "./useEphemeralLotterySelection";
 
 interface ErrorPresentation {
@@ -46,19 +46,18 @@ const selectionPipeline = [
 
 function SelectionPipelineSteps() {
   return (
-    <ol className="mt-4 space-y-3">
+    <ol className="mt-3 space-y-2">
       {selectionPipeline.map((item) => (
-        <li
-          key={item.step}
-          className="rounded-2xl border border-stone-800/60 bg-stone-900/50 p-3 text-xs"
-        >
+        <li key={item.step} className="rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-900">
           <div className="flex items-start gap-2.5">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-blue-500/40 bg-blue-500/10 font-mono text-[10px] font-bold text-blue-400">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-violet-100 font-mono text-[10px] font-semibold text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
               {item.step}
             </span>
             <div className="min-w-0 space-y-0.5">
-              <strong className="block text-xs font-bold text-stone-100">{item.title}</strong>
-              <span className="block text-[11px] leading-relaxed text-stone-400">
+              <strong className="block text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                {item.title}
+              </strong>
+              <span className="block text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
                 {item.detail}
               </span>
             </div>
@@ -71,7 +70,7 @@ function SelectionPipelineSteps() {
 
 function ScopeLimitations() {
   return (
-    <p className="mt-3 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+    <p className="mt-2 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
       用户资格、抽奖次数、积分账户、库存、发奖、幂等结果查询、限流和 Redis
       业务能力。这个页面只证明浏览器结果不再由 Mock 决定。
     </p>
@@ -147,21 +146,21 @@ function SelectionError({ error }: { error: ApiClientError }) {
   return (
     <div
       role="alert"
-      className="relative overflow-hidden rounded-2xl border border-rose-200/80 bg-rose-50/90 p-5 text-rose-950 shadow-sm transition-all dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-100"
+      className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-950 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-100"
     >
-      <div className="flex items-start gap-3.5">
-        <div className="mt-0.5 rounded-xl bg-rose-100 p-2 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300">
-          <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-lg bg-rose-100 p-2 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
         </div>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <h3 className="text-base font-bold tracking-tight text-rose-950 dark:text-rose-100">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h3 className="text-sm font-semibold text-rose-950 dark:text-rose-100">
             {presentation.title}
           </h3>
           <p className="text-xs leading-relaxed text-rose-800/90 dark:text-rose-200/80">
             {presentation.detail}
           </p>
           {error.requestId ? (
-            <div className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-rose-200/60 bg-rose-100/60 px-2.5 py-1 font-mono text-[11px] font-semibold text-rose-900 dark:border-rose-900/60 dark:bg-rose-900/30 dark:text-rose-200">
+            <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-rose-200/60 bg-rose-100/60 px-2.5 py-1 font-mono text-[11px] font-medium text-rose-900 dark:border-rose-900/60 dark:bg-rose-900/30 dark:text-rose-200">
               <span className="shrink-0 opacity-60">Request ID:</span>
               <span className="break-all font-bold">{error.requestId}</span>
             </div>
@@ -187,60 +186,45 @@ export function LotteryPage() {
   };
 
   return (
-    <div
-      className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8"
-      aria-labelledby="lottery-page-title"
-    >
-      {/* Header Stage */}
-      <header className="relative overflow-hidden rounded-3xl border border-stone-200/80 bg-gradient-to-b from-stone-50 via-white to-amber-50/30 p-6 shadow-sm dark:border-stone-800/80 dark:from-stone-900/90 dark:via-stone-950 dark:to-stone-900/50 sm:p-8">
-        <div className="bg-grid-pattern pointer-events-none absolute inset-0 opacity-40 dark:opacity-20" />
-
-        <div className="relative z-10 space-y-4">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-100/80 px-3 py-1 text-xs font-semibold text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/60 dark:text-amber-300">
+    <div className="space-y-6" aria-labelledby="lottery-page-title">
+      <PageHeader
+        titleId="lottery-page-title"
+        eyebrow="Lottery · Server Selection"
+        title="Lottery 临时选择演示"
+        description="页面会向 GrowthOS-Go 发起一次真实的服务端加权选择。它不会创建 Draw、扣除积分、预占库存或发放奖励；刷新页面后也无法恢复本次结果。"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 text-[11px] font-medium text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
               Development / Test only
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-stone-300/60 bg-stone-100/80 px-3 py-1 text-xs font-semibold text-stone-800 dark:border-stone-700/50 dark:bg-stone-800/60 dark:text-stone-300">
+            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2 text-[11px] font-medium text-violet-600 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-300">
               <Database className="h-3.5 w-3.5" aria-hidden="true" />
               非持久化选择
             </span>
           </div>
-
-          <div className="max-w-3xl space-y-2">
-            <h1
-              id="lottery-page-title"
-              className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-50 sm:text-3xl lg:text-4xl"
-            >
-              Lottery 临时选择演示
-            </h1>
-            <p className="text-xs leading-relaxed text-stone-600 dark:text-stone-400 sm:text-sm">
-              页面会向 GrowthOS-Go 发起一次真实的服务端加权选择。它不会创建
-              Draw、扣除积分、预占库存或发放奖励；刷新页面后也无法恢复本次结果。
-            </p>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* Experiment Console / Data Theater Grid */}
-      <section className="grid gap-8 lg:grid-cols-12 lg:items-start">
+      <section className="grid gap-6 xl:grid-cols-12 xl:items-start">
         {/* Left Stage: Selection Workbench (7 cols) */}
-        <div className="space-y-6 lg:col-span-7">
+        <div className="space-y-4 xl:col-span-7">
           {/* Unified Workbench Theater Card */}
           <div
-            className="overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-sm dark:border-stone-800/80 dark:bg-stone-900/90"
+            className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
             aria-busy={selecting}
           >
             {/* Console Bar */}
-            <div className="flex items-center justify-between border-b border-stone-200/80 bg-stone-50/80 px-6 py-3.5 dark:border-stone-800/80 dark:bg-stone-950/60">
+            <div className="flex min-h-11 items-center justify-between border-b border-zinc-200 bg-zinc-50 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/60">
               <div className="flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-stone-600 dark:text-stone-400">
+                <Terminal className="h-4 w-4 text-violet-500" aria-hidden="true" />
+                <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
                   Selection Workbench
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-stone-400 dark:text-stone-500">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
                   <span
                     className={`h-2 w-2 rounded-full ${selecting ? "bg-amber-500 animate-pulse motion-reduce:animate-none" : "bg-emerald-500"}`}
                     aria-hidden="true"
@@ -251,38 +235,38 @@ export function LotteryPage() {
             </div>
 
             {/* Input & Form Control Area */}
-            <div className="p-6 sm:p-7">
-              <div className="flex items-start gap-3.5">
-                <div className="rounded-2xl border border-blue-200/60 bg-blue-50 p-2.5 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/60 dark:text-blue-300">
-                  <Search className="h-5 w-5" aria-hidden="true" />
+            <div className="p-4 sm:p-5">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-violet-50 p-2 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
+                  <Target className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div className="space-y-1">
-                  <h2 className="text-base font-bold text-stone-900 dark:text-stone-100">
+                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                     选择一个已配置的 Strategy
                   </h2>
-                  <p className="text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                  <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
                     当前后端没有 Strategy 列表接口，因此页面只接受你明确输入的规范十进制 ID。
                   </p>
                 </div>
               </div>
 
-              <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+              <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label
                       htmlFor="lottery-strategy-id"
-                      className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300"
+                      className="text-xs font-semibold text-zinc-700 dark:text-zinc-300"
                     >
                       Strategy ID
                     </label>
-                    <span className="font-mono text-[11px] text-stone-400 dark:text-stone-500">
+                    <span className="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
                       uint64 decimal
                     </span>
                   </div>
 
                   <div className="relative">
                     <Hash
-                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400 transition-colors dark:text-stone-500"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
                       aria-hidden="true"
                     />
                     <input
@@ -302,13 +286,13 @@ export function LotteryPage() {
                         clear();
                       }}
                       placeholder="例如：21003"
-                      className="w-full rounded-2xl border border-stone-300 bg-stone-50/50 py-3 pl-10 pr-4 font-mono text-sm text-stone-900 transition-all placeholder:text-stone-400 focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/10 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:opacity-60 dark:border-stone-700 dark:bg-stone-950/60 dark:text-stone-100 dark:placeholder:text-stone-600 dark:focus:border-blue-500 dark:focus:bg-stone-950 dark:focus:ring-blue-500/20 dark:disabled:bg-stone-900"
+                      className="h-10 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-3 font-mono text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-violet-500 dark:disabled:bg-zinc-900"
                     />
                   </div>
 
                   <p
                     id="lottery-strategy-help"
-                    className="text-[11px] leading-relaxed text-stone-500 dark:text-stone-400"
+                    className="text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400"
                   >
                     允许范围为 1～18446744073709551615。ID 始终按字符串传输，不经过 JavaScript
                     Number。
@@ -326,7 +310,7 @@ export function LotteryPage() {
                   <button
                     type="submit"
                     disabled={!strategyIDValid || selecting}
-                    className="relative inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-6 py-3.5 text-xs font-bold tracking-wide text-white shadow-sm transition-all hover:bg-stone-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-900/20 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:opacity-70 disabled:shadow-none dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white dark:focus-visible:ring-stone-100/30 dark:disabled:bg-stone-800 dark:disabled:text-stone-500 sm:w-auto"
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white transition-colors hover:bg-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:ring-offset-zinc-950 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500 sm:w-auto"
                   >
                     {selecting ? (
                       <>
@@ -338,10 +322,7 @@ export function LotteryPage() {
                       </>
                     ) : (
                       <>
-                        <Sparkles
-                          className="h-4 w-4 text-amber-400 dark:text-amber-600"
-                          aria-hidden="true"
-                        />
+                        <Sparkles className="h-4 w-4" aria-hidden="true" />
                         <span>
                           {state.phase === "idle" ? "发起一次临时选择" : "发起一次新的临时选择"}
                         </span>
@@ -353,19 +334,19 @@ export function LotteryPage() {
             </div>
 
             {/* Live Result Theater Area */}
-            <div className="min-h-44 border-t border-stone-200/80 bg-stone-50/40 p-6 dark:border-stone-800/80 dark:bg-stone-950/40 sm:p-7">
+            <div className="min-h-40 border-t border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/30 sm:p-5">
               {state.phase === "idle" && (
-                <div className="rounded-2xl border border-dashed border-stone-200 bg-white/50 p-6 text-center dark:border-stone-800 dark:bg-stone-900/30">
-                  <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200/80 bg-white shadow-xs dark:border-stone-800 dark:bg-stone-900">
+                <div className="rounded-lg border border-dashed border-zinc-200 bg-white p-5 text-center dark:border-zinc-800 dark:bg-zinc-950">
+                  <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-900">
                     <Terminal
-                      className="h-4 w-4 text-stone-400 dark:text-stone-500"
+                      className="h-4 w-4 text-zinc-400 dark:text-zinc-500"
                       aria-hidden="true"
                     />
                   </div>
-                  <h3 className="mt-3 text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                  <h3 className="mt-3 text-xs font-medium text-zinc-600 dark:text-zinc-300">
                     准备就绪 · 暂无选择结果
                   </h3>
-                  <p className="mt-1 text-xs text-stone-400 dark:text-stone-500">
+                  <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                     输入 Strategy ID 并点击上方按钮发起一次服务端临时选择
                   </p>
                 </div>
@@ -376,18 +357,18 @@ export function LotteryPage() {
                   role="status"
                   aria-live="polite"
                   aria-atomic="true"
-                  className="relative overflow-hidden rounded-2xl border border-blue-200/80 bg-blue-50/60 p-5 text-blue-950 shadow-sm transition-all dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-100"
+                  className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100"
                 >
-                  <div className="flex items-start gap-3.5">
-                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-600 shadow-xs dark:border-blue-800 dark:bg-blue-900/80 dark:text-blue-300">
+                  <div className="flex items-start gap-3">
+                    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 dark:bg-blue-900/80 dark:text-blue-300">
                       <Server
-                        className="h-5 w-5 animate-pulse motion-reduce:animate-none"
+                        className="h-4 w-4 animate-pulse motion-reduce:animate-none"
                         aria-hidden="true"
                       />
                     </div>
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold tracking-tight">正在等待服务端结果</p>
+                        <p className="text-sm font-semibold">正在等待服务端结果</p>
                         <span
                           className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-ping motion-reduce:animate-none"
                           aria-hidden="true"
@@ -406,18 +387,18 @@ export function LotteryPage() {
                   role="status"
                   aria-live="polite"
                   aria-atomic="true"
-                  className={`relative overflow-hidden rounded-2xl border p-5 shadow-sm transition-all ${
+                  className={`rounded-lg border p-4 ${
                     state.response.data.award.outcome === "reward"
-                      ? "border-emerald-200/80 bg-gradient-to-b from-emerald-50/80 to-white text-emerald-950 dark:border-emerald-900/70 dark:from-emerald-950/40 dark:to-stone-950 dark:text-emerald-100"
-                      : "border-stone-200/80 bg-gradient-to-b from-stone-50/80 to-white text-stone-900 dark:border-stone-800/80 dark:from-stone-900/50 dark:to-stone-950 dark:text-stone-100"
+                      ? "border-emerald-200 bg-emerald-50/70 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/25 dark:text-emerald-100"
+                      : "border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
                   }`}
                 >
-                  <div className="flex items-start gap-3.5">
+                  <div className="flex items-start gap-3">
                     <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-xs ${
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                         state.response.data.award.outcome === "reward"
-                          ? "border-emerald-300/80 bg-emerald-100/80 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300"
-                          : "border-stone-300/80 bg-stone-100/80 text-stone-600 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-300"
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300"
+                          : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
                       }`}
                     >
                       {state.response.data.award.outcome === "reward" ? (
@@ -428,15 +409,15 @@ export function LotteryPage() {
                     </div>
 
                     <div className="min-w-0 flex-1 space-y-1">
-                      <span className="text-[11px] font-extrabold uppercase tracking-wider opacity-60">
+                      <span className="text-[11px] font-medium uppercase tracking-wider opacity-60">
                         服务端返回的临时结果
                       </span>
-                      <h3 className="text-base font-black tracking-tight sm:text-lg">
+                      <h3 className="text-base font-semibold tracking-tight">
                         {state.response.data.award.outcome === "reward"
                           ? "选中了奖励候选"
                           : "本次选中未中奖候选"}
                       </h3>
-                      <p className="break-all font-mono text-xs font-bold opacity-90 sm:text-sm">
+                      <p className="break-all font-mono text-xs font-semibold opacity-90 sm:text-sm">
                         {state.response.data.award.name}
                       </p>
                       <p className="pt-1 text-xs leading-relaxed opacity-75">
@@ -447,41 +428,41 @@ export function LotteryPage() {
                     </div>
                   </div>
 
-                  <dl className="mt-5 grid gap-2.5 border-t border-stone-200/60 pt-4 dark:border-stone-800/80 sm:grid-cols-2">
-                    <div className="rounded-xl border border-stone-200/50 bg-white/60 p-2.5 dark:border-stone-800/50 dark:bg-stone-900/60">
+                  <dl className="mt-4 grid gap-2 border-t border-zinc-200/70 pt-4 dark:border-zinc-800 sm:grid-cols-2">
+                    <div className="rounded-lg bg-white/70 p-2.5 dark:bg-zinc-900/70">
                       <dt className="text-[11px] font-medium opacity-60">Strategy ID</dt>
-                      <dd className="mt-0.5 break-all font-mono text-xs font-bold">
+                      <dd className="mt-0.5 break-all font-mono text-xs font-semibold">
                         {state.response.data.strategyId}
                       </dd>
                     </div>
 
-                    <div className="rounded-xl border border-stone-200/50 bg-white/60 p-2.5 dark:border-stone-800/50 dark:bg-stone-900/60">
+                    <div className="rounded-lg bg-white/70 p-2.5 dark:bg-zinc-900/70">
                       <dt className="text-[11px] font-medium opacity-60">Award ID</dt>
-                      <dd className="mt-0.5 break-all font-mono text-xs font-bold">
+                      <dd className="mt-0.5 break-all font-mono text-xs font-semibold">
                         {state.response.data.award.id}
                       </dd>
                     </div>
 
-                    <div className="rounded-xl border border-stone-200/50 bg-white/60 p-2.5 dark:border-stone-800/50 dark:bg-stone-900/60">
+                    <div className="rounded-lg bg-white/70 p-2.5 dark:bg-zinc-900/70">
                       <dt className="text-[11px] font-medium opacity-60">Durability</dt>
-                      <dd className="mt-0.5 break-all font-mono text-xs font-bold">
+                      <dd className="mt-0.5 break-all font-mono text-xs font-semibold">
                         {state.response.data.durability}
                       </dd>
                     </div>
 
-                    <div className="rounded-xl border border-stone-200/50 bg-white/60 p-2.5 dark:border-stone-800/50 dark:bg-stone-900/60">
+                    <div className="rounded-lg bg-white/70 p-2.5 dark:bg-zinc-900/70">
                       <dt className="text-[11px] font-medium opacity-60">浏览器观测耗时</dt>
-                      <dd className="mt-0.5 font-mono text-xs font-bold">
+                      <dd className="mt-0.5 font-mono text-xs font-semibold">
                         {state.response.elapsedMs} ms
                       </dd>
                     </div>
 
                     {state.response.requestId ? (
-                      <div className="rounded-xl border border-stone-200/50 bg-white/60 p-2.5 dark:border-stone-800/50 dark:bg-stone-900/60 sm:col-span-2">
+                      <div className="rounded-lg bg-white/70 p-2.5 dark:bg-zinc-900/70 sm:col-span-2">
                         <dt className="text-[11px] font-medium opacity-60">
                           Request ID（仅用于故障关联）
                         </dt>
-                        <dd className="mt-0.5 break-all font-mono text-xs font-bold">
+                        <dd className="mt-0.5 break-all font-mono text-xs font-semibold">
                           {state.response.requestId}
                         </dd>
                       </div>
@@ -496,15 +477,15 @@ export function LotteryPage() {
         </div>
 
         {/* Right Column: Compact Contract Sidebar & Progressive Mobile Disclosure (5 cols) */}
-        <aside className="space-y-4 lg:col-span-5">
+        <aside className="space-y-3 xl:col-span-5">
           {/* Desktop contract rail */}
           <div
             role="region"
             aria-label="桌面真实调用链"
-            className="hidden rounded-3xl border border-stone-800/80 bg-stone-950 p-5 text-stone-100 shadow-sm lg:block"
+            className="hidden rounded-xl border border-zinc-200 bg-white p-4 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 xl:block"
           >
-            <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-stone-300">
-              <Cpu className="h-4 w-4 text-blue-400" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              <Cpu className="h-4 w-4 text-violet-500" aria-hidden="true" />
               真实调用链
             </div>
             <SelectionPipelineSteps />
@@ -513,15 +494,15 @@ export function LotteryPage() {
           {/* Mobile contract disclosure */}
           <details
             aria-label="移动真实调用链"
-            className="group rounded-3xl border border-stone-800/80 bg-stone-950 p-5 text-stone-100 shadow-sm lg:hidden"
+            className="group rounded-xl border border-zinc-200 bg-white p-4 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 xl:hidden"
           >
-            <summary className="flex cursor-pointer list-none items-center justify-between font-mono text-xs font-bold uppercase tracking-wider text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 lg:pointer-events-none [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-semibold text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 dark:text-zinc-300 [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-blue-400" aria-hidden="true" />
+                <Cpu className="h-4 w-4 text-violet-500" aria-hidden="true" />
                 真实调用链
               </span>
               <ChevronDown
-                className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none lg:hidden"
+                className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
                 aria-hidden="true"
               />
             </summary>
@@ -531,13 +512,13 @@ export function LotteryPage() {
           </details>
 
           {/* Retry Strategy Card */}
-          <div className="rounded-3xl border border-amber-200/80 bg-amber-50/50 p-5 text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
             <div className="flex items-start gap-3">
               <div className="rounded-lg bg-amber-100 p-1.5 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                 <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
               </div>
               <div className="min-w-0 space-y-1">
-                <h2 className="text-xs font-bold tracking-tight">为什么失败后不自动重试？</h2>
+                <h2 className="text-xs font-semibold">为什么失败后不自动重试？</h2>
                 <p className="text-[11px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
                   当前没有 Draw ID
                   或持久结果。响应丢失后，页面不知道服务端是否已经完成；透明重试会再产生一个可能不同的新选择。
@@ -550,9 +531,9 @@ export function LotteryPage() {
           <div
             role="region"
             aria-label="桌面功能边界说明"
-            className="hidden rounded-3xl border border-stone-200/80 bg-white p-5 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/90 lg:block"
+            className="hidden rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 xl:block"
           >
-            <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
               <Timer className="h-4 w-4 text-amber-500" aria-hidden="true" />
               本节明确没有实现
             </div>
@@ -562,15 +543,15 @@ export function LotteryPage() {
           {/* Mobile scope disclosure */}
           <details
             aria-label="移动功能边界说明"
-            className="group rounded-3xl border border-stone-200/80 bg-white p-5 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/90 lg:hidden"
+            className="group rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 xl:hidden"
           >
-            <summary className="flex cursor-pointer list-none items-center justify-between font-mono text-xs font-bold uppercase tracking-wider text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:text-stone-300 lg:pointer-events-none [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-semibold text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 dark:text-zinc-300 [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <Timer className="h-4 w-4 text-amber-500" aria-hidden="true" />
                 本节明确没有实现
               </span>
               <ChevronDown
-                className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none lg:hidden"
+                className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
                 aria-hidden="true"
               />
             </summary>
