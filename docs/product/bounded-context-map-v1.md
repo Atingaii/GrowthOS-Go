@@ -4,13 +4,13 @@
 
 **更新日期：** 2026-08-30
 
-**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17～23 节依次以 Lottery 对象、持久化、仓储、选择、API、React 消费者和规则所有权校准业务边界；第 24 节以[Redis Strategy 读取投影](../course/part-03/lesson-24-redis-strategy-cache.md)校准派生数据边界；第 25 节以[Participation 新用户资格切片](../course/part-04/lesson-25-user-eligibility.md)校准外部用户事实与内部业务决定边界；第 26 节以[Participation 有序前置资格链](../course/part-04/lesson-26-responsibility-chain.md)校准第二个外部事实、组合决定、短路与最小 trace 边界
+**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)；第 17～23 节依次以 Lottery 对象、持久化、仓储、选择、API、React 消费者和规则所有权校准业务边界；第 24 节以[Redis Strategy 读取投影](../course/part-03/lesson-24-redis-strategy-cache.md)校准派生数据边界；第 25 节以[Participation 新用户资格切片](../course/part-04/lesson-25-user-eligibility.md)校准外部用户事实与内部业务决定边界；第 26 节以[Participation 有序前置资格链](../course/part-04/lesson-26-responsibility-chain.md)校准第二个外部事实、组合决定、短路与最小 trace 边界；第 27 节以[Lottery 会员多出口路由](../course/part-04/lesson-27-responsibility-chain-limits.md)校准会员事实、Strategy 路由决定、显式 default 与一跳 path 的所有权边界
 
 ## 1. 地图用途
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。第 17～22 节在单仓库内逐步建立 Lottery domain、API 进程中的 application/adapters、共享 MySQL schema 中的两张表和 React 消费者；第 24 节的 <code>strategycache</code> 只是 Lottery adapter 下对 <code>StrategyReader</code> 的技术装饰，<code>redisstore</code> 是 infrastructure client。Redis 运行在独立技术进程并保存可丢弃投影，但它不是新的限界上下文、事实所有者、独立业务事实库或通用“缓存领域”；Strategy 的权威事实仍归 Lottery/MySQL。第 25 节在同一仓库增加独立 Participation domain/application 包，第 26 节又在该包内增加风险准入与固定“新用户 → 风险准入”前置资格链，但没有把 Participation 装配为第二个服务，也没有新建数据库。外部用户目录拥有注册原始事实，外部风险事实提供方拥有 screening verdict；Participation 通过消费方拥有的端口读取最小快照，只拥有本场景的新用户资格、风险准入和组合前置资格决定。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论业务模块的物理拆分。
+当前实现策略仍是 Modular Monolith。第 17～22 节在单仓库内逐步建立 Lottery domain、API 进程中的 application/adapters、共享 MySQL schema 中的两张表和 React 消费者；第 24 节的 <code>strategycache</code> 只是 Lottery adapter 下对 <code>StrategyReader</code> 的技术装饰，<code>redisstore</code> 是 infrastructure client。Redis 运行在独立技术进程并保存可丢弃投影，但它不是新的限界上下文、事实所有者、独立业务事实库或通用“缓存领域”；Strategy 的权威事实仍归 Lottery/MySQL。第 25 节在同一仓库增加独立 Participation domain/application 包，第 26 节又在该包内增加风险准入与固定“新用户 → 风险准入”前置资格链，但没有把 Participation 装配为第二个服务，也没有新建数据库。外部用户目录拥有注册原始事实，外部风险事实提供方拥有 screening verdict；Participation 通过消费方拥有的端口读取最小快照，只拥有本场景的新用户资格、风险准入和组合前置资格决定。第 27 节继续在模块化单体内新增未装配的 Lottery 会员路由内核：外部会员 authority 只拥有 <code>standard/premium</code> 等级事实及其 source/revision/observed-at，Lottery 只拥有 <code>premium_override</code>、<code>baseline_default</code> 到 Strategy ID 的具体路由 policy、决定和一跳 path；它没有会员写模型、provider adapter、数据库、HTTP/API、权限或运行时编排，也没有改变 Participation 的资格职责。只有真实的团队协作、负载、可用性或数据边界证明拆分有价值时，才讨论业务模块的物理拆分。
 
 ## 2. 划分依据
 
@@ -38,6 +38,7 @@ flowchart LR
     AI[AI Operations\nAI 运营]
     USERDIR[外部用户目录]
     RISK[外部风险事实提供方]
+    MEMBERSHIP[外部会员事实提供方]
 
     GOV -->|审批结果与权限判断| MKT
     MKT -->|可投放活动摘要| FEED
@@ -58,16 +59,17 @@ flowchart LR
     BA -->|只读指标| AI
     USERDIR -. 注册事实快照 .-> PAR
     RISK -. screening 事实快照 .-> PAR
+    MEMBERSHIP -. 会员等级事实快照 .-> LOT
 ```
 
-箭头表示业务依赖或信息协作，不表示已经选择同步 HTTP、gRPC、消息队列或共享数据库。两条虚线节点不是 GrowthOS 限界上下文：它们只标明外部原始事实的权威来源和未来防腐方向，不表示第 26 节已经存在 provider adapter、在线请求或部署服务。
+箭头表示业务依赖或信息协作，不表示已经选择同步 HTTP、gRPC、消息队列或共享数据库。三个虚线节点不是 GrowthOS 限界上下文：它们只标明外部原始事实的权威来源和未来防腐方向，不表示第 26～27 节已经存在 provider adapter、在线请求或部署服务。会员虚线终点是 Lottery，而不是 Participation：它只说明第 27 节消费端口和决定所有权已经落到内核，尚未形成真实集成。
 
 ## 4. 职责与非职责
 
 | 上下文 | 负责 | 明确不负责 |
 | --- | --- | --- |
 | Marketing | 活动草稿、版本、目标、预算、渠道和生命周期 | 抽奖算法、参与次数、权益到账、Feed 排序、AI 推理 |
-| Lottery | Strategy、Award、概率、抽奖规则和结果选择 | 活动发布、用户额度、积分或优惠券实际发放 |
+| Lottery | Strategy、Award、概率、会员等级到 Strategy 的路由决定、抽奖规则和结果选择 | 会员等级生命周期、活动发布、用户额度、积分或优惠券实际发放 |
 | Participation | 新用户资格、风险准入、前置资格组合、参与次数、活动 SKU 额度、参与订单和幂等 | 用户身份主数据、注册/风险原始事实与模型特征、抽奖概率、权益余额 |
 | Benefit | Reward、Points、Coupon 等权益的发放、余额、流水、使用和补偿 | 活动参与次数事实、活动生命周期、抽奖选择、Feed 排序 |
 | Feed | FeedItem、召回、过滤、排序、频控、游标和实验分配 | 活动与权益主数据、行为归因事实 |
@@ -83,8 +85,10 @@ flowchart LR
 | 审批结果与审计轨迹 | Governance | Marketing 将审批结果作为发布条件；AI 展示状态 |
 | 账户注册原始事实 | 外部用户目录 | Participation 只通过受控事实端口消费带来源、修订和观察时刻的快照，不复制可独立修改的权威写模型 |
 | 风险 screening 原始事实 | 外部风险事实提供方 | Participation 只消费 <code>passed/blocked</code>、来源时刻、source 和 revision，不复制风险分数、模型特征、阈值或原始 payload |
+| 会员等级原始事实 | 外部会员事实提供方 | Lottery 只通过消费方拥有的端口接收带 opaque subject ref、<code>standard/premium</code>、source、revision 和 observed-at 的最小快照；不能创建、升级或降级会员，也不能接受客户端自报 tier |
 | 用户资格、参与次数与参与订单 | Participation | 当前已实现未装配的“新用户 → 风险准入”固定有序前置资格链；只有两节点都确定通过才形成组合 eligible，未来 Lottery 只接收已验证请求，Analytics 接收参与事件 |
 | 前置资格最小执行 trace | Participation | 只记录确定结果中实际执行节点的 rule/outcome/reason、policy/fact revision 与统一 evaluated-at；当前是进程内决定证据，不是 Governance 审计或分布式 trace |
+| 会员到 Strategy 的 Route 决定与一跳 path | Lottery | 当前已实现未装配的 premium override + standard baseline/default 具体路由；unknown/unsupported/缺失/陈旧/依赖失败返回零 Route，成功只给出 Strategy ID 与最小决定证据，不表示资格、授权或正式 Draw |
 | 抽奖策略配置 | Lottery | Marketing 未来引用 Strategy；当前已有 Strategy/Award、两张表、内部 Create/FindByID Repository、可重建 Redis 读取投影、加权选择器、只读 ephemeral API 与真实 React 消费者，但没有运营配置入口或发布模型 |
 | 一次抽奖的最终结果 | Lottery | Benefit 接收奖励结果；当前只有不持久化的临时选择，尚无正式 Draw/Result、结果查询或幂等 API，INV-03 未满足 |
 | 积分、优惠券等权益事实 | Benefit | Feed/Marketing 读取必要摘要；Analytics 接收领取和使用事件 |
@@ -108,6 +112,8 @@ flowchart LR
 
 第 26 节的 <code>RegistrationFactReader</code> 与 <code>RiskScreeningFactReader</code> 是 Participation 消费方拥有的查询端口，只冻结最小事实形状和失败语义；外部协议、adapter、部署与缓存仍未锁定。组合器按固定顺序懒读取，前序确定拒绝、技术失败或 caller cancellation 都不访问后序风险 authority；技术失败返回零组合决定而不是伪装成业务不合格。
 
+第 27 节的 <code>MembershipTierFactReader</code> 是 Lottery 消费方拥有的独立查询端口，只读取外部会员 authority 的最小事实，不返回 Strategy target。Lottery 的具体 policy 才决定 premium override 或 standard baseline/default；unknown、unsupported、not-found、stale、future、provider failure 和 caller cancellation 都不能命中 default。当前没有 adapter、网络协议、缓存、API 或 composition-root 装配，Participation 的资格端口和决定模型保持不变。
+
 ## 7. 统一语言
 
 | 术语 | 唯一含义 | 禁止混用 |
@@ -119,6 +125,9 @@ flowchart LR
 | Eligibility / 资格 | Participation 基于权威事实与明确 policy 形成的场景准入决定 | 身份认证、访问授权、Lottery 选择结果 |
 | Screening verdict / 风险筛查事实 | 外部风险事实提供方形成的最小 <code>passed/blocked</code> 快照 | Participation 最终资格、风险分数或用户文案 |
 | Prerequisite trace / 前置资格轨迹 | 一次确定资格结果中实际执行步骤的最小有序证据 | 完整 plan、未执行节点、Governance 审计、OpenTelemetry trace |
+| Membership tier / 会员等级事实 | 外部会员 authority 确认的最小 <code>standard/premium</code> 快照 | Lottery Strategy ID、Principal、角色或权限 |
+| Membership Strategy Route / 会员 Strategy 路由 | Lottery 基于已验证会员事实和具体 policy 形成的 branch 与 Strategy ID 决定 | Participation 资格、访问授权、Strategy 加载、Award 选择或正式 Draw |
+| Routing path / 路由路径 | 一次确定 Route 实际选择的 rule/branch/target 最小一跳证据 | 未走分支、完整规则树、持久审计或 OpenTelemetry trace |
 | Quota / 参与次数 | 用户可使用的活动参与额度 | 积分、会员余额 |
 | Reward / 奖励 | 业务承诺交付给用户的奖励描述 | 已到账权益 |
 | Benefit / 权益 | 进入发放、持有和使用生命周期的具体权益 | 抽奖结果 |
@@ -129,7 +138,7 @@ flowchart LR
 
 `Campaign` 与 `Activity` 当前在中文产品文档中统一称“活动”。后续编码阶段再结合现有生态和团队语言选择代码名，不能同时制造两个同义聚合。
 
-### 7.1 第 17～26 节 Lottery/Participation 语言、持久化、选择、临时传输、规则、派生缓存与有序资格边界
+### 7.1 第 17～27 节 Lottery/Participation 语言、持久化、选择、临时传输、规则、派生缓存、资格链与会员路由边界
 
 第 17 节把本地图中的一小段分析语言落成 `internal/lottery/domain`：
 
@@ -167,13 +176,15 @@ flowchart LR
 
 第 26 节新增第二条真实 Participation 规则：外部风险 provider 拥有最小 screening verdict，Participation 拥有本场景风险准入决定。<code>EligibilityPrerequisiteChain</code> 在任何事实读取前捕获一次受控 logical evaluated-at，按固定“新用户 → 风险准入”顺序懒读取；只有确定 <code>eligible</code> 才继续，确定 <code>ineligible</code>、技术 error 或 caller cancellation 都立即停止，且前序终止时 risk reader 必须零调用。确定组合结果携带独立 ruleset revision、统一 evaluated-at 与只含实际执行步骤的最小 trace；技术失败或取消返回零 aggregate。这个包内固定线性 step 不是通用 Rule、规则树、DSL 或规则引擎，也没有生产 adapter、HTTP/React、Lottery 门控、持久审计或在线交付。
 
-下一节第 27 节以真实会员分层引入多出口、显式缺省分支和 path trace，暴露线性 continue/reject 模型何时不够；第 28～30 节再推进规则树、决策执行与 Activity。公共访问控制安排在第 31～35 节：先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，再实现真实会话、服务端强制、前端权限感知和越权端到端验收；第 36 节首个真实运营后台只能消费这套统一能力，不能在各业务上下文复制角色开关。当前没有登录或 RBAC，不能用按工作台隐藏菜单代替授权。在正式 Draw/Result 与幂等语义出现前，也不能把 ephemeral route、缓存、仓储、Selector、资格链或 React 页面解释为 Lottery 已形成最终结果事实。第 24 节边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)；第 25 节单规则边界见 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)；第 26 节有序资格链边界与证据见[规则链基线](participation-prerequisite-chain-v1.md)、[ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)、[API](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[设计手记](../design-thinking/lessons/lesson-26.md)和[面试问答](../interview/lessons/lesson-26.md)。
+第 27 节没有把会员路由塞成 Participation 的第三个 gate，而是在 Lottery domain/application 内实现一个受限具体 router。外部 authority 只提供经构造校验的会员等级事实；Lottery policy 分别拥有 premium target 与 standard baseline/default target。服务在一次受控 UTC evaluated-at 下读取一次事实并校验主体、future 与 freshness，domain 再形成稳定 rule/branch/reason、Strategy ID、policy/fact provenance 和不可由调用方改写的一跳 path。两个 branch 即使暂时指向同一 Strategy ID 也保留不同证据；任何错误或取消都返回零决定。这个内核未装配，不加载 Strategy、不调用 <code>WeightedSelector</code>，没有会员 adapter、Migration、Redis、HTTP/React、权限、规则树或通用引擎，并且没有改变第 26 节 Participation 资格链。
+
+下一节第 28 节基于已经出现的 branch/default/target/path 真实词汇建立最小持久化规则树与发布前图合法性校验；第 29～30 节再推进已验证图的决策执行与 Activity。公共访问控制安排在第 31～35 节：先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，再实现真实会话、服务端强制、前端权限感知和越权端到端验收；第 36 节首个真实运营后台只能消费这套统一能力，不能在各业务上下文复制角色开关。当前没有登录或 RBAC，不能用按工作台隐藏菜单代替授权。在正式 Draw/Result 与幂等语义出现前，也不能把 ephemeral route、缓存、仓储、Selector、资格链、未装配会员 router 或 React 页面解释为 Lottery 已形成最终结果事实。第 24 节边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)；第 25 节单规则边界见 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)；第 26 节有序资格链边界与证据见[规则链基线](participation-prerequisite-chain-v1.md)、[ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)、[API](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[设计手记](../design-thinking/lessons/lesson-26.md)和[面试问答](../interview/lessons/lesson-26.md)；第 27 节会员路由边界与证据见[路由基线](membership-strategy-routing-v1.md)、[ADR-0023](../decisions/ADR-0023-membership-strategy-routing-boundary.md)、[API](../api/lessons/lesson-27.md)、[QA](../qa/lessons/lesson-27.md)、[设计手记](../design-thinking/lessons/lesson-27.md)和[面试问答](../interview/lessons/lesson-27.md)。
 
 ## 8. 外部系统和防腐边界
 
 | 外部系统 | GrowthOS 需要的信息 | 边界要求 |
 | --- | --- | --- |
-| 用户、会员、身份系统 | 用户标识、会员等级、认证结果 | 不复制身份生命周期，映射外部标识 |
+| 用户、会员、身份系统 | 用户标识、会员等级、认证结果 | 不复制身份生命周期；注册事实只供 Participation 决策，会员 tier 只供 Lottery 路由，opaque ref 都不是 Principal 或授权证明 |
 | 风险事实提供方 | 最小 screening verdict、来源时刻、source 与 revision | Participation 只形成本场景准入决定，不复制分数、特征、阈值或把 provider failure 当业务拒绝 |
 | 支付与订单系统 | 消费事实、退款或撤销结果 | 转化必须注明来源，不能由埋点伪造交易事实 |
 | 外部券与消息渠道 | 发券、核销、短信或 Push 结果 | 将外部状态映射为 GrowthOS 可理解的结果 |
