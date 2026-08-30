@@ -289,8 +289,8 @@ v1 的选择是：
 | GraphID/NodeID 非零 | unsigned + CHECK | 再验证 |
 | revision grammar | binary collation、长度及可表达的 CHECK | 精确 ASCII grammar |
 | `(GraphID, Revision)` 唯一 | composite PK | create-only 冲突语义 |
-| node 属于 graph revision | composite FK | 再验证 scope |
-| edge 两端存在 | composite FK | 再验证并建立 adjacency |
+| node 属于 graph revision | composite FK | Repository 使用完整 identity 查询；领域不声称重验未投影 scope |
+| edge 两端存在 | composite FK | Repository 使用完整 identity 查询；恢复投影内容并建立 adjacency |
 | target Strategy 存在 | terminal target FK/受控引用约束 | 非零与 node shape |
 | node kind 与字段互斥 | row CHECK | 构造器/restore 再验证 |
 | branch/default 字面值 | CHECK/UNIQUE 可覆盖局部集合 | 每个 decision 完整分支集合 |
@@ -330,9 +330,9 @@ Repository 不提供 `Update`、`Upsert`、`Replace`、`Save`、原地改 target
 4. 对未知 schema 立即失败关闭，不降级成 v1；
 5. 有界读取 nodes，超过 128 时停止并返回 corrupt/invalid；
 6. 有界读取 edges，超过 256 时停止并返回 corrupt/invalid；
-7. 严格映射 node kind、rule、branch、default 和 target；
-8. 拒绝 NULL/未知枚举、重复 node/edge 或 graph scope mismatch；
-9. 调用 `RestoreStrategyRoutingGraph` 重新执行完整不变量；
+7. nodes 与 edges 都使用完整 `(GraphID, Revision)` 作为查询条件；DDL 的复合键与外键先保证命中行及 edge 两端属于该 graph revision；
+8. 严格映射 node kind、rule、branch、default 和 target，并拒绝 NULL/未知枚举、重复 node/edge；
+9. 调用 `RestoreStrategyRoutingGraph` 重新校验已经投影出的 root、node、edge 与拓扑不变量；领域值不声称能再次观察 SQL 查询未投影的 graph/revision scope；
 10. 只有恢复后的 immutable aggregate 合法时才返回成功。
 
 恢复不得：

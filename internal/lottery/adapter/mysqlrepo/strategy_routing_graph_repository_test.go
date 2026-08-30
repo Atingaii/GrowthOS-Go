@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math"
 	"regexp"
 	"strings"
@@ -227,6 +230,59 @@ func TestStrategyRoutingGraphFindReadsAndRestoresOneSnapshotByIdentity(t *testin
 	assertStrategyRoutingGraphExpectations(t, mock)
 }
 
+func TestStrategyRoutingGraphFindLocksRepeatableReadOnlySnapshotAtCallSite(t *testing.T) {
+	t.Parallel()
+
+	options := readSnapshotOptions()
+	wantOptions := sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	if options == nil || *options != wantOptions {
+		t.Fatalf("readSnapshotOptions() = %#v, want %#v", options, wantOptions)
+	}
+
+	file, err := parser.ParseFile(
+		token.NewFileSet(),
+		"strategy_routing_graph_repository.go",
+		nil,
+		parser.SkipObjectResolution,
+	)
+	if err != nil {
+		t.Fatalf("parse graph repository source: %v", err)
+	}
+	var findUsesSnapshotOptions bool
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "FindByIdentity" || function.Body == nil {
+			continue
+		}
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 2 {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "BeginTxx" {
+				return true
+			}
+			contextArgument, contextOK := call.Args[0].(*ast.Ident)
+			optionsCall, optionsOK := call.Args[1].(*ast.CallExpr)
+			if !contextOK || !optionsOK {
+				return true
+			}
+			optionsFunction, functionOK := optionsCall.Fun.(*ast.Ident)
+			if contextArgument.Name == "ctx" &&
+				functionOK && optionsFunction.Name == "readSnapshotOptions" &&
+				len(optionsCall.Args) == 0 {
+				findUsesSnapshotOptions = true
+				return false
+			}
+			return true
+		})
+	}
+	if !findUsesSnapshotOptions {
+		t.Fatal("FindByIdentity must begin its snapshot with readSnapshotOptions()")
+	}
+}
+
 func TestStrategyRoutingGraphFindMapsMissingIdentityWithoutPartialGraph(t *testing.T) {
 	t.Parallel()
 
@@ -379,40 +435,28 @@ func TestStrategyRoutingGraphFindRejectsUnknownSchemaBeforeNodeOrEdgeQueries(t *
 	assertStrategyRoutingGraphExpectations(t, mock)
 }
 
-func TestStoredStrategyRoutingNodeNullableUnsignedPreservesMaxUint64(t *testing.T) {
+func TestStrategyRoutingGraphFindScansNullableUnsignedMaxUint64BeforeRestore(t *testing.T) {
 	t.Parallel()
 
+	repository, mock := newStrategyRoutingGraphRepositoryMock(t)
 	identity := mustStrategyRoutingGraphIdentity(t, 64, "max-uint64-v1")
-	graph, err := restoreStoredStrategyRoutingGraph(
+	maxUnsignedDecimal := []byte("18446744073709551615")
+	nodes := sqlmock.NewRows([]string{"node_id", "node_kind", "rule_code", "strategy_id"}).
+		AddRow(uint64(10), "decision", string(domain.MembershipStrategyRoutingRuleCode), nil).
+		AddRow(uint64(20), "strategy_target", nil, maxUnsignedDecimal).
+		AddRow(uint64(30), "strategy_target", nil, maxUnsignedDecimal)
+	expectStrategyRoutingGraphRead(
+		mock,
 		identity,
-		storedStrategyRoutingGraph{SchemaVersion: 1, RootNodeID: 10},
-		[]storedStrategyRoutingNode{
-			{
-				NodeID:   10,
-				NodeKind: "decision",
-				RuleCode: sql.NullString{
-					String: string(domain.MembershipStrategyRoutingRuleCode),
-					Valid:  true,
-				},
-			},
-			{
-				NodeID:     20,
-				NodeKind:   "strategy_target",
-				StrategyID: sql.Null[uint64]{V: math.MaxUint64, Valid: true},
-			},
-			{
-				NodeID:     30,
-				NodeKind:   "strategy_target",
-				StrategyID: sql.Null[uint64]{V: math.MaxUint64, Valid: true},
-			},
-		},
-		[]storedStrategyRoutingEdge{
-			{FromNodeID: 10, BranchCode: "baseline_default", ToNodeID: 20, IsDefault: 1},
-			{FromNodeID: 10, BranchCode: "premium_override", ToNodeID: 30, IsDefault: 0},
-		},
+		validStoredStrategyRoutingGraphHeader(),
+		nodes,
+		validStoredStrategyRoutingEdgeRows(),
 	)
+	mock.ExpectCommit()
+
+	graph, err := repository.FindByIdentity(context.Background(), identity)
 	if err != nil {
-		t.Fatalf("restoreStoredStrategyRoutingGraph(max uint64) error = %v", err)
+		t.Fatalf("FindByIdentity(max uint64) error = %v", err)
 	}
 	for _, nodeID := range []domain.StrategyRoutingNodeID{20, 30} {
 		node, found := graph.Node(nodeID)
@@ -420,6 +464,11 @@ func TestStoredStrategyRoutingNodeNullableUnsignedPreservesMaxUint64(t *testing.
 			t.Fatalf("node %d StrategyID = %d, found %t; want MaxUint64", nodeID, node.StrategyID(), found)
 		}
 	}
+	root, found := graph.Node(10)
+	if !found || root.Kind() != domain.StrategyRoutingNodeKindDecision || root.StrategyID() != 0 {
+		t.Fatalf("decision node = %#v, found %t; want scanned NULL Strategy target", root, found)
+	}
+	assertStrategyRoutingGraphExpectations(t, mock)
 }
 
 func TestStrategyRoutingGraphRepositoryCancellationAndDriverClassification(t *testing.T) {
