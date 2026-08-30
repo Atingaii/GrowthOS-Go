@@ -8,6 +8,9 @@ FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS b
 ARG TARGETOS=linux
 ARG TARGETARCH
 ARG VERSION=compose-dev
+ARG GO_BUILD_PARALLELISM=1
+ARG GO_BUILD_MAX_PROCS=2
+ARG GO_BUILD_MEMORY_LIMIT=768MiB
 
 WORKDIR /src
 
@@ -21,12 +24,26 @@ COPY migrations ./migrations
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    case "${GO_BUILD_PARALLELISM}" in \
+      ''|*[!0-9]*) printf '%s\n' 'GO_BUILD_PARALLELISM must be a positive integer' >&2; exit 2 ;; \
+    esac; \
+    case "${GO_BUILD_MAX_PROCS}" in \
+      ''|*[!0-9]*) printf '%s\n' 'GO_BUILD_MAX_PROCS must be a positive integer' >&2; exit 2 ;; \
+    esac; \
+    if [ "${GO_BUILD_PARALLELISM}" -eq 0 ] || [ "${GO_BUILD_MAX_PROCS}" -eq 0 ]; then \
+      printf '%s\n' 'Go build concurrency values must be greater than zero' >&2; \
+      exit 2; \
+    fi; \
+    GOMAXPROCS="${GO_BUILD_MAX_PROCS}" \
+    GOMEMLIMIT="${GO_BUILD_MEMORY_LIMIT}" \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -buildvcs=false -trimpath \
+    go build -p="${GO_BUILD_PARALLELISM}" -buildvcs=false -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
       -o /out/growth-api ./cmd/growth-api && \
+    GOMAXPROCS="${GO_BUILD_MAX_PROCS}" \
+    GOMEMLIMIT="${GO_BUILD_MEMORY_LIMIT}" \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -buildvcs=false -trimpath \
+    go build -p="${GO_BUILD_PARALLELISM}" -buildvcs=false -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
       -o /out/growth-migrate ./cmd/growth-migrate
 
