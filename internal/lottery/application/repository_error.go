@@ -16,6 +16,17 @@ var (
 	// ErrStoredStrategyInvalid means rows were readable but could not reconstruct
 	// one valid Strategy aggregate. Callers must fail closed.
 	ErrStoredStrategyInvalid = errors.New("lottery repository: stored strategy is invalid")
+	// ErrStrategyRoutingGraphNotFound means no immutable graph snapshot exists
+	// for the requested GraphID/revision identity.
+	ErrStrategyRoutingGraphNotFound = errors.New("lottery repository: strategy routing graph not found")
+	// ErrStrategyRoutingGraphAlreadyExists means Create was attempted for a
+	// GraphID/revision identity that is already durable. Existing content must
+	// never be overwritten or treated as an upsert.
+	ErrStrategyRoutingGraphAlreadyExists = errors.New("lottery repository: strategy routing graph already exists")
+	// ErrStoredStrategyRoutingGraphInvalid means persisted rows were readable but
+	// could not restore one valid immutable rooted graph. Callers fail closed and
+	// must not execute or automatically repair the stored topology.
+	ErrStoredStrategyRoutingGraphInvalid = errors.New("lottery repository: stored strategy routing graph is invalid")
 	// ErrRepositoryRetryable identifies a transient transaction failure such as
 	// a deadlock or lock wait timeout. The adapter itself never retries.
 	ErrRepositoryRetryable = errors.New("lottery repository: transaction may be retried")
@@ -73,6 +84,9 @@ func knownRepositoryError(class error) bool {
 		class == ErrStrategyNotFound ||
 		class == ErrStrategyAlreadyExists ||
 		class == ErrStoredStrategyInvalid ||
+		class == ErrStrategyRoutingGraphNotFound ||
+		class == ErrStrategyRoutingGraphAlreadyExists ||
+		class == ErrStoredStrategyRoutingGraphInvalid ||
 		class == ErrRepositoryRetryable ||
 		class == ErrCommitOutcomeUnknown ||
 		class == ErrRepositoryFailure

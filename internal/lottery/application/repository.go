@@ -16,3 +16,21 @@ type StrategyCreator interface {
 type StrategyReader interface {
 	FindByID(ctx context.Context, id domain.StrategyID) (domain.Strategy, error)
 }
+
+// StrategyRoutingGraphCreator is the create-only write port for one complete
+// immutable graph revision. Implementations must reject invalid aggregates
+// before storage. The port intentionally exposes no update, upsert, delete,
+// publish, or partial node/edge mutation operation.
+type StrategyRoutingGraphCreator interface {
+	Create(ctx context.Context, graph domain.StrategyRoutingGraph) error
+}
+
+// StrategyRoutingGraphReader restores exactly one immutable graph snapshot by
+// its validated GraphID/revision identity. It does not imply latest-revision,
+// list, publication, traversal, or Strategy loading semantics.
+type StrategyRoutingGraphReader interface {
+	FindByIdentity(
+		ctx context.Context,
+		identity domain.StrategyRoutingGraphIdentity,
+	) (domain.StrategyRoutingGraph, error)
+}

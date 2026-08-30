@@ -31,6 +31,57 @@ func TestRepositoryErrorFailsClosedForUnknownClass(t *testing.T) {
 	}
 }
 
+func TestRepositoryErrorRecognizesStrategyRoutingGraphClassesWithoutConflation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		class    error
+		notClass error
+	}{
+		{
+			name:     "graph not found",
+			class:    ErrStrategyRoutingGraphNotFound,
+			notClass: ErrStrategyNotFound,
+		},
+		{
+			name:     "graph already exists",
+			class:    ErrStrategyRoutingGraphAlreadyExists,
+			notClass: ErrStrategyAlreadyExists,
+		},
+		{
+			name:     "stored graph invalid",
+			class:    ErrStoredStrategyRoutingGraphInvalid,
+			notClass: ErrStoredStrategyInvalid,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			cause := errors.New("secret graph persistence detail")
+			err := WrapRepositoryError(test.class, cause)
+			if !errors.Is(err, test.class) {
+				t.Fatalf("repository error does not expose class %q", test.class)
+			}
+			if errors.Is(err, test.notClass) {
+				t.Fatalf("graph class %q was conflated with %q", test.class, test.notClass)
+			}
+			if !errors.Is(err, cause) {
+				t.Fatal("repository error lost its diagnostic cause")
+			}
+			if got := err.Error(); got != test.class.Error() {
+				t.Fatalf("Error() = %q, want safe class %q", got, test.class.Error())
+			}
+			if got := err.Error(); got == cause.Error() {
+				t.Fatal("repository error rendered the diagnostic cause")
+			}
+		})
+	}
+}
+
 func TestRepositoryErrorZeroValuesFailClosedConsistently(t *testing.T) {
 	t.Parallel()
 
