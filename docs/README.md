@@ -34,15 +34,17 @@
 
 ## 当前基线
 
-- 当前完成：第 1～26 节，共 26 节；第二阶段 M0 与第三阶段 M1 均已验收。第三阶段已完成 Lottery 领域、两表、仓储、无偏选择、ephemeral API/React、规则所有权与 Redis Strategy 投影。第 25～26 节在 Participation 中依次交付新用户资格、风险准入与固定有序短路链：两条规则共享一次 logical evaluated-at，只有前项确认 eligible 才读取后项事实；公共访问控制仍按第 31～35 节推进。当前尚未实现认证或授权。
-- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx`/Redis pool 和独立前向 Migration 命令；`000001` / `000002` 创建两张 Lottery 表，latest 为 2。`StrategyReader` 可按开关被 cache-aside 装饰。Participation 现有 consumer-owned `RegistrationFactReader`、`RiskScreeningFactReader`、具体 policy/decision 与 `EligibilityPrerequisiteChain`，但没有生产 adapter、表、缓存、HTTP 或 composition-root 装配。现有 ephemeral Lottery 契约与 React 消费者不变且尚无资格门控。Compose 与 Redis ACL/readiness 边界均未改变。
+- 当前完成：第 1～27 节，共 27 节；第二阶段 M0 与第三阶段 M1 均已验收。第三阶段已完成 Lottery 领域、两表、仓储、无偏选择、ephemeral API/React、规则所有权与 Redis Strategy 投影。第 25～26 节在 Participation 中依次交付新用户资格、风险准入与固定有序短路链；第 27 节在 Lottery 中用封闭会员等级、显式 premium/standard 分支和一跳 path 交付首个具体策略路由，证明线性 gate chain 不足以承担分支选择。第四阶段仍在进行中，下一步第 28 节首次为规则树升级数据库；公共访问控制仍按第 31～35 节推进。
+- 当前代码：已有可运行的 Gin 产品进程、类型化配置、`slog`、`request_id`、统一错误、`GET /health`、MySQL `GET /ready`、有界 `sqlx`/Redis pool 和独立前向 Migration 命令；`000001` / `000002` 创建两张 Lottery 表，latest 为 2。`StrategyReader` 可按开关被 cache-aside 装饰。Participation 现有 consumer-owned `RegistrationFactReader`、`RiskScreeningFactReader`、具体 policy/decision 与 `EligibilityPrerequisiteChain`。Lottery 新增 consumer-owned `MembershipTierFactReader`、具体 routing policy/decision/path 与 application service；它只证明完整 fact/policy snapshot 和同一 as-of 下的确定性路由，policy revision 尚不是内容 registry 或哈希唯一性证明。上述资格与会员能力均没有生产 adapter、表/缓存、公开 HTTP API 或 composition-root/运行时装配；现有 ephemeral Lottery 契约与 React 消费者不变且尚无资格或会员路由门控。Compose 与 Redis ACL/readiness 边界均未改变。
 - 当前架构承诺：Go 优先、渐进式演进、数据库按需求迁移。
-- 当前明确未做：生产注册/风险 adapter、在线资格门控、正式 Lottery Draw/Result、登录认证、RBAC/对象级授权、幂等、规则树/Activity、库存、发奖、Strategy 更新/精准失效、MQ、微服务和 Java 实现。React `/lottery` 只展示不可恢复的 ephemeral Award 选择；其余工作台业务仍为明确 Mock/本地交互。Redis 不缓存资格、权限、库存、随机选择或最终结果；M1 本机证据不是业务 SLO。INV-03 仍无最终结果事实可供验证。
+- 当前明确未做：生产注册/风险/会员 fact adapter、在线资格与会员路由门控、会员路由公开 API、正式 Lottery Draw/Result、登录认证、RBAC/对象级授权、前端权限投影、浏览器端到端验收、幂等、规则树/Activity、库存、发奖、Strategy 更新/精准失效、MQ、微服务和 Java 实现。React `/lottery` 只展示不可恢复的 ephemeral Award 选择；其余工作台业务仍为明确 Mock/本地交互。Redis 不缓存资格、会员事实、权限、库存、随机选择或最终结果；M1 本机证据不是业务 SLO。INV-03 仍无最终结果事实可供验证。
 
 第 24 节完整证据链：[ADR-0020](decisions/ADR-0020-lottery-strategy-cache-aside.md)、[课程正文](course/part-03/lesson-24-redis-strategy-cache.md)、[API 零变化记录](api/lessons/lesson-24.md)、[QA](qa/lessons/lesson-24.md)、[第一性原理手记](design-thinking/lessons/lesson-24.md)、[面试问答](interview/lessons/lesson-24.md)和[运维手册](runbooks/redis-strategy-cache.md)。第 21 节后端边界仍由 [ADR-0018](decisions/ADR-0018-ephemeral-lottery-selection-api.md)约束；缓存没有把 ephemeral selection 升级成正式 Draw。
 
 第 25 节完整证据链：[新用户资格规则基线](product/new-user-eligibility-v1.md)、[ADR-0021](decisions/ADR-0021-participation-new-user-eligibility.md)、[课程正文](course/part-04/lesson-25-user-eligibility.md)、[API 零变化记录](api/lessons/lesson-25.md)、[QA](qa/lessons/lesson-25.md)、[第一性原理手记](design-thinking/lessons/lesson-25.md)和[面试问答](interview/lessons/lesson-25.md)。该证据只证明 Participation 内核的确定性与失败语义，不证明真实身份、外部事实适配、公开资格 API 或 Lottery 前置门控。
 
 第 26 节完整证据链：[前置资格链基线](product/participation-prerequisite-chain-v1.md)、[ADR-0022](decisions/ADR-0022-participation-prerequisite-chain.md)、[课程正文](course/part-04/lesson-26-responsibility-chain.md)、[API 零变化记录](api/lessons/lesson-26.md)、[QA](qa/lessons/lesson-26.md)、[第一性原理手记](design-thinking/lessons/lesson-26.md)和[面试问答](interview/lessons/lesson-26.md)。该证据只证明固定 Participation gate chain 的顺序、短路、时间和失败语义，不证明线上抽奖已受资格保护。
+
+第 27 节完整证据链：[会员策略路由基线](product/membership-strategy-routing-v1.md)、[ADR-0023](decisions/ADR-0023-membership-strategy-routing-boundary.md)、[课程正文](course/part-04/lesson-27-responsibility-chain-limits.md)、[API 零变化记录](api/lessons/lesson-27.md)、[QA](qa/lessons/lesson-27.md)、[第一性原理手记](design-thinking/lessons/lesson-27.md)和[面试问答](interview/lessons/lesson-27.md)。该证据只证明 Lottery 内部的具体会员路由、显式默认分支、路径与失败语义，不证明已有会员事实 adapter、公开 API、运行时装配、Activity、权限控制或浏览器端到端链路。下一步第 28 节才首次为规则树升级数据库结构。
 
 完整状态以 [课程状态台账](course/status.csv) 为准。
