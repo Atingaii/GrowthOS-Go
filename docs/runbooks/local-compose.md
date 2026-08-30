@@ -270,7 +270,7 @@ make compose-smoke
 - 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT`，`@@GLOBAL.mandatory_roles` 为空；
 - 应用身份能读两张业务表；INSERT、UPDATE、DELETE 和 `schema_migrations` 访问均被拒绝，smoke 的负向语句不改变数据；
 - API 只在内部 `cache` 网络消费 Redis Secret；其余服务没有缓存网络/Secret；
-- Redis 默认用户关闭，`growthos_api` 只允许缓存前缀内的 `PING/GETRANGE/SET/DEL`；普通 `GET`、前缀外 `SET`、`KEYS`、`SCAN`、`FLUSHALL`、`CONFIG`、`ACL`、`PUBLISH`、`SUBSCRIBE` 均被拒绝；
+- Redis 默认用户关闭，`growthos_api` 可执行无 key 的 `PING`，并只可对缓存前缀执行 `GETRANGE/SET/DEL`；普通 `GET`、前缀外 `SET`、`KEYS`、`SCAN`、`FLUSHALL`、`CONFIG`、`ACL`、`PUBLISH`、`SUBSCRIBE` 均被拒绝；
 - Redis 精确启用 `48mb`、`allkeys-lru`、无 RDB/AOF 持久化；
 - `/health`、`/ready` 为 200 JSON；
 - SPA `/` 为 200；
@@ -298,13 +298,15 @@ make compose-lottery-api-acceptance
 - `HEAD` 在语义上匹配 405 与 `Allow: POST`，但 HEAD 的 wire response 没有 body；
 - 16 KiB + 1 的已知长度请求由 edge 返回 JSON 413；
 - 多 Award 批次**总计 64 个请求，最大并行度 16**，只返回配置内结果；这不是 64 个同时请求、64 RPS、定速负载或生产容量；
-- 缓存 value 的 v1 JSON、完整 uint64 decimal string、2 MiB/1000 Award 边界和最多 10% TTL jitter；
-- poison value 被精确删除、从 MySQL 重载并修复；not-found 不做 negative cache；同一 cold key 的并发请求合并 source fill，其他 key 不被全局阻塞；
+- 缓存 value 的严格 v1 JSON 与完整 uint64 decimal string；
+- poison value 被精确删除、从 MySQL 重载并修复；not-found 不做 negative cache；
 - Redis ACL 的命令/key/channel 边界、默认用户关闭、48 MiB `allkeys-lru` 与无持久化配置；
 - Redis 停止时 cold request 回源 MySQL且 API `/health`、`/ready` 不受影响；Redis 恢复后无需重启 API即可重新填充；
 - MySQL 停止时 warm cache hit 仍可选择，`/ready` 与 cold miss 按既有 unavailable 语义失败；MySQL 恢复后无需重启 API即可回源并填充；
 - 调用前后两张 Lottery 业务表的内容 fingerprint 不变；这只说明该用例没有 Lottery 业务状态写路径，不排除访问日志、连接统计等技术副作用；
 - API stop 时 502/504 的 JSON、no-store 与 request ID 保持关联，恢复后重新通过检查。
+
+2 MiB sentinel、1000 Award、最多 10% TTL jitter、同一 cold key 合并和不同 key fill 不串行，分别由 Strategy cache 的 unit/race 测试证明，不属于上述 Compose 脚本已直接探测的场景；证据分层与未实测边界见[第 24 节 QA](../qa/lessons/lesson-24.md)。
 
 脚本退出时只清理由 label、Compose project 与精确 ID 共同证明归属本次任务的容器、网络、volumes、临时 Secret/响应和无其他引用的 acceptance images；不会删除长期 `growthos` volumes、Secret、用户容器或可复用依赖。若 cleanup 报错，先按脚本输出解析精确 project/label，不使用全局 prune。
 

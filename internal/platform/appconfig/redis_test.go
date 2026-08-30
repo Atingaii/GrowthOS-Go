@@ -130,6 +130,13 @@ func TestLoadRejectsRedisPoolAndCacheBudgetRelationships(t *testing.T) {
 			variables: []string{redisPoolSizeVariable, redisMinIdleConnsVariable},
 		},
 		{
+			name: "nonzero logical database would require undeclared select",
+			overrides: map[string]string{
+				redisDatabaseVariable: "1",
+			},
+			variables: []string{redisDatabaseVariable},
+		},
+		{
 			name: "cache work exceeds selection deadline",
 			overrides: map[string]string{
 				lotteryStrategyCacheEnabledVariable: "true",

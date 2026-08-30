@@ -49,7 +49,7 @@
 
 第 23 节从第 22 节最终检查点 `1f95779` 开始。`09a45c2` 先交付 32 条 Lottery 规则需求、上下文边界与 ADR；`479947b` 再补齐课程、零 API 变化记录、QA、1018 行第一性原理设计手记、24 道面试问答及全局索引，并根据交叉审查把正式 Draw/Result 与 Benefit 发放/补偿拆成两个单一决定所有者。本节刻意不创建 Rule 接口、Migration、Redis 调用、HTTP/React 资格判断或权限实现；第 31～35 节的统一访问控制仍按模型、会话、服务端强制、前端权限投影和越权 E2E 顺序演进。完整学习版本以 `origin/codex/lesson-23-lottery-strategy-rules` 的最终 tip 为准。
 
-第 24 节从第 23 节最终检查点 `27a552b` 线性创建。`272d028`～`765bb00` 依次建立可选配置、lazy Redis client、TTL 停止线、ADR 与严格 cache-aside；`68fa59b` 装配生命周期和低基数观测；`17e7010`～`8804f87` 接入 internal network、最小 ACL、bodyless POST 基线并根据审查收紧 channel/acknowledgement；`40f1acf` 依据 2 GiB Docker Desktop OOM 事实限制后端编译资源；`d33723c` 最后用 warm/direct/Redis-down 三组同口径负载和 MySQL counter 证明真实路径。`0f70f51` 登记 ADR，`9d44eb1` 与 `5a0baeb` 同步运行/产品当前态，`d621aae` 交付课程、API、QA、1400 行设计手记、24 道面试问答与 Runbook；最终索引和门禁以同名远端分支冻结 tip 为准。
+第 24 节从第 23 节最终检查点 `27a552b` 线性创建。`272d028`～`765bb00` 依次建立可选配置、默认按需连接且无启动 PING 的 Redis client、TTL 停止线、ADR 与严格 cache-aside；`68fa59b` 装配生命周期和低基数观测；`17e7010`～`8804f87` 接入 internal network、最小 ACL、bodyless POST 基线并根据审查收紧 channel/acknowledgement；`40f1acf` 依据 2 GiB Docker Desktop OOM 事实限制后端编译资源；`d33723c` 最后用 warm/direct/Redis-down 三组同口径负载和 MySQL counter 证明真实路径。`0f70f51` 登记 ADR，`9d44eb1` 与 `5a0baeb` 同步运行/产品当前态，`d621aae` 交付课程、API、QA、1400 行设计手记、24 道面试问答与 Runbook，`13a3210` 登记全局索引与章节状态；最终门禁以同名远端分支冻结 tip 为准。
 
 ## 稳定章节分支与累计快照
 
@@ -157,7 +157,7 @@ git diff 27a552b..codex/lesson-24-redis-strategy-cache
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23 节直接基于 `1f95779`，需求与 ADR 为 `09a45c2`，课程和配套文档为 `479947b`。第 24 节直接基于 `27a552b`，配置/Redis/cache/composition 为 `272d028`～`68fa59b`，Compose/负载/验收加固为 `17e7010`～`d33723c`，ADR/当前态/课程内容为 `0f70f51`、`9d44eb1`、`5a0baeb`、`d621aae`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23 节直接基于 `1f95779`，需求与 ADR 为 `09a45c2`，课程和配套文档为 `479947b`。第 24 节直接基于 `27a552b`，配置/Redis/cache/composition 为 `272d028`～`68fa59b`，Compose/负载/验收加固为 `17e7010`～`d33723c`，ADR/当前态/课程/索引为 `0f70f51`、`9d44eb1`、`5a0baeb`、`d621aae`、`13a3210`；每节最终仍以同名远端分支 tip 作为完整学习检查点。
 
 ## 分支使用约束
 

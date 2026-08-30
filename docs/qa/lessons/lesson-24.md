@@ -7,7 +7,7 @@
 - **基准提交：** `27a552b673ff2f8dfac815e8f765c59574fce9df`（第 23 节已验收 tip）
 - **运行时证据提交：** `d33723c1ce372050ed531272c45dbddcc23e42ca`
 - **验收日期：** 2026-08-30，Asia/Shanghai
-- **当前记录状态：** 隔离 Compose acceptance 已实际通过；文档合并后的 `make verify` 与 `go test -race ./...` 留给根任务最终复验，不在本记录中冒充已执行
+- **当前记录状态：** 隔离 Compose acceptance、文档合并后的 `make verify` 与全仓 `go test -race ./...` 均已实际通过
 
 > 本节验收的不是“Redis 能 `SET/GET`”，而是一个受控的 cache-aside 边界：MySQL 仍是唯一事实源；Redis 只保存完整、严格、可重建的 Strategy 投影；缓存 miss、损坏或不可用都不改变既有 HTTP/Repository 语义；缓存不能吞掉 MySQL 错误、复用随机选择结果或扩大权限面。
 
@@ -49,10 +49,10 @@
 | projection 不可信 | codec 单测；poison exact key 自动删除并重建 | 坏值不能进入 selector，不能 pattern delete | acceptance 与实现测试已覆盖 |
 | 击穿保护边界准确 | per-key flight 并发/取消/race 测试 | 不同 key 不串行；selector 不合并；非跨实例 | 实现测试已覆盖 |
 | TTL 有界且分散 | TTL 上限、jitter clamp 与 atomic `SET` 测试 | 不允许永久 key；不声称精准失效 | 实现测试已覆盖 |
-| ACL 最小化 | 正向 PING/GETRANGE/SET/DEL；GET/SCAN/CONFIG/ACL/EVAL/PubSub/越界 key 负向 | default user 关闭，channels 清空 | acceptance 已通过 |
+| ACL 最小化 | 正向无 key PING、前缀内 GETRANGE/SET/DEL；GET/SCAN/CONFIG/ACL/EVAL/PubSub/越界 key 负向 | default user 关闭，channels 清空 | acceptance 已通过 |
 | 公开 API 不漂移 | 原 route 正反契约、MaxUint64、no_reward、gateway 413/502/504 | 无 cache header/code/route；仍无 body/幂等 | acceptance 已通过 |
 | 故障恢复安全 | Redis/MySQL 停止、恢复、重新回填，业务表 fingerprint 不变 | 不靠 FLUSHALL、删 volume 或改 ACL 恢复 | acceptance 已通过 |
-| 全仓最终状态无回归 | `make verify`、`go test -race ./...` | 不以已通过的 Compose 替代全仓检查 | 根任务最终复验 |
+| 全仓最终状态无回归 | `make verify`、`go test -race ./...` | 不以已通过的 Compose 替代全仓检查 | 最终复验已通过 |
 
 ## 3. 按提交核查真实演进
 
@@ -61,7 +61,7 @@
 | 顺序 | 提交 | 验收焦点 |
 | --- | --- | --- |
 | 1 | `272d028` | 默认关闭配置、Redis Secret/TLS/pool/budget 校验 |
-| 2 | `44e7ed1` | lazy client、无启动 PING、窄 `GETRANGE/SET/DEL` surface |
+| 2 | `44e7ed1` | 默认按需连接、无启动 PING、窄 `GETRANGE/SET/DEL` surface |
 | 3 | `3475fa2` | TTL 上限由过宽范围收紧到 5 分钟 |
 | 4 | `764f74a` | ADR 固化事实源、投影、fail-open 与非目标 |
 | 5 | `765bb00` | codec、cache-aside、poison repair、jitter、per-key flight |
@@ -116,7 +116,7 @@ go test ./internal/platform/appconfig
 
 ### 4.2 Redis client 不成为启动权威
 
-`redisstore.Open` 只构造 lazy client，不执行 `PING`。必须验证：
+`redisstore.Open` 构造 pool，但不执行 `PING` 或同步可用性探测。默认 `MinIdleConns=0` 时首命令建连；正值允许 go-redis 后台预建连接，其失败不会由 `Open` 同步返回。必须验证：
 
 - Redis down 时 API 仍可启动；
 - `MaxRetries=-1`，应用不做隐藏 Redis retry；
@@ -218,6 +218,8 @@ T - uniform_clamped_jitter(0..T/10)
 
 不通过示例：固定所有 key 为整点 5 分钟过期、允许 24 小时 TTL、没有 expiration 的 `SET`、把 Redis 剩余 TTL 当业务版本。
 
+证据采用分层口径：配置与 Reader/Store 单测证明传给 `SET` 的 expiration/jitter 范围以及 expiration 与 value 同命令；隔离 acceptance 的 ACL helper 明确执行 `SET ... EX 30`，应用 refill 路径证明带 expiration 的写入可读/可重建。go-redis 对应用 duration 的 wire 编码也可能是 `PX`，因此不能把 helper 的 `EX` 冒充应用命令一定使用 `EX`。runtime ACL 故意没有 `TTL/PTTL`，所以本轮没有采样服务器实际剩余 TTL，不能把计算边界写成真实 TTL probe。
+
 ## 8. 并发与 singleflight 边界
 
 实现测试必须覆盖：
@@ -238,7 +240,7 @@ go test -race ./internal/lottery/adapter/strategycache \
   -run 'Concurrent|DifferentKey|Selection|Cancellation|Abandoned|Lifecycle'
 ```
 
-这条命令是可复验步骤。根任务最终还会运行全仓 race；本 QA 不把上面的文档命令冒充本轮新增执行记录。
+这条命令既可单独复验窄并发边界，也已被随后实际通过的全仓 `go test -race ./...` 覆盖；全仓 race 仍不能替代真实 Redis/MySQL 故障注入。
 
 ## 9. composition、readiness 与观测
 
@@ -292,8 +294,11 @@ user growthos_api on >REDACTED \
 正向命令：
 
 ```text
-PING GETRANGE SET DEL
+无 key：PING
+仅版本化 prefix：GETRANGE SET DEL
 ```
+
+配置与 adapter 还必须拒绝非 0 logical DB，避免 go-redis 在连接初始化阶段发送 ACL 未授权的 `SELECT`。
 
 负向门禁至少覆盖：
 
@@ -367,7 +372,7 @@ make compose-lottery-api-acceptance
 - Redis topology、ACL 正反命令、disabled default user 与 memory policy；
 - max/no_reward/1:3 multi-award fixture 原子插入；
 - 首次 miss 回填严格 v1 projection；
-- 64 个并发请求只返回配置 outcome；
+- 总计 64 个请求、最大并行度 16，只返回配置 outcome；
 - 全部 HTTP 后业务表 fingerprint 不变；
 - 故障恢复后的 migration/grants/loopback port 仍精确；
 - 所有 disposable resource 和 acceptance 临时证据被精确清理。
@@ -400,13 +405,13 @@ healthload 必须报告 `method=POST`、`ephemeral_selection=true`、`scheduled=
 
 ### 13.2 2026-08-30 本机单次快照
 
-| 场景 | completed | actual RPS | P50 ms | P95 ms | P99 ms | max ms | 路径证据 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| warm cache | 500 | 50.0862 | 1.730167 | 4.129458 | 5.202 | 7.387375 | MySQL executes `0`；hits `500` |
-| cache disabled / direct MySQL | 500 | 50.0770 | 2.390709 | 5.382042 | 9.747167 | 25.003417 | MySQL executes `1000`；source loads `500`；cache events `0` |
-| Redis down / fail-open | 500 | 50.0505 | 2.602833 | 5.777708 | 8.222959 | 10.596541 | MySQL executes `1000`；source loads `500`；leaders `500`；joined `0`；read-error logs `1` |
+| 场景 | scheduled/completed/success | errors/unexpected/dropped | actual RPS（四位小数） | P50 ms | P95 ms | P99 ms | max ms | 路径证据 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| warm cache | `500/500/500` | `0/0/0` | 50.0862 | 1.730167 | 4.129458 | 5.202 | 7.387375 | MySQL executes `0`；hits `500` |
+| cache disabled / direct MySQL | `500/500/500` | `0/0/0` | 50.0770 | 2.390709 | 5.382042 | 9.747167 | 25.003417 | MySQL executes `1000`；source loads `500`；cache events `0` |
+| Redis down / fail-open | `500/500/500` | `0/0/0` | 50.0505 | 2.602833 | 5.777708 | 8.222959 | 10.596541 | MySQL executes `1000`；source loads `500`；leaders `500`；joined `0`；read-error logs `1` |
 
-三组都 completed 500，证明固定负载没有 dropped；warm 的 0 execute 与 500 hit、direct 的 0 cache event、Redis-down 的 source/leader/read-error 共同证明路径，不只是展示 latency。
+三组的 scheduled/completed/success 都是 500/500/500，且 errors/unexpected/dropped 都是 0/0/0，证明这三个固定负载窗口没有丢弃；warm 的 0 execute 与 500 hit、direct 的 0 cache event、Redis-down 的 source/leader/read-error 共同证明路径，不只是展示 latency。
 
 ### 13.3 能得出与不能得出的结论
 
@@ -434,20 +439,16 @@ healthload 必须报告 `method=POST`、`ephemeral_selection=true`、`scheduled=
 
 ```bash
 make compose-lottery-api-acceptance
-```
-
-实现过程中已按切片执行常规单元/构建检查；文档合并后仍必须由根任务重新执行：
-
-```bash
 make verify
 go test -race ./...
 git diff --check
-git status --short
 ```
+
+最终 `make verify` 实际完成 Go vet/test、文档检查、前端 19 个测试文件共 152 个测试、TypeScript typecheck 与 Vite production build，exit 0；全仓 race 覆盖全部 Go package，exit 0。Compose acceptance 仍是独立的真实依赖/故障证据，不能由前两项替代。
 
 记录规则：
 
-1. 只有命令实际 exit 0 才能把“待复验”改成“通过”；
+1. 只有命令实际 exit 0 才记录为“通过”；
 2. `make verify` 包含 format/vet/test/doc-check/web verify，但不替代 race；
 3. Compose acceptance 不替代全仓源码/文档/前端门禁；
 4. race 通过不替代真实 Redis/MySQL 故障注入；
@@ -485,9 +486,12 @@ git status --short
 | development 无 TLS | internal network、无 host port、named ACL/Secret | staging/production 必须 `verify_identity` 并部署受信 CA |
 | projection rolling upgrade | namespace + schema + strict codec | schema v2 需双读/预热/回滚方案独立设计 |
 | 无持久化 | cache 可从 MySQL 重建 | 不得把 Redis 纳入业务备份或恢复点 |
+| 服务器实际剩余 TTL 未采样 | appconfig/Reader/Store 单测 + ACL helper `SET ... EX 30` + 应用带 expiration 的 refill | 需要实测窗口时使用独立受控观察身份，不扩宽 runtime ACL |
+| 真实 2 MiB Redis value 未单列探针 | 2 MiB codec/sentinel 单测 + 有界 `GETRANGE` 实现 | 接近上限的真实 value 分布出现后补真实依赖与内存/网络测试 |
+| Redis 与 MySQL 同时停止未单列注入 | 状态机/单测 + 两种单服务 outage/warm-cold Compose 证据 | 正式灾备/故障矩阵阶段补联合故障与恢复顺序演练 |
 
 ## 17. 验收结论
 
 截至运行时证据提交 `d33723c1ce372050ed531272c45dbddcc23e42ca`，`make compose-lottery-api-acceptance` 已实际通过，证明了隔离 Compose 构建/config、最小 ACL、严格 projection、poison repair、Redis/MySQL 故障与恢复、公开 API 回归，以及 warm/direct/Redis-down 三组真实 M1 路径。
 
-本记录暂不声称文档合并后的 `make verify` 或全仓 `go test -race ./...` 已通过；这两项由根任务最终执行并据实收口。只有它们完成且交叉链接、工作树归属与远端提交检查全部一致后，第 24 节才可标记为最终封板。
+文档合并后的 `make verify` 与全仓 `go test -race ./...` 已实际 exit 0；交叉链接由 doccheck 通过。第 24 节因此具备封板所需的源码、前端、文档、race 与真实依赖故障证据；其边界仍限于本 QA 明确列出的 Strategy 读取投影，不扩张为正式 Draw、业务 SLO 或生产就绪声明。

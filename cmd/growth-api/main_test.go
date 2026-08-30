@@ -428,7 +428,7 @@ func TestRedisRuntimeConfigMapsEveryValidatedSetting(t *testing.T) {
 		Address:               "cache.internal.example:6380",
 		Username:              "growthos_api_test",
 		Password:              "not-logged-redis-password",
-		Database:              7,
+		Database:              0,
 		TLSMode:               appconfig.RedisTLSVerifyIdentity,
 		TLSCAFile:             "/runtime/redis-ca.pem",
 		DialTimeout:           2 * time.Second,

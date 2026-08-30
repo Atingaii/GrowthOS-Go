@@ -40,7 +40,6 @@ const (
 	maximumCABytes               int64 = 1 << 20
 	maximumPasswordBytes               = 1024
 	maximumUsernameRunes               = 128
-	maximumDatabase                    = 255
 	maximumPoolSize                    = 1000
 )
 
@@ -166,7 +165,9 @@ func normalizeConfig(in Config) (Config, error) {
 	if out.Password == "" || len(out.Password) > maximumPasswordBytes {
 		return Config{}, errConfigValue
 	}
-	if out.Database < 0 || out.Database > maximumDatabase {
+	// This adapter's documented ACL does not include SELECT. Keeping DB fixed at
+	// zero prevents go-redis from adding an undeclared connection-init command.
+	if out.Database != 0 {
 		return Config{}, errConfigValue
 	}
 	if out.PoolSize < 1 || out.PoolSize > maximumPoolSize ||

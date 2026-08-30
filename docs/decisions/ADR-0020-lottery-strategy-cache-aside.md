@@ -16,7 +16,7 @@
 - development/test 专用 HTTP API 和 React 页面真实消费该用例，但一次响应仍是不持久化、不可恢复、不可安全重试的 ephemeral selection；
 - 第 23 节已经把用户资格、风险、访问授权、库存、正式 Draw/Result 和权益发放划给各自决定所有者，禁止把这些高时效或一次性事实混入 Strategy 缓存。
 
-当前每次 ephemeral selection 都执行一次 MySQL 聚合读取。Strategy 是跨请求复用、读多写少且可以由两张 MySQL 表完整重建的配置对象，已经成为首个有证据评估缓存的对象。与此同时，项目仍然没有 Strategy Update/Delete/Publish 运行路径、聚合业务版本、变更事件或正式 Draw。因此，本节不能以“接入 Redis”为理由发明精确失效协议，也不能把缓存升级为新的事实源。
+当前每次 ephemeral selection 都执行一次 MySQL 聚合读取。Strategy 已证明可跨请求复用且可以由两张 MySQL 表完整重建，因此成为首个有证据评估缓存的对象；但项目没有生产读写比分布，“读多写少”仍是待验证假设。与此同时，项目仍然没有 Strategy Update/Delete/Publish 运行路径、聚合业务版本、变更事件或正式 Draw。因此，本节不能以“接入 Redis”为理由发明精确失效协议，也不能把缓存升级为新的事实源。
 
 第 16 节已经准备了隔离、认证且不持久化的 Redis 7.4 开发容器，但 API 当时没有加入 cache 网络，Redis 也不属于业务 readiness。那是“环境能力存在但没有业务消费者”的诚实切片。第 24 节出现首个真实消费者后，必须同时定义：缓存对象、key 与 value schema、TTL、命中和回源、坏值处理、并发回源、最小 ACL、超时、关闭、可观测与降级边界。
 
@@ -239,7 +239,8 @@ FindByID(ctx, strategyID)
 每次成功 fill 的物理 TTL 为：
 
 ```text
-base_ttl = validated value in (0, 5m], default 5m
+appconfig base_ttl = validated value in [1s, 5m], default 5m
+internal decorator = validated value in [1ms, 5m] for focused tests
 jitter   = [0, base_ttl * 10%]
 ttl      = base_ttl - jitter
 ```
@@ -312,7 +313,8 @@ Redis 是可选加速层：
 5. API 不拥有读取 Secret 文件之外的 Redis 管理凭证；Web、MySQL、Migration 与浏览器不持有 Redis Secret；
 6. Redis 与 API 只通过项目 internal cache network 连接，不发布 Redis host port；
 7. ACL 文件、进程参数、日志和错误响应不得回显密码；
-8. acceptance 通过管理/测试边界验证业务用户允许项和禁止项，不能以配置文本存在代替真实授权测试。
+8. Redis logical database 固定为 0；appconfig 与 adapter 都拒绝非 0，因为 go-redis 会为非 0 DB 在连接初始化时发送本 ACL 未授权的 `SELECT`；
+9. acceptance 通过管理/测试边界验证业务用户允许项和禁止项，不能以配置文本存在代替真实授权测试。
 
 未来加入另一个 Redis 消费者时，应为它定义独立用户、keyspace 与命令集合。共享 Redis 进程不等于共享业务权限模型，也不属于第 31～35 节面向产品主体的 RBAC。
 
@@ -526,13 +528,13 @@ Redis failure 只改变读取成本和观测状态，不改变 Strategy、Award�
 
 ## 验收证据要求
 
-第 24 节封板前至少提供：
+第 24 节封板采用分层证据，不要求每个边界同时由 unit 与 Compose 重复证明。封板前至少提供：
 
 - key builder 与严格 codec 的单元/边界/模糊输入测试；
 - hit、miss、invalid、Redis error、source error、SET/DEL failure 和 cancellation 控制流测试；
 - 同 key singleflight、不同 key 独立、selector 不共享和 race test；
-- 真实 Redis 7.4 TTL、restart、坏值、最大 uint64、2 MiB、ACL 允许/拒绝集成测试；
-- 独立 Compose 中的 cache hit、Redis down → MySQL、MySQL down + warm hit、双依赖失败和恢复；
+- 通过单元/边界测试证明 application expiration/jitter、最大 uint64、2 MiB sentinel、1000 Award 与严格 codec；通过真实 Redis 7.4 的 ACL helper `SET ... EX 30`、应用带 expiration 的 refill、restart/refill、坏值修复和 ACL 允许/拒绝集证明运行边界，不要求应用 wire 固定为 `EX` 而不是 `PX`；
+- 独立 Compose 中的 cache hit、Redis down → MySQL、MySQL down + warm hit/cold miss，以及各单服务恢复；
 - Migration 仍为 clean version 2、MySQL runtime 仍为两表 `SELECT` 的负向证据；
 - 现有 Lottery HTTP response/header/error 与 React 测试零契约漂移；
 - cache-disabled、warm cache、Redis unavailable 三组同口径 M1 数据；
@@ -540,7 +542,7 @@ Redis failure 只改变读取成本和观测状态，不改变 Strategy、Award�
 - `make verify`、`go test -race ./...`、文档门禁和精确 Git 变更白名单；
 - 第 24 节课程、API、QA、设计手记和面试问答中的已实现/未实现边界。
 
-本 ADR 是决策约束，不替代实际 QA 结果。任何未执行或受环境阻断的场景必须在 QA 中如实登记。
+本 ADR 是决策约束，不替代实际 QA 结果。任何未执行或受环境阻断的场景必须在 QA 中如实登记。本轮 runtime ACL 故意不授权 `TTL/PTTL`，因此没有采样服务器实际剩余 TTL；2 MiB Redis value 没有单列真实依赖探针；Redis 与 MySQL 同时停止也没有单列 Compose 故障注入。这三项分别由 expiration/size 单测、ACL helper `SET ... EX 30` 与应用带 expiration 的 refill，以及故障状态机/单测约束，并作为剩余证据边界保留，不能在文档中冒充实测。
 
 ## 参考资料
 

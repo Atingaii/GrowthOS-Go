@@ -167,7 +167,7 @@ Redis 中的值始终视为不可信。未知/重复字段、缺字段、大小�
 4m30s..5m
 ```
 
-jitter 只减不加，且 TTL 与 value 在一条 `SET` 中原子写入。业务 ACL 故意没有 `TTL/PTTL` 命令；不要为了现场查询剩余时间而扩大权限。当前 TTL 范围由配置校验、单元测试和隔离 acceptance 保证。
+jitter 只减不加，且 TTL 与 value 在一条 `SET` 中原子写入。业务 ACL 故意没有 `TTL/PTTL` 命令；不要为了现场查询剩余时间而扩大权限。配置校验与单元测试证明应用传给 `SET` 的 expiration/jitter 边界；隔离 acceptance 的 ACL helper 明确执行并通过 `SET ... EX 30`，应用 refill 路径则证明带 expiration 的写入可读且可在 restart 后重建（go-redis 的具体 wire 参数可为 `EX` 或 `PX`）。本轮没有采样服务器实际剩余 TTL 窗口。
 
 当前没有 Strategy 更新写路径，所以只承诺 TTL 有界陈旧。未来第一次出现 Update/Publish/Delete 时，精准失效、版本化 key、outbox/CDC 或写后失效必须另立 ADR。
 
@@ -198,8 +198,11 @@ user growthos_api on >REDACTED \
 业务用户允许：
 
 ```text
-PING GETRANGE SET DEL
+无 key：PING
+仅版本化 prefix：GETRANGE SET DEL
 ```
+
+logical DB 固定为 0，因此连接初始化不需要也不获准 `SELECT`。
 
 故意不允许：
 
@@ -390,7 +393,7 @@ growthos_compose logs \
 | poison 的 `DEL` failure，source success | 成功 | poison 可能仍在，下次再次检测 | unit |
 | caller canceled | cancellation 优先 | 不由 fail-open 伪装成功 | unit |
 | 同 key concurrent miss | caller 各自等待/取消，source 合并 | 只限当前进程 | unit + race |
-| 不同 key miss | 并行 fill | 不使用全局锁 | unit + race |
+| 不同 key miss | fill 不共享执行锁，只短暂共享 flight map 记账 mutex | 不因另一 key 的 source fill 串行 | unit + race |
 
 ## 11. 排障决策树
 
@@ -411,7 +414,7 @@ warm key 偶尔 200 不能改变此结论。按[本地 Compose 运维手册](loc
 
 ### 11.2 `/ready` 200，但出现 `read_error`
 
-说明 MySQL 仍可作为完整权威源，缓存访问退化：
+只说明当前 `/ready` 的 MySQL `PingContext` 成功，而缓存访问正在退化；它不证明 Strategy SQL、表、授权、Migration 或数据正确。要证明权威 source path，必须再执行有效业务请求，并核对 source observation 与 MySQL SQL/execute 证据：
 
 1. `growthos_compose ps redis` 确认只检查目标 project；
 2. `growthos_redis ping` 验证 named user/Secret/网络；

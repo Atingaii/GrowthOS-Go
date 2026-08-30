@@ -53,7 +53,6 @@ const (
 	defaultRedisConnMaxIdleTime      = 5 * time.Minute
 	maximumRedisOperationTimeout     = 5 * time.Second
 	maximumRedisConnections          = 100
-	maximumRedisDatabase             = 255
 	maximumRedisConnMaxLifetime      = 24 * time.Hour
 	maximumRedisConnMaxIdleTime      = time.Hour
 	redactedRedisConfig              = "redis configuration (redacted)"
@@ -164,7 +163,11 @@ func loadStrategyCacheAndRedis(
 		}
 	}
 	loadRedisPassword(lookup, cache.Enabled && enabledValid, &redis.Password, problems)
-	loadInteger(lookup, redisDatabaseVariable, 0, maximumRedisDatabase, &redis.Database, problems)
+	// The runtime ACL deliberately excludes SELECT. go-redis sends SELECT for
+	// nonzero logical databases during connection initialization, so accepting
+	// any value other than zero would create a configuration that validates
+	// locally but can never use the documented least-privilege identity.
+	loadInteger(lookup, redisDatabaseVariable, 0, 0, &redis.Database, problems)
 
 	tlsModeValid := true
 	if value, present := lookup(redisTLSModeVariable); present {

@@ -23,12 +23,12 @@
 | Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～21 节新增并装配 Lottery 领域、两表、Repository、选择器、生产随机源与受限 ephemeral API；第 24 节在权威 Reader 外装配可选 Redis cache-aside，Redis 不参与启动或 readiness |
 | 业务数据库 | MySQL 8.4 连接池、账号隔离和前向 Migration 机制已通过功能联调；`000001` / `000002` 创建 `lottery_strategy` / `lottery_strategy_award`，latest 2；Create/FindByID 用手写 SQL、写事务和只读 RR 快照；当前运行应用只有两表 `SELECT`，不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`，历史 writer 集成测试使用隔离身份 |
 | Lottery 领域 | Strategy/Award、Repository、WeightedSelector 与 CryptoSource 已覆盖不变量、快照、错误和边界；第 21 节通过 `EphemeralSelectionService` 与 HTTP adapter 形成真实链路；第 23 节只冻结规则事实所有权；第 24 节缓存版本化 Strategy 投影，限制 2 MiB/1000 Award/TTL≤5m，同 key 合并 cold fill，坏值精确删除并回源。仍没有认证、资格、Draw/Result、幂等、库存、发奖或业务 SLO 实测 |
-| Strategy 缓存 | MySQL 始终是权威来源；Redis 只保存可重建读取投影，不保存 not-found、一次选择或最终结果。缓存 miss/错误/写失败 fail-open，staging/production 启用时强制身份验证 TLS；Compose ACL 仅允许版本化 key 前缀内 `PING/GETRANGE/SET/DEL`，48 MiB `allkeys-lru`、无持久化 |
+| Strategy 缓存 | MySQL 始终是权威来源；Redis 只保存可重建读取投影，不保存 not-found、一次选择或最终结果。缓存 miss/错误/写失败 fail-open，staging/production 启用时强制身份验证 TLS；Compose ACL 允许无 key 的 `PING`，并只允许对版本化 key 前缀执行 `GETRANGE/SET/DEL`，48 MiB `allkeys-lru`、无持久化 |
 | 规则决策质量 | 未来前置规则除终端随机票据外应在同一规则版本、事实快照和评估时刻下保持确定；业务拒绝、授权拒绝、资源不可用、技术失败/未知与 `no_reward` 必须分类；权威事实、版本、原因码和最小披露 trace 由对应实现章节逐步验证，当前只形成需求基线 |
 | React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API。第 22 节再用严格 Lottery adapter、运行时解码与请求状态 Hook 让 `/lottery` 真实消费 ephemeral API；其余用户、运营、MCP 与 Agent 工作台仍是显式 Mock 快照或浏览器本地交互；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
 | 前端质量门 | Vitest、TypeScript typecheck 与 Vite build 已纳入验证；第 15 节真实浏览器核对系统探针正常、数据库不可用和 API 离线状态；第 22 节继续核对桌面/移动布局、键盘与焦点交互、请求 pending/成功/失败/取消分支、权限前置缺口以及按路由拆分图表产物 |
 | 性能实测 | M0 `/health` 100 RPS×5min：30,000/30,000 成功、P99 4.1495ms；`/ready` 20 RPS×30s：600/600 成功、P99 6.841375ms。M1 在同一本地 Docker Desktop 上对 ephemeral selection 各跑 50 RPS×10s：warm-cache、cache-disabled、Redis-down 均 500/500 成功且零 error/unexpected/dropped；三组 P99 分别 5.202ms、9.747167ms、8.222959ms。均为单机短窗口开发基线，不是业务 SLO或生产容量 |
-| 可用性实测 | 两个短窗口内错误、异常状态和丢弃均为 0；没有长稳、跨主机、灾备或生产可用性证据 |
+| 可用性实测 | M0 两组与 M1 三组共五个短窗口内，错误、异常状态和丢弃均为 0；没有长稳、跨主机、灾备或生产可用性证据 |
 | 恢复演练 | 已演练 MySQL、API、Redis 单点停止与恢复；第 24 节进一步证明 Redis down 时 cold read 回源、MySQL down 时 warm hit 可用而 cold miss 失败、两者恢复后无需重启 API 可重新填充。未验证宿主机故障、Redis/MySQL HA 或数据灾难恢复 |
 | 安全与故障演练 | 已验证 MySQL 运行身份仅两表 `SELECT`；Redis 默认用户关闭且业务身份只有四命令/单前缀，channel 与管理/扫描命令被拒绝；还验证唯一回环端口、internal cache 网络、非 root/只读/capability、受限 Host/framing/size、日志低基数/限流和 502/504 请求关联；不等于认证、对象授权或生产渗透测试 |
 

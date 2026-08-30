@@ -139,6 +139,7 @@ HTTP StrategyID
 | 14 | `9d44eb1 docs(runtime): explain Redis cache operations` | 同步配置、仓库地图与 Compose/Redis 运维边界 | `git diff --check 0f70f51..9d44eb1` |
 | 15 | `5a0baeb docs(product): calibrate cache capability boundary` | 校准产品/NFR/限界上下文/前端事实，不把缓存写成事实源、SLO 或浏览器契约 | `git diff --check 9d44eb1..5a0baeb` |
 | 16 | `d621aae docs(course): teach Redis strategy caching` | 交付课程、API、QA、设计手记、24 道面试问答与专用 Runbook | `go run ./cmd/doccheck` |
+| 17 | `13a3210 docs(course): register lesson twenty-four` | 更新课程状态、README、API/QA/设计/面试索引和学习分支检查点 | `go run ./cmd/doccheck` |
 
 全局索引与最终门禁在后续检查点提交中收口；完整章节始终以 `origin/codex/lesson-24-redis-strategy-cache` 的冻结 tip 为准，不能把上表任一中间提交单独当成完整验收版本。
 
@@ -181,7 +182,7 @@ lookup timeout + fill timeout + write timeout <= selection timeout
 
 这是最坏路径的保守预算约束，不代表每次请求一定串行消耗三段完整时间。staging/production 启用缓存时还必须使用 `verify_identity` Redis TLS；development Compose 才明确使用隔离网络内的明文连接。
 
-## 8. 第二步：建立窄且懒连接的 Redis 资源
+## 8. 第二步：建立窄且不做启动探测的 Redis 资源
 
 [redisstore](../../../internal/infrastructure/redisstore) 不暴露通用 go-redis client，只提供：
 
@@ -194,7 +195,7 @@ Close()
 
 关键选择是：
 
-- `Open` 只校验本地配置并创建 lazy client，不 `PING`；
+- `Open` 只校验本地配置并创建 pool，不执行 `PING` 或同步可用性探测；默认 `MinIdleConns=0` 时首命令建连，显式正值则允许 go-redis 后台预建连接；
 - `MaxRetries=-1`，缓存适配器没有应用层重试；
 - `GETRANGE 0..2MiB` 最多取回 2 MiB 加一字节，用于识别超大值；
 - `SET` 必须同时带正 TTL，拒绝永久缓存项；
@@ -259,7 +260,7 @@ Redis 中的值不是领域对象内存快照，而是独立版本化投影：
 - leader 的请求取消不会让共享 fill 永久失控；
 - fill 使用独立 hard timeout；
 - process lifecycle 取消会停止共享 fill；
-- 不同 key 独立并发，不使用全局锁；
+- 不同 key 的 fill 不共享执行锁；它们只在登记/移除 flight map 时短暂共享记账 mutex，不会在某个 source fill 期间全局串行；
 - source error 不进入负缓存；
 - 每个 HTTP 请求拿到 Strategy 后仍独立调用 selector。
 
@@ -288,18 +289,18 @@ Repository、cache decorator、selector 与 HTTP adapter 都不读取环境变�
 - 注入 process lifecycle 和 observer；
 - 在正常退出与部分启动失败时关闭已取得资源。
 
-Redis client 创建不访问网络，因此 Redis 停止不会阻止 API 启动。`/ready` 仍只检查 MySQL，因为 Redis 只是可绕过优化；把它加入 readiness 会把可降级故障升级成实例摘流，违背 fail-open 目标。
+Redis client 创建不执行 `PING`，也不会把后台连接预热失败同步返回成启动错误；Compose 默认 `MinIdleConns=0`，所以默认路径在首条命令才建连。Redis 停止不会阻止 API 启动。`/ready` 仍只检查 MySQL，因为 Redis 只是可绕过优化；把它加入 readiness 会把可降级故障升级成实例摘流，违背 fail-open 目标。
 
 ## 13. 第七步：把安全边界落到 Compose
 
 development Compose 使用：
 
 ```text
-key prefix:
-growthos:development:lottery:strategy:projection:v1:*
+no-key command:
+PING
 
-allowed commands:
-PING GETRANGE SET DEL
+key commands, only on prefix growthos:development:lottery:strategy:projection:v1:*:
+GETRANGE SET DEL
 
 denied by default:
 all other commands, all other keys, all Pub/Sub channels
@@ -308,6 +309,7 @@ all other commands, all other keys, all Pub/Sub channels
 同时满足：
 
 - default Redis user 关闭；
+- Redis logical DB 固定为 0，避免 go-redis 连接初始化发送未授权的 `SELECT`；
 - API 与 Redis 才能进入 `cache` internal network；
 - 只有 API 与 Redis 挂载 `redis_password` Secret；
 - web、mysql、migrate、mysql-grants 既不接入 cache 网络也不挂 Secret；
@@ -390,7 +392,7 @@ make compose-lottery-api-acceptance
 
 可以准确表述：
 
-> 为 Lottery 的完整 Strategy 聚合增加 Redis cache-aside 读取投影，以 MySQL 作为唯一事实源；实现严格版本化 codec、2 MiB/1000 Award 边界、5 分钟减 0～10% TTL 抖动、同 key 进程内回源合并、poison 精确修复、Redis fail-open、最小 ACL/Secret/internal network 和低基数观测。隔离 Compose 故障矩阵及三组同口径 M1 source-load 证据已实际通过；文档合并后的全仓 `make verify` 与 `go test -race ./...` 仍以 [QA](../../qa/lessons/lesson-24.md) 的最终复验记录为准。
+> 为 Lottery 的完整 Strategy 聚合增加 Redis cache-aside 读取投影，以 MySQL 作为唯一事实源；实现严格版本化 codec、2 MiB/1000 Award 边界、5 分钟减 0～10% TTL 抖动、同 key 进程内回源合并、poison 精确修复、Redis fail-open、最小 ACL/Secret/internal network 和低基数观测。隔离 Compose 中已执行的 Redis/MySQL 单服务 warm/cold 故障与恢复、三组同口径 M1 source-load、文档合并后的全仓 `make verify` 与 `go test -race ./...` 均已实际通过；双服务同时停止等未实测项按 [QA](../../qa/lessons/lesson-24.md) 边界记录。
 
 不能表述：
 

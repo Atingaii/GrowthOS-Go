@@ -141,6 +141,18 @@ func TestProjectionCodecEnforcesMaximumBytes(t *testing.T) {
 	}
 }
 
+func TestRejectDuplicateJSONNamesEnforcesConfiguredTraversalDepth(t *testing.T) {
+	withinLimit := strings.Repeat("[", maximumJSONDepth) + "0" + strings.Repeat("]", maximumJSONDepth)
+	if err := rejectDuplicateJSONNames([]byte(withinLimit)); err != nil {
+		t.Fatalf("rejectDuplicateJSONNames(within limit) error = %v", err)
+	}
+
+	beyondLimit := strings.Repeat("[", maximumJSONDepth+1) + "0" + strings.Repeat("]", maximumJSONDepth+1)
+	if err := rejectDuplicateJSONNames([]byte(beyondLimit)); err == nil {
+		t.Fatal("rejectDuplicateJSONNames(beyond limit) error = nil")
+	}
+}
+
 func TestProjectionCodecAcceptsMaximumAwardCount(t *testing.T) {
 	inputs := make([]awardInput, 0, domain.MaxAwardsPerStrategy)
 	for index := 1; index <= domain.MaxAwardsPerStrategy; index++ {

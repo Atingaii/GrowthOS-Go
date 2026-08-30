@@ -89,7 +89,7 @@ API 与 Migration 都读取 environment/log；只有 API 读取 HTTP 配置。
 
 ## 5. Lottery Strategy 缓存与 Redis 配置
 
-Strategy 缓存是 `StrategyReader` 的可选 cache-aside 装饰器：MySQL 始终是权威来源，Redis miss、超时、协议错误、内容损坏或写失败都不能改变既有 Lottery 业务错误语义。缓存关闭时 API 不创建 Redis client，也不要求 Redis Secret；缓存启用时，Redis 仍不参与启动 Ping 或 `/ready`，首次真实缓存命令才惰性建连。Redis 宕机时请求在有界缓存预算后回源 MySQL；MySQL 宕机时只有已经存在的合法缓存投影能继续服务，cold miss 仍按原有 unavailable 语义失败。
+Strategy 缓存是 `StrategyReader` 的可选 cache-aside 装饰器：MySQL 始终是权威来源，Redis miss、超时、协议错误、内容损坏或写失败都不能改变既有 Lottery 业务错误语义。缓存关闭时 API 不创建 Redis client，也不要求 Redis Secret；缓存启用时，Redis 不执行启动 `PING`，也不参与 `/ready`。默认 `GROWTHOS_REDIS_MIN_IDLE_CONNS=0` 时首次真实命令才建连；显式设为正数会允许 go-redis 后台预建连接，但预建失败不会由 client 构造同步返回或阻断 API 启动。Redis 宕机时请求在有界缓存预算后回源 MySQL；MySQL 宕机时只有已经存在的合法缓存投影能继续服务，cold miss 仍按原有 unavailable 语义失败。
 
 | 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
 | --- | --- | --- | --- |
@@ -97,7 +97,7 @@ Strategy 缓存是 `StrategyReader` 的可选 cache-aside 装饰器：MySQL 始�
 | `GROWTHOS_REDIS_USERNAME` | `growthos_api` | `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` | 最小权限 ACL 用户 |
 | `GROWTHOS_REDIS_PASSWORD` | **无，启用时二选一** | 任意非空值，最多 1024 bytes；与 `_FILE` 互斥且不回显 | 直接 Secret |
 | `GROWTHOS_REDIS_PASSWORD_FILE` | **无，启用时二选一** | 非空文件路径；有界读取；错误不回显路径或内容 | 文件 Secret |
-| `GROWTHOS_REDIS_DATABASE` | `0` | 整数 0～255 | 逻辑数据库 |
+| `GROWTHOS_REDIS_DATABASE` | `0` | 只能为 `0` | runtime ACL 不授权 `SELECT`；非 0 会在配置阶段失败，避免出现“本地校验通过、连接初始化失败”的假合法配置 |
 | `GROWTHOS_REDIS_TLS_MODE` | `disabled` | `disabled` / `verify_identity`；staging/production 启用缓存时必须后者 | TLS 策略 |
 | `GROWTHOS_REDIS_TLS_CA_FILE` | 未设置 | 可选非空路径；仅 `verify_identity` 可设置 | 扩展系统根 CA，保持主机名验证 |
 | `GROWTHOS_REDIS_DIAL_TIMEOUT` | `250ms` | `> 0` 且 `<= 5s` | 新连接预算 |

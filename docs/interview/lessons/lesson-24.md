@@ -19,7 +19,7 @@
 
 ## 1. 为什么第一个缓存对象选择 Strategy，而 MySQL 仍是唯一事实源？
 
-- **直接回答：** Strategy/Award 是跨请求复用、读多写少、能从两张 MySQL 表和领域恢复函数完整重建的配置聚合。Redis 在这里适合做可丢弃读取投影：hit 跳过权威读取，miss 回 MySQL 并回填；删除全部 key、淘汰或重启 Redis 都不能造成业务事实丢失。Redis `SET` 成功也不能反向证明 MySQL 状态，更不能让 Redis 获得 Create/Update/Publish 所有权。
+- **直接回答：** Strategy/Award 已证明能跨请求复用，并能从两张 MySQL 表和领域恢复函数完整重建；当前 Compose runtime 又是 SELECT-only，但尚无生产读写比例证据。Redis 在这里适合先做可丢弃读取投影：hit 跳过权威读取，miss 回 MySQL 并回填；删除全部 key、淘汰或重启 Redis 都不能造成业务事实丢失。Redis `SET` 成功也不能反向证明 MySQL 状态，更不能让 Redis 获得 Create/Update/Publish 所有权。
 - **追问：** Redis 比 MySQL 快，为什么不把 Redis 设成主存储？
   - **追问回答：** 速度不等于事实所有权。当前 Repository 用同一只读 Repeatable Read 快照恢复完整聚合，Migration、约束和运维恢复都围绕 MySQL；Redis 则明确关闭持久化并允许 LRU 淘汰。把它升级为主存储会引入写入确认、持久化、恢复、历史版本和跨副本一致性的新问题，已经超出本节目标。
 - **项目证据：** [cache-aside Reader](../../../internal/lottery/adapter/strategycache/reader.go)、[MySQL Repository](../../../internal/lottery/adapter/mysqlrepo/repository.go)、[ADR-0020](../../decisions/ADR-0020-lottery-strategy-cache-aside.md)。
@@ -55,7 +55,7 @@
 
 ## 5. 为什么默认 TTL 是 5 分钟并减去 0～10% 抖动？
 
-- **直接回答：** 可配置 `base_ttl` 必须在 `(0, 5m]`，默认和最大值都是 5 分钟；每次 fill 减去 `[0, base_ttl×10%]` 抖动，所以初始 TTL 位于 `[90%, 100%]`，默认即 4 分 30 秒到 5 分钟。value 和 expiration 通过同一个 `SET` 写入，Store 还拒绝非正 expiration，避免永久 Strategy key。减法抖动不会突破已承诺的最大陈旧上界。
+- **直接回答：** 外部 appconfig 接受的 `base_ttl` 是 `[1s, 5m]`，默认和最大值都是 5 分钟；内部 decorator 构造器为可测试性接受 `[1ms, 5m]`，而 Store 仍拒绝非正 expiration。每次 fill 减去 `[0, base_ttl×10%]` 抖动，所以初始 TTL 位于 `[90%, 100%]`，默认即 4 分 30 秒到 5 分钟。value 和 expiration 通过同一个 `SET` 写入，减法抖动不会突破已承诺的最大陈旧上界。
 - **追问：** 加了 jitter 就解决缓存雪崩了吗？
   - **追问回答：** 没有。它只降低一批同时创建 key 集中过期的概率；单个极热 key、Redis 整体故障、多实例同时 miss 和 MySQL 容量仍未解决。业务随机选择使用独立的 CSPRNG；TTL jitter 是可注入、可夹紧的运行机制随机量，不能影响 Award 概率。
 - **项目证据：** [TTL 与 jitter 实现](../../../internal/lottery/adapter/strategycache/reader.go)、[确定性 jitter 测试](../../../internal/lottery/adapter/strategycache/reader_test.go)、[配置范围](../../../internal/platform/appconfig/redis.go)。
@@ -138,7 +138,7 @@
 
 - **直接回答：** Compose 的 selection 总预算是 3 秒；Strategy cache 默认 lookup 75ms、write 75ms、fill 2s，配置还校验三者之和不超过 selection timeout。Redis client 使用 context timeout、有限连接池，普通命令自动 retry 关闭，避免每个请求先长时间卡 Redis再访问 MySQL。cache fail-open 只表示 Redis 运行错误后尝试权威 MySQL；caller cancel/deadline 始终优先，source error 也不能被 cache error 覆盖。
 - **追问：** Redis 配置错误也应该 fail-open 吗？
-  - **追问回答：** 不应该。非法地址、username、TTL、timeout、pool、TLS 模式、缺失或冲突 Secret 属于 operator mistake，应在配置/组合阶段失败。配置有效但 Redis 网络、ACL、OOM 或命令运行失败才 bypass。client 构造是 lazy 的，不用启动 `PING` 把可选加速层变成硬依赖。
+  - **追问回答：** 不应该。非法地址、username、TTL、timeout、pool、TLS 模式、缺失或冲突 Secret 属于 operator mistake，应在配置/组合阶段失败。配置有效但 Redis 网络、ACL、OOM 或命令运行失败才 bypass。client 构造不执行启动 `PING` 或同步可用性探测；默认 `MinIdleConns=0` 时首命令建连，正值只允许后台预热且预热失败不阻断启动，因此不会把可选加速层变成硬依赖。
 - **项目证据：** [配置校验](../../../internal/platform/appconfig/redis.go)、[go-redis 有界配置](../../../internal/infrastructure/redisstore/config.go)、[Reader timeout 控制流](../../../internal/lottery/adapter/strategycache/reader.go)。
 - **选型边界：** fail-open 会把 Redis outage 的流量转给 MySQL；当前没有完整 breaker、backpressure 或 shedding。若 degraded source load 超过预算，应先保护权威库，而不是只继续缩短 Redis timeout。
 - **来源：** 项目事实；Redis 官方 [go-redis production usage](https://redis.io/docs/latest/develop/clients/go/produsage/)用于校准 timeout、pool 和连接使用边界。

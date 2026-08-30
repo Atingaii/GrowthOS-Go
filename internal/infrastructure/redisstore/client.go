@@ -37,9 +37,11 @@ type Client struct {
 	closeErr  error
 }
 
-// Open validates local configuration and constructs a lazy Redis client. It
-// deliberately does not PING or otherwise contact Redis: callers may use this
-// cache as a runtime optimization without turning it into a startup or
+// Open validates local configuration and constructs the Redis pool without
+// issuing a PING or synchronously proving Redis availability. With the default
+// MinIdleConnections=0, dialing is deferred until a command. A positive value
+// allows go-redis to attempt background pool prewarming; failures from that
+// prewarming are not returned by Open and never make Redis a startup or
 // readiness authority. Ownership of the returned Client transfers to caller.
 func Open(cfg Config) (*Client, error) {
 	options, err := redisOptions(cfg)

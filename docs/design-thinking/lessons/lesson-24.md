@@ -20,7 +20,7 @@
       → WeightedSelector
       → ephemeral HTTP response
 
-它的优点是边界诚实：每次选择都读取同一份权威快照，Repository error、领域不变量、随机选择和 HTTP error mapping 可以分别验证。它的代价也开始清楚：同一个读多写少的 Strategy 被重复读取时，每次调用都重新开启事务、读取根与 Awards 两组数据并恢复聚合。
+它的优点是边界诚实：每次选择都读取同一份权威快照，Repository error、领域不变量、随机选择和 HTTP error mapping 可以分别验证。它的代价也开始清楚：同一个可跨请求复用的 Strategy 被重复读取时，每次调用都重新开启事务、读取根与 Awards 两组数据并恢复聚合。这里尚无生产读写比例证据，“读多写少”仍只是待验证假设。
 
 因此第 24 节的问题不是抽象的“怎样使用 Redis”，而是：
 
@@ -65,7 +65,7 @@
 - Redis 操作有独立短 timeout，客户端关闭自动 command retry；
 - Redis 不参与 API startup probe 或 `/ready`；
 - Redis 运行故障时回源 MySQL，MySQL 不可用但 Redis 有合法 warm hit 时仍能读取投影，而 readiness 继续失败；
-- Redis 业务用户只获准 exact development key prefix 和 `PING/GETRANGE/SET/DEL`；
+- Redis 业务用户只获准无 key 的 `PING`，以及 exact development key prefix 上的 `GETRANGE/SET/DEL`；
 - Redis 不发布 host port，只与 API 共享 internal cache network；
 - cache observation 只有低基数 outcome 与 duration，故障 warning 按种类以 10 秒窗口限频；
 - 公开 Lottery route、DTO、header、status、error code/message、前端 decoder 和页面状态没有为缓存改变；
@@ -270,9 +270,9 @@ Redis 官方 [EXPIRE](https://redis.io/docs/latest/commands/expire/) 与 [TTL](h
 - `/ready` 继续只检查 MySQL；
 - Redis 配置语法与 Secret 缺失在启动前失败，不能把 operator mistake 当运行降级。
 
-**机制：** lazy Redis client、独立 timeout、fail-open-to-source、配置 fail-closed、readiness 保持 MySQL-only。
+**机制：** 无启动 `PING`/同步可用性探测的 Redis pool、独立 timeout、fail-open-to-source、配置 fail-closed、readiness 保持 MySQL-only。默认 `MinIdleConns=0` 时首命令建连；显式正值只允许后台预热，预热失败不由 `Open` 同步返回。
 
-**证据：** Redis stopped 仍 200 且 `/ready` 200；MySQL stopped 时 warm hit 200 但 `/ready` 503；双依赖不可用时冷读 503。
+**证据：** Redis stopped 仍 200 且 `/ready` 200；MySQL stopped 时 warm hit 200、cold miss 503 且 `/ready` 503。Redis 与 MySQL 同时停止的冷读结果由相同状态机和单测推导，本轮没有把“双服务同时 down”单列为 Compose 故障注入。
 
 ### 3.3 权限：基础设施 ACL 与产品 RBAC 必须分层
 
@@ -326,7 +326,7 @@ Redis 官方 [EXPIRE](https://redis.io/docs/latest/commands/expire/) 与 [TTL](h
 
 **机制：** physical TTL + schema-key version + 明确不承诺。
 
-**证据：** TTL 边界/抖动测试、真实 Redis TTL、restart 后 miss/refill；这些证据仍不能证明业务版本一致性。
+**证据：** 配置/单元测试证明传给 `SET` 的 expiration 与抖动边界；隔离 acceptance 的 ACL helper 明确执行 `SET ... EX 30`，应用 refill 路径证明带 expiration 的写入可读且 restart 后可 miss/refill，但不把 helper 的 `EX` 冒充应用 wire 一定使用 `EX`（go-redis 也可编码为 `PX`）。业务 ACL 无 `TTL/PTTL`，本轮未采样服务器实际剩余 TTL 窗口；这些证据仍不能证明业务版本一致性。
 
 ### 3.6 可观测性：必须证明数据源变化，而不是用延迟猜命中
 
@@ -453,7 +453,7 @@ write-behind 更会让 Redis 暂存尚未进入 MySQL 的业务事实，直接�
 
 | 片段 | 责任 | 不能替代什么 |
 | --- | --- | --- |
-| `growthos` | 产品级命名空间 | 不能替代 Redis database 隔离 |
+| `growthos` | 产品级命名空间 | 不能替代实例/ACL 隔离；本节为避免授权 `SELECT` 固定使用 DB 0 |
 | `<environment>` | development/test/staging/production 隔离 | 不能接受请求输入或任意字符串 |
 | `lottery` | bounded context 归属 | 不能代表用户权限 |
 | `strategy` | 聚合类型 | 不能泛化成任意对象 |
@@ -668,11 +668,11 @@ leader 创建 shared fill 时，保留 caller 的 values，但通过 `context.Wi
 
 - caller A 超时：A 立即得到自己的 context error；
 - caller B 仍在等待：B 可继续拿到 shared source result；
-- lifecycle cancel：shared fill 被取消，所有仍等待者最终看到 source/cancel 结果；
-- hard fill timeout：限制孤立后台 work；
+- lifecycle cancel：取消 shared fill context；若权威读取尚未成功，等待者通常看到 source/cancel error；若 source 已成功而取消发生在 best-effort `SET`，仍可能返回成功 Strategy；
+- hard fill timeout：限制孤立后台 work；最终结果同样取决于 timeout 发生在权威读取前，还是发生在已成功 source 之后的 best-effort 写入阶段；
 - call 完成：从 map 移除并关闭 done，后续 miss 可创建新 flight。
 
-共享 fill 不无限延续，但也不因最早离开的 caller 绑架其他 caller。context values 的保留要谨慎：不能在 values 中放 Secret 或依赖 caller authorization 的 source decision；当前 Strategy 配置读取与 Principal 无关。
+共享 fill 不无限延续，但也不因最早离开的 caller 绑架其他 caller。hard timeout/lifecycle cancel 取消的是共享 context，不会把已经取得的权威 Strategy 因后续缓存写失败改写成失败。context values 的保留要谨慎：不能在 values 中放 Secret 或依赖 caller authorization 的 source decision；当前 Strategy 配置读取与 Principal 无关。
 
 ### 7.4 Timeout 预算不是三个独立旋钮
 
@@ -819,7 +819,7 @@ warm hit 与 readiness 同时出现“业务请求成功、实例未就绪”并
 3. 恢复 Redis/网络/ACL；
 4. 不执行数据恢复导入；
 5. 后续请求自然 miss/refill；
-6. 验证允许命令、拒绝命令、TTL 与 hit；
+6. 验证允许/拒绝命令、带 expiration 的写入与 hit；若要验证服务器实际剩余 TTL 窗口，使用单独受控观察身份，不扩宽 runtime ACL；
 7. 若 MySQL 已被放大，先控制流量，再考虑预热或新协调协议。
 
 #### MySQL 故障
@@ -859,7 +859,7 @@ warm hit 与 readiness 同时出现“业务请求成功、实例未就绪”并
 | --- | --- | --- | --- |
 | 网络可达性 | Redis 不发布 host port，只加入 internal cache network | 宿主机/其他 Compose 网络的偶然访问 | 已进入同网络的恶意容器 |
 | Redis 身份 | named user + Secret file，default user off | 匿名/default 登录与凭据硬编码 | Secret 被进程读取后的滥用 |
-| Redis 授权 | exact key pattern + `PING/GETRANGE/SET/DEL` | 跨 keyspace 和危险命令 | 在获准 prefix 内写 poison value |
+| Redis 授权 | 无 key `PING` + exact key pattern 上的 `GETRANGE/SET/DEL` | 跨 keyspace 和危险命令 | 在获准 prefix 内写 poison value |
 
 纵深防御意味着不能因为有 internal network 就省略 ACL，也不能因为有 ACL 就发布 host port。Redis 官方 [ACL 文档](https://redis.io/docs/latest/operate/oss_and_stack/management/security/acl/)提供命令与 key pattern 约束能力；具体 prefix、Secret ownership 和拒绝探针仍由本项目负责。
 
@@ -872,12 +872,13 @@ warm hit 与 readiness 同时出现“业务请求成功、实例未就绪”并
 
 业务用户不需要 `GET`、`MGET`、`KEYS`、`SCAN`、`FLUSHDB`、`CONFIG`、`ACL`、`EVAL`、Pub/Sub 或任意写命令。即便未来为了批量预热想用更多命令，也应新增操作身份或精确授权，而不是把 runtime 用户升级成 `+@all`。
 
-允许探针只能证明正路径；最小权限还必须用拒绝探针证明：
+允许探针只能证明正路径；本轮 acceptance 的拒绝探针实际证明：
 
-- 非 v1 prefix 的 GETRANGE/SET/DEL 被拒绝；
+- 非 v1 prefix 的 `SET` 被拒绝；
 - `KEYS`、`FLUSHDB`、`CONFIG GET` 等未授权命令被拒绝；
-- default user 不能认证；
-- 错误 Secret 不能认证。
+- default user 不能认证。
+
+ACL 文件的 exact key pattern 和命令 allowlist 可推导前缀外 `GETRANGE/DEL` 以及错误 Secret 都应失败，但本轮脚本没有逐条直接探测这三项，不能把配置推论冒充运行探针。
 
 ### 9.3 Secret 生命周期
 
@@ -1042,7 +1043,7 @@ Redis down 时每个请求都可能 read error。若每次都 warning：
 - exact v1 round trip；
 - `uint64` 最小/最大、前导零、符号、指数、溢出；
 - required/unknown/duplicate/case-sensitive/trailing token；
-- depth 16 边界；
+- JSON traversal depth guard 的允许/拒绝边界；
 - 1 与 1000 Award 合法、0 与 1001 非法；
 - 2 MiB 边界与 2 MiB + 1 sentinel；
 - schema/version/identity mismatch；
@@ -1075,13 +1076,13 @@ race test 证明实现未发现数据竞争，不证明不存在逻辑竞态、�
 
 ### 11.3 Redis/Compose 真实验收
 
-真实环境需要证明 fake 不能证明的部分：
+真实环境需要证明 fake 不能证明的部分。本轮已执行项与未执行项必须分开记录：
 
 - Secret file 能启动 named user；
 - default user 关闭；
 - exact prefix 允许；
 - 跨 prefix 与危险命令拒绝；
-- SET 的真实 TTL 位于允许窗口；
+- ACL helper 的 `SET ... EX 30` 被允许，应用带 expiration 的写入可读且 restart 后自然 miss/refill；应用 wire 可能使用 `EX` 或 `PX`，服务器实际剩余 TTL 窗口本轮未采样；
 - Redis 不发布 host port；
 - internal cache network 只连接预期服务；
 - `/data` tmpfs、maxmemory、eviction/no-persistence 与配置一致；
@@ -1113,9 +1114,9 @@ Compose 绿色仍不等于云生产安全：它没有证明 Security Group、托
 
 - 以明确 Compose project name 隔离；
 - 在运行前解析精确容器/网络/Secret 目标；
-- `set -Eeuo pipefail`；
+- POSIX `#!/bin/sh` + `set -eu`，并避免依赖非 POSIX `pipefail`；
 - 对预期失败命令显式检查，而不是让 `!`/pipeline 吞掉错误；
-- trap 在成功和失败时恢复被停止的 Redis/MySQL 服务；
+- 正常路径显式恢复被停止的 Redis/MySQL；成功或异常退出的 trap 都精确销毁整个隔离 project，而不是承诺保留并恢复其中服务；
 - readiness polling 有 deadline；
 - 精确断言 status、code 与 message；
 - 最终输出环境、fixture、负载参数和数据；
@@ -1218,7 +1219,7 @@ Strategy adapter 依赖抽象 Store，使业务包不直接被某个 Redis SDK �
 
 | ID | 假设/风险 | 当前证据 | 失败后果 | 触发器与动作 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| A24-01 | Strategy 是读多写少 | 当前 runtime 只有 SELECT，无正式写用例 | cache 收益不足或 stale 过多 | 第一条写用例前采集读写比并重开 ADR | 部分验证 |
+| A24-01 | Strategy 是读多写少 | 当前 runtime 只有 SELECT、无正式写用例，但这不构成生产读写比分布 | cache 收益不足或 stale 过多 | 第一条写用例前采集读写比并重开 ADR | 未验证 |
 | A24-02 | MySQL 可完整重建 projection | Repository 两表恢复 + codec round trip | Redis 变成隐性事实源 | 每个新增 value 字段审查 provenance；无法重建则禁止入 cache | 已验证 |
 | A24-03 | 五分钟 stale window 可接受 | 当前没有产品写/发布语义 | 未来活动变更延迟可见 | 产品定义 publish/read-after-write 后重新定 TTL/invalidation | 未验证 |
 | A24-04 | 2 MiB 足够且不会造成资源风险 | unit 边界与 GETRANGE sentinel | 合法大 Strategy 频繁 bypass，或单 value 占用过大 | 收集 value histogram/p99，修改上限需容量与 DoS 评审 | 部分验证 |
@@ -1369,7 +1370,7 @@ Strategy adapter 依赖抽象 Store，使业务包不直接被某个 Redis SDK �
 1. Redis, [Cache-aside pattern](https://redis.io/docs/latest/develop/use-cases/cache-aside/)：用于校准应用负责 lookup/miss/source/fill 的基本控制流；本项目另外定义 sole truth、strict restore 和错误优先级。
 2. Redis, [Access Control List](https://redis.io/docs/latest/operate/oss_and_stack/management/security/acl/)：用于命令、key pattern 和用户最小权限设计；不能替代产品 RBAC。
 3. Redis, [`EXPIRE`](https://redis.io/docs/latest/commands/expire/)：用于物理 key 过期语义。
-4. Redis, [`TTL`](https://redis.io/docs/latest/commands/ttl/)：用于真实验收剩余寿命与 key 状态；不能当业务版本。
+4. Redis, [`TTL`](https://redis.io/docs/latest/commands/ttl/)：用于理解剩余寿命与 key 状态语义；runtime ACL 未授权该命令，本轮也未执行真实 TTL probe，因此它不能被当作本节已取得的运行证据或业务版本。
 5. Redis, [Key eviction](https://redis.io/docs/latest/develop/reference/eviction/)：用于理解 maxmemory、policy 与并非所有进程内存都计入 eviction 的边界。
 6. Go, [A Guide to the Go Garbage Collector — Memory limit](https://go.dev/doc/gc-guide#Memory_limit)：用于解释 `GOMEMLIMIT` 是 Go runtime 的 soft limit，而不是容器 RSS 硬上限。
 7. Go command, [Compile packages and dependencies](https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies)：用于解释 `go build -p` 的并行 package 构建约束。

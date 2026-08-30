@@ -60,7 +60,7 @@ X-GrowthOS-Demo-Mode: ephemeral-selection
 约束仍然是：
 
 - `strategy_id` 必须是 `1..18446744073709551615` 的 canonical decimal string；
-- 请求没有 body、query、fragment 或 trailer；
+- 请求没有 body、query 或 trailer；URL fragment 不会进入 HTTP wire request，服务端不可见，因而不把“无 fragment”伪装成 handler 可校验的契约；
 - 不接受 `Idempotency-Key`；
 - `X-GrowthOS-Demo-Mode` 必须恰好出现一次且值精确；
 - route 仍只允许 development/test 显式启用；
@@ -222,7 +222,9 @@ warm cache 在 MySQL down 时仍能服务一次临时选择，是可用性效果
 
 `/ready` 的当前问题是：
 
-> 这个实例是否能完整执行需要权威 Strategy 事实的 Lottery 读取？
+> 这个实例能否在 readiness 预算内通过共享 MySQL pool 的 `PingContext`？
+
+这只是权威依赖可达性的代理信号，不证明 Strategy 查询、表结构、授权、Migration、fixture 或业务数据正确。真正证明 Strategy source path，需要有效业务请求与 MySQL source/SQL 路径证据共同成立。
 
 Redis 不满足事实源条件，也不是所有 Strategy 都必然已 warm。因此：
 
