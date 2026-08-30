@@ -41,7 +41,7 @@
 | ParticipantRef | Participation 用来向可信事实提供方查询主体的非零不透明引用 | 登录证明、Principal、租户或授权范围 |
 | RegistrationFactSnapshot | 一次求值所使用的不可变注册事实值，带来源、来源版本和观察时刻 | 本地用户主表、长期审计记录或客户端 DTO |
 | RegisteredAt | 权威来源确认的平台注册时刻 | 浏览器时间、首单时间或活动入组时间 |
-| ObservedAt | 事实提供方声明该快照有效到的时刻 | 数据库 `updated_at` 的通用替身 |
+| ObservedAt | 事实提供方捕获或观察该快照的时刻，freshness 从该时刻计算 | 数据库 `updated_at` 的通用替身或“有效到”时刻 |
 | PolicyRevision | 新用户政策配置的稳定修订标识 | Git SHA、Migration version、Strategy version |
 | EvaluatedAt | 应用服务在完成事实读取后由受控服务端时钟捕获的一次求值时刻 | 客户端时间或每个节点各自读取的 `now` |
 | Eligible | 事实充分且注册时刻位于含边界的允许区间 | 已授权、已参与、已中奖或已发奖 |
@@ -103,7 +103,7 @@ Registration fact 至少包含：
 
 这里的 fail-closed 是“不能继续执行”，不是把未知事实伪造成 `ineligible`。确定业务拒绝与依赖失败必须进入不同指标、重试策略、告警和未来 HTTP 映射。
 
-决定只携带低基数、可追溯的必要摘要：outcome、rule code、reason code、policy revision、fact source/revision 与一次 evaluated-at。它不携带注册时刻、政策阈值、昵称、手机号或完整用户属性。
+决定只携带最小、低敏、可追溯的必要摘要：outcome、rule code、reason code、policy revision、fact source/revision 与一次 evaluated-at。只有 outcome、rule code 和经过评审的 reason code 适合成为普通指标 label；policy/fact revision、source 和 evaluated-at 可能是高基数值，只能进入受控 trace/log 字段。FactRevision 不得编码手机号、邮箱或原始 payload。决定不携带 ParticipantRef、注册时刻、政策阈值、昵称、手机号或完整用户属性。
 
 ## 7. 确定性与副作用边界
 
@@ -197,4 +197,3 @@ validate request/service
 - 上游需求：[Lottery 业务规则需求基线 v1](lottery-rule-requirements-v1.md)
 - 上游决策：[ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)
 - 本节决策：[ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)
-

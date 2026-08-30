@@ -111,7 +111,7 @@ participation.new_user.registered_on_or_after
 
 ### 3. 使用具体 Decision + error，而不是 bool 或通用四态模型
 
-事实充分时只形成两种 Participation 业务结果：eligible 或 ineligible。决定包含稳定 rule/reason、policy revision、fact source/revision 与 evaluated-at，不包含完整 PII、原始 payload、注册时间或 cutoff 文案。
+事实充分时只形成两种 Participation 业务结果：eligible 或 ineligible。决定包含稳定 rule/reason、policy revision、fact source/revision 与 evaluated-at，不包含 ParticipantRef、完整 PII、原始 payload、注册时间或 cutoff 文案。只有经过评审的低基数 outcome/rule/reason 可进入普通指标 label；revision、source 和 evaluated-at 只用于受控诊断，FactRevision 不得编码手机号、邮箱或原始 payload。
 
 fact not found、stale、source unavailable、事实损坏、主体不匹配、clock 非法和 context cancellation 均返回零 decision + typed error。Fail-closed 只意味着不能继续，不得把这些场景改写成 ineligible。
 
@@ -161,4 +161,3 @@ Registration fact 和一次 eligibility decision 都不进入第 24 节 Strategy
 - [NIST SP 800-205](https://www.nist.gov/publications/attribute-considerations-access-control-systems)
 - [OASIS XACML 3.0](https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-cos01-en.html)
 - [Go FAQ：Interfaces](https://go.dev/doc/faq)
-
