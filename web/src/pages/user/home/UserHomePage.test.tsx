@@ -31,7 +31,12 @@ describe("UserHomePage", () => {
     renderHome();
 
     expect(screen.getByRole("link", { name: /查看活动/ }).getAttribute("href")).toBe("/campaigns");
-    expect(screen.getByRole("link", { name: "查看全部动态" }).getAttribute("href")).toBe("/feed");
+    expect(screen.getByRole("link", { name: "查看全部积分账单" }).getAttribute("href")).toBe(
+      "/points",
+    );
+    expect(screen.queryByRole("button", { name: /刷新/ })).toBeNull();
+    expect(screen.getByText("+670 PTS")).toBeTruthy();
+    expect(screen.getByText("-200 PTS")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Spring Growth Surge 2026/ })).toBeTruthy();
   });
 });
