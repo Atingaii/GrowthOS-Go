@@ -667,52 +667,97 @@ func TestStrategyRoutingGraphEvaluationErrorExposesOnlyReviewedClass(t *testing.
 	}
 }
 
-func TestStrategyRoutingGraphEvaluationServiceSupports64ConcurrentReadOnlyCalls(t *testing.T) {
+func TestStrategyRoutingGraphEvaluationServiceIsolates64ConcurrentMixedRequests(t *testing.T) {
 	evaluatedAt := routingTestInstant()
-	graph := graphEvaluationTwoStepGraph(t, 161, "graph-concurrent-r1", 300, 200, 100)
-	graphReader := &concurrentStrategyRoutingGraphReader{graph: graph}
-	factReader := &concurrentMembershipFactReader{
-		fact: routingTestFact(t, 42, domain.MembershipTierPremium, evaluatedAt),
+	premiumGraph := graphEvaluationTestGraph(t, 161, "graph-concurrent-premium-r1", 300, 100)
+	standardGraph := graphEvaluationTestGraph(t, 162, "graph-concurrent-standard-r1", 400, 500)
+	premiumSubject := domain.MembershipSubjectRef(42)
+	standardSubject := domain.MembershipSubjectRef(84)
+	graphReader := &concurrentStrategyRoutingGraphReader{
+		graphs: map[domain.StrategyRoutingGraphIdentity]domain.StrategyRoutingGraph{
+			premiumGraph.Identity():  premiumGraph,
+			standardGraph.Identity(): standardGraph,
+		},
+		calls: make(map[domain.StrategyRoutingGraphIdentity]int),
+	}
+	factReader := &concurrentMembershipFactMapReader{
+		facts: map[domain.MembershipSubjectRef]domain.MembershipTierFactSnapshot{
+			premiumSubject:  routingTestFact(t, premiumSubject, domain.MembershipTierPremium, evaluatedAt),
+			standardSubject: routingTestFact(t, standardSubject, domain.MembershipTierStandard, evaluatedAt),
+		},
+		calls: make(map[domain.MembershipSubjectRef]int),
 	}
 	clock := &concurrentMembershipRoutingClock{now: evaluatedAt}
-	service := graphEvaluationTestService(t, graphReader, factReader, clock, time.Hour, 2, time.Second)
+	service := graphEvaluationTestService(t, graphReader, factReader, clock, time.Hour, 1, time.Second)
+	testCases := []struct {
+		subject    domain.MembershipSubjectRef
+		identity   domain.StrategyRoutingGraphIdentity
+		wantTarget domain.StrategyID
+		wantBranch domain.MembershipRoutingBranch
+		wantReason domain.MembershipRoutingReasonCode
+	}{
+		{
+			subject:    premiumSubject,
+			identity:   premiumGraph.Identity(),
+			wantTarget: 300,
+			wantBranch: domain.MembershipRoutingBranchPremiumOverride,
+			wantReason: domain.MembershipRoutingReasonPremiumStrategy,
+		},
+		{
+			subject:    standardSubject,
+			identity:   standardGraph.Identity(),
+			wantTarget: 500,
+			wantBranch: domain.MembershipRoutingBranchBaselineDefault,
+			wantReason: domain.MembershipRoutingReasonBaselineStrategy,
+		},
+	}
 
 	const workers = 64
-	results := make(chan domain.StrategyRoutingGraphDecision, workers)
-	errorsSeen := make(chan error, workers)
+	type concurrentResult struct {
+		caseIndex int
+		decision  domain.StrategyRoutingGraphDecision
+		err       error
+	}
+	results := make(chan concurrentResult, workers)
 	var waitGroup sync.WaitGroup
-	for range workers {
+	for worker := range workers {
 		waitGroup.Add(1)
-		go func() {
+		go func(caseIndex int) {
 			defer waitGroup.Done()
-			decision, err := service.Evaluate(context.Background(), 42, graph.Identity())
-			results <- decision
-			errorsSeen <- err
-		}()
+			testCase := testCases[caseIndex]
+			decision, err := service.Evaluate(context.Background(), testCase.subject, testCase.identity)
+			results <- concurrentResult{caseIndex: caseIndex, decision: decision, err: err}
+		}(worker % len(testCases))
 	}
 	waitGroup.Wait()
 	close(results)
-	close(errorsSeen)
-	for err := range errorsSeen {
-		if err != nil {
-			t.Fatalf("concurrent Evaluate() error = %v", err)
+	for result := range results {
+		testCase := testCases[result.caseIndex]
+		if result.err != nil {
+			t.Fatalf("concurrent Evaluate() case %d error = %v", result.caseIndex, result.err)
+		}
+		path := result.decision.Path()
+		if !result.decision.Confirmed() || result.decision.Identity() != testCase.identity ||
+			result.decision.Target() != testCase.wantTarget || len(path) != 1 ||
+			path[0].Branch() != testCase.wantBranch || path[0].ReasonCode() != testCase.wantReason {
+			t.Fatalf("unexpected concurrent decision for case %d: %#v", result.caseIndex, result.decision)
 		}
 	}
-	var first domain.StrategyRoutingGraphDecision
-	for decision := range results {
-		if !decision.Confirmed() || decision.Target() != 300 || len(decision.Path()) != 2 {
-			t.Fatalf("unexpected concurrent decision: %#v", decision)
-		}
-		if !first.Confirmed() {
-			first = decision
-			continue
-		}
-		if !reflect.DeepEqual(first, decision) {
-			t.Fatalf("concurrent decisions differ: %#v vs %#v", first, decision)
+	for _, testCase := range testCases {
+		if graphReader.Calls(testCase.identity) != workers/len(testCases) ||
+			factReader.Calls(testCase.subject) != workers/len(testCases) {
+			t.Fatalf(
+				"dependency calls for %#v/%d = graph %d fact %d, want %d each",
+				testCase.identity,
+				testCase.subject,
+				graphReader.Calls(testCase.identity),
+				factReader.Calls(testCase.subject),
+				workers/len(testCases),
+			)
 		}
 	}
-	if graphReader.Calls() != workers || factReader.Calls() != workers || clock.Calls() != workers {
-		t.Fatalf("dependency calls = graph %d fact %d clock %d, want %d each", graphReader.Calls(), factReader.Calls(), clock.Calls(), workers)
+	if clock.Calls() != workers {
+		t.Fatalf("clock calls = %d, want %d", clock.Calls(), workers)
 	}
 }
 
@@ -802,25 +847,57 @@ func (reader *contextBlockingStrategyRoutingGraphReader) Calls() int {
 }
 
 type concurrentStrategyRoutingGraphReader struct {
-	mu    sync.Mutex
-	graph domain.StrategyRoutingGraph
-	calls int
+	mu     sync.Mutex
+	graphs map[domain.StrategyRoutingGraphIdentity]domain.StrategyRoutingGraph
+	calls  map[domain.StrategyRoutingGraphIdentity]int
 }
 
 func (reader *concurrentStrategyRoutingGraphReader) FindByIdentity(
-	context.Context,
-	domain.StrategyRoutingGraphIdentity,
+	_ context.Context,
+	identity domain.StrategyRoutingGraphIdentity,
 ) (domain.StrategyRoutingGraph, error) {
 	reader.mu.Lock()
 	defer reader.mu.Unlock()
-	reader.calls++
-	return reader.graph, nil
+	reader.calls[identity]++
+	graph, found := reader.graphs[identity]
+	if !found {
+		return domain.StrategyRoutingGraph{}, ErrStrategyRoutingGraphNotFound
+	}
+	return graph, nil
 }
 
-func (reader *concurrentStrategyRoutingGraphReader) Calls() int {
+func (reader *concurrentStrategyRoutingGraphReader) Calls(
+	identity domain.StrategyRoutingGraphIdentity,
+) int {
 	reader.mu.Lock()
 	defer reader.mu.Unlock()
-	return reader.calls
+	return reader.calls[identity]
+}
+
+type concurrentMembershipFactMapReader struct {
+	mu    sync.Mutex
+	facts map[domain.MembershipSubjectRef]domain.MembershipTierFactSnapshot
+	calls map[domain.MembershipSubjectRef]int
+}
+
+func (reader *concurrentMembershipFactMapReader) FindMembershipTierFact(
+	_ context.Context,
+	subject domain.MembershipSubjectRef,
+) (domain.MembershipTierFactSnapshot, error) {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	reader.calls[subject]++
+	fact, found := reader.facts[subject]
+	if !found {
+		return domain.MembershipTierFactSnapshot{}, ErrMembershipTierFactUnavailable
+	}
+	return fact, nil
+}
+
+func (reader *concurrentMembershipFactMapReader) Calls(subject domain.MembershipSubjectRef) int {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	return reader.calls[subject]
 }
 
 type graphEvaluationCallResult struct {
