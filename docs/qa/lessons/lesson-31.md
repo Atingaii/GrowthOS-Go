@@ -384,7 +384,7 @@ git log --reverse --oneline 6504e91..HEAD
 - 没有覆盖或删除用户/并行代理的既有工作；
 - disposable test artifact 已精确清理，未误删可复用依赖或用户数据。
 
-**ACTUAL-PASS（当前 committed candidate）：** root 已执行：
+**ACTUAL-PASS（最终证据候选）：** root 已对第 30 节基线 `6504e91` 到当前工作树执行 exact path whitelist，所有变化仅落在 `internal/governance/domain`、第 31 节六类正文/runbook、产品/ADR 以及明确列出的全局导航/架构索引文件。同时再次执行：
 
 ```bash
 git diff --exit-code 6504e91..HEAD -- \
@@ -393,7 +393,7 @@ git diff --exit-code 6504e91..HEAD -- \
   scripts Makefile go.mod go.sum
 ```
 
-命令 exit 0。当前 committed diff 仅涉及 `docs/product`、`docs/decisions` 与 `internal/governance/domain`；当时未跟踪文件仅为 L31 课程/API/QA/面试/runbook，设计手记仍在并行落盘。这证明当前候选没有改写既有 runtime/business/infrastructure/Web/module surface；最终提交后仍必须按完整章节白名单复跑，不能把这次范围证据当成最终 remote freeze。
+命令 exit 0。三条 production stopline 搜索也均为零命中：没有外部 production package 导入 Governance kernel，没有在纯 domain 中混入 Session/Credential/Token/JWT/Middleware 等认证词汇，也没有 runtime/HTTP/Web wiring。`git diff --check 6504e91 --` exit 0。这证明最终证据候选没有改写既有 runtime/business/infrastructure/Web/module surface；remote freeze 与线性历史仍需在提交后单独核对。
 
 ## 11. 最终全仓门禁
 
@@ -412,14 +412,14 @@ git diff --check
 
 | 命令 | 当前状态 | 实际证据/待项 |
 | --- | --- | --- |
-| `make fmt-check` | FINAL-GATE-PENDING | 待全部文档落盘后执行 |
-| `go vet ./...` | FINAL-GATE-PENDING | focused Governance vet 已过，但全仓 vet 尚未在最终态登记 |
+| `make fmt-check` | ACTUAL-PASS | root 在全部章节文档与全局索引落盘后独立执行，exit 0、无格式差异 |
+| `go vet ./...` | ACTUAL-PASS | root 通过最终 `make verify` 实际执行，全仓 exit 0 |
 | `go test -count=1 ./...` | ACTUAL-PASS | root 实际执行，全仓列出的 package 全部 PASS，17.3s |
 | `go test -race -count=1 ./...` | ACTUAL-PASS | root 实际执行，全仓列出的 package 全部 PASS，18.6s，无 race report |
-| `go run ./cmd/doccheck` | FINAL-GATE-PENDING | 待三份章节文档与其余文档/索引全部落盘后复跑 |
-| `make web-verify` | FINAL-GATE-PENDING | 只用于既有 Web 回归，不证明 L31 权限 UI |
-| `make verify` | FINAL-GATE-PENDING | 待全部文档落盘后执行最终聚合门禁 |
-| `git diff --check` | FINAL-GATE-PENDING | 本文三文件 basic diff-check 已过；root 仍需最终全范围核对 |
+| `go run ./cmd/doccheck` | ACTUAL-PASS | root 在全部章节文档与全局索引落盘后通过最终 `make verify` 实际执行，documentation checks passed |
+| `make web-verify` | ACTUAL-PASS | root 独立执行：19/19 test files、152/152 tests、TypeScript typecheck 与 Vite production build 全部通过；只证明既有 Web 回归，不证明 L31 权限 UI |
+| `make verify` | ACTUAL-PASS | root 在全部代码、文档与全局索引提交后执行，Go vet/test、doccheck、Web test/typecheck/build 全部通过 |
+| `git diff --check` | ACTUAL-PASS | root 对 `6504e91` 到最终证据候选的完整工作树执行，exit 0 |
 
 `make verify` 可能包含部分前置命令，但冻结记录仍应说明实际执行入口和结果；已经 ACTUAL-PASS 的全仓 normal/race 不授权把其余命令预写为通过。
 
@@ -455,17 +455,17 @@ git diff --check
 - [x] focused statement coverage 已实际记录为 92.5%；
 - [x] root 已实际执行全仓 `go test -count=1 ./...` 与 `go test -race -count=1 ./...`，分别 17.3s/18.6s 并 PASS；
 - [x] root 已对当前 committed candidate 执行 runtime/business/infrastructure/Web/module zero-diff 并 exit 0；
-- [ ] 课程正文、API、QA、设计手记、面试问答、runbook 与全局索引在同一候选收口；
-- [ ] root 在最终候选执行 architecture 精确停止线与 `git diff --check`；
-- [ ] root 在最终候选执行尚未完成的全仓 vet/doccheck/Web/build/聚合门禁；
-- [ ] root 精确核对并清理仅由本任务产生的 disposable artifact；
+- [x] 课程正文、API、QA、设计手记、面试问答、runbook 与全局索引已在同一候选收口；
+- [x] root 在最终候选执行 exact path whitelist、runtime zero-diff、architecture 三条精确停止线与 `git diff --check`，全部通过；
+- [x] root 在最终文档态执行全仓 vet/doccheck/Web test/typecheck/build/聚合门禁并全部通过；
+- [x] root 已精确列出并清理本轮生成的 `/tmp/growthos-lesson31-final.cover` 与 `web/dist`，未触碰依赖、Secrets、Docker 资源或用户数据；
 - [ ] accepted tip、远端同名 branch、main 不变与第 30→31 节线性历史实际核对。
 
 未勾选项不得由文档作者提前改成已通过。
 
 ## 14. QA 结论
 
-截至本文编写，纯 Governance model 的 focused normal/race/vet/fuzz/coverage 已取得 `EXECUTED-AUTHORING-EVIDENCE`，全仓 normal/race 已取得 `ACTUAL-PASS`，核心威胁矩阵与停止线已有代码证据。最终 vet/doccheck/Web/build/`make verify`、文档范围、cleanup、accepted tip 与远端冻结仍是 `FINAL-GATE-PENDING`。
+截至本文本轮证据更新，纯 Governance model 的 focused normal/race/vet/fuzz/coverage、全仓 normal/race、最终 vet/doccheck/Web test/typecheck/build/`make verify`、exact path whitelist、runtime zero-diff、architecture stopline、`git diff --check` 与 disposable artifact cleanup 均已取得 `ACTUAL-PASS`。核心威胁矩阵与停止线已有代码证据；第 30→31 节线性历史、accepted tip、远端同名分支与 `main` 不变仍是 `FINAL-GATE-PENDING`，将在证据提交后独立核对。
 
 本节最终可宣称的上限是：
 

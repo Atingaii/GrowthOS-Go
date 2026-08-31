@@ -531,9 +531,9 @@ go test -run '^$' -fuzz '^FuzzPolicyEvaluationDenyPrecedenceAndOrderIndependence
 - [x] default deny、deny precedence、zero Decision + error 和 exact evidence 已实现；
 - [x] 普通、race、fuzz、并发、defensive copy、容量与架构测试已建立；
 - [x] 独立代码/测试/术语审查未发现 P0/P1，P2 缺口已最小修复；
-- [ ] 课程、API、QA、设计手记、面试文档和 Runbook 全部完成并通过 doccheck；
+- [x] 课程、API、QA、设计手记、面试文档和 Runbook 全部完成并通过 doccheck；
 - [ ] 全仓 `make verify`、race、章节 diff、构建产物清理和远端一致性最终通过；
-- [ ] 章节状态、全局导航、分支检查点和累计分支在最终证据后更新。
+- [x] 章节状态、全局导航和分支检查点已更新；累计分支只在章节冻结后快进。
 
 最后三项只在真实执行后勾选。课程正文不会用计划命令冒充实际证据。
 
