@@ -9,7 +9,7 @@
 - **设计手记：** [第 30 节设计手记](../../design-thinking/lessons/lesson-30.md)
 - **面试问答：** [第 30 节面试问答](../../interview/lessons/lesson-30.md)
 - **运行手册：** [Activity publication 验收与故障分诊](../../runbooks/activity-publication.md)
-- **证据日期：** 2026-08-31（完整最终候选真实执行记录）；accepted tip、SHA、远端冻结、最终 architecture/diff 与工作树清理仍待 root 收口
+- **证据日期：** 2026-08-31（完整最终候选、root 收口与远端冻结真实记录）；accepted implementation/documentation candidate：`887754bb192d9850d231729391152cd8678c11ad`
 
 > 本节验收未装配的内部发布内核：Marketing Activity 以不可变 publication 精确绑定 Lottery graph 与全部 terminal Strategy revision，并通过 CAS、strict restore、一次受控 Clock 和 fail-closed verifier 形成可核查结果。它不验收运营 API、真实审批、身份、RBAC、UI、正式 Draw、库存、发奖或 MQ。
 
@@ -20,7 +20,7 @@
 | **IMPLEMENTED-SURFACE** | 当前工作树中已有实现与测试代码，可进行代码审查；不代表命令已在最终候选上通过 |
 | **EXECUTED-CANDIDATE-EVIDENCE** | 命令已在完整最终候选上真实执行并保留结果；只证明所列环境与执行路径 |
 | **REQUIRED-GATE** | root冻结前仍必须实际执行并记录的最终architecture/diff/cleanup/ref检查 |
-| **FINAL-FREEZE-PENDING** | 代码门禁已完成，但accepted tip、SHA、远端同名ref与线性历史尚未由root冻结 |
+| **FINAL-FREEZE-VERIFIED** | 代码门禁、root最终检查/清理、accepted candidate、远端同名ref与线性历史均已核对；freeze-attestation只登记结果 |
 | **OUT-OF-SCOPE** | 本节刻意不交付；其他命令通过也不能推导该能力已实现 |
 | **NOT-CLAIMED** | 没有足够证据形成通过、容量、SLO、生产或合规结论 |
 
@@ -526,12 +526,12 @@ application-only receipt变更影响的runtime切片；不能据此宣称Activit
 - [x] 长驻v5→v11升级及最终Compose status/smoke、资源identity/旧数据/grant不变已实际核对；
 - [x] 独立Lottery Compose acceptance已执行并核对随机资源清理；
 - [x] `make verify`已在完整最终候选exit 0；
-- [ ] root在全部索引收口后再次执行`go run ./cmd/doccheck`；
-- [ ] root最终diff/architecture stopline检查；
-- [ ] root最终清理并确认工作树无意外产物；
-- [ ] accepted tip、远端同名ref与线性历史由root任务实际核查。
+- [x] root在全部索引收口后再次执行`go run ./cmd/doccheck`；
+- [x] root最终diff/architecture stopline检查；
+- [x] root精确移除本次Vite生成的ignored `web/dist/`，保留可复用依赖、Compose Secrets与长期Docker资源，并确认无其他意外产物；
+- [x] accepted candidate `887754bb192d9850d231729391152cd8678c11ad`、远端同名ref、main不变与线性历史由root实际核查。
 
-未勾选项仍不得预写成通过、commit SHA或远端冻结事实。
+Freeze-attestation 提交只登记上述已执行核查；它不改变accepted candidate的代码、schema或运行时能力。
 
 ## 13. QA 结论边界
 
@@ -541,5 +541,5 @@ application-only receipt变更影响的runtime切片；不能据此宣称Activit
 
 > 第30节的Strategy snapshot、Activity domain/application、Lottery ACL和Marketing MySQL adapter已形成
 > IMPLEMENTED-SURFACE；完整候选的Go/MySQL/Compose/全仓回归已有EXECUTED-CANDIDATE-EVIDENCE；公开API、
-> 认证授权、真实审批、runtime/UI/Draw等保持OUT-OF-SCOPE；accepted tip、SHA、远端冻结与root最终
-> architecture/diff/cleanup仍待实际核查。
+> 认证授权、真实审批、runtime/UI/Draw等保持OUT-OF-SCOPE；accepted candidate、远端学习分支、线性历史与
+> root最终architecture/diff/cleanup均已实际核查。

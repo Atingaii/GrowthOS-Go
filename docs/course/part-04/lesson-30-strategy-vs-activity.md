@@ -11,7 +11,7 @@
 - **设计手记：** [第 30 节第一性原理手记](../../design-thinking/lessons/lesson-30.md)
 - **面试问答：** [第 30 节面试问答](../../interview/lessons/lesson-30.md)
 - **运行手册：** [Activity publication 验收与故障分诊](../../runbooks/activity-publication.md)
-- **证据状态：** 最终候选的 normal/race/shuffle/fuzz/coverage/real MySQL/Compose/`make verify` 已真实执行；accepted tip、SHA、远端冻结与 root 最终清理仍待收口
+- **证据状态：** 最终候选的 normal/race/shuffle/fuzz/coverage/real MySQL/Compose/`make verify`、root 最终检查与清理均已真实执行；accepted implementation/documentation candidate 为 `887754bb192d9850d231729391152cd8678c11ad`，同名远端学习分支与线性历史已核对
 
 ## 1. 本节真正补上的缺口
 
@@ -641,9 +641,10 @@ Commit receipt/reconciliation 收口后，完整最终候选又真实执行并�
   `0`，长驻资源不变；`make compose-status` 为 clean 11/latest 11，`make compose-smoke` exit 0 且资源
   identity 保持。
 
-因此代码与数据库门禁不再处于“待复跑”。仍待 root 在全部索引/文档收口后复核 architecture、doccheck、
-diff、工作树清理、accepted tip、远端同名 ref 与线性历史；本文不预写 SHA 或远端冻结结论。Fuzz exec 与
-corpus 数依机器、语料和 cache 变化，只用于记录本次执行。
+因此代码与数据库门禁不再处于“待复跑”。Root 在全部索引/文档收口后又完成 architecture、doccheck、
+diff、任务 build artifact 清理、远端同名 ref 与线性历史核对；`887754bb192d9850d231729391152cd8678c11ad`
+被接受为完整实现/文档候选。本次随后追加的 freeze-attestation 提交只登记这一验收事实，不改变候选代码、
+schema 或运行时边界。Fuzz exec 与 corpus 数依机器、语料和 cache 变化，只用于记录本次执行。
 
 ## 24. 第 30 节没有新增公开 API
 

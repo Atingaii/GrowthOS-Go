@@ -506,5 +506,8 @@ Fuzz exec/corpus与coverage数字只记录本次环境，不是KPI、SLO或生�
 disposable gate核对的临时资源零残留；root仍需在全部文档/索引完成后处理本任务最终build artifact与工作树
 清理。
 
-尚未写入本文、也不得预写的是accepted tip/SHA/远端同名ref/线性历史。Root还需最终复跑architecture、
-doccheck、diff，完成精确清理并冻结远端；这些剩余项不代表代码门禁仍待复跑。
+Root 随后实际复跑 architecture/doccheck/diff，精确移除本次 Vite 生成的 ignored `web/dist/`，保留
+`web/node_modules`、Compose Secrets 与长期 Docker 资源，并核对 main 不变、远端同名 ref 与线性历史。
+Accepted implementation/documentation candidate 为
+`887754bb192d9850d231729391152cd8678c11ad`；随后 freeze-attestation 提交只登记这一事实，不改变候选
+代码、schema、运行时或停止线。
