@@ -5,7 +5,7 @@
 
 本文件描述当前仓库，而不是第 101 节的目标仓库。目录随需求演进，改动目录职责时必须同步更新本文件。
 
-第 9～30 节依次形成工程基线、Lottery Strategy/Award、ephemeral API/React、Redis 投影、Participation 资格链、exact routing graph 的持久化/封闭求值，以及 Lottery create-only Strategy snapshot 与 Marketing-owned Activity publication。第 30 节 immutable version、CAS、rollback/retire、一次 Clock 的 `[start,end)` resolve gate与 exact Lottery ACL 已通过真实 MySQL 8.4.11、长期 Compose v5→v11、最小权限、独立 Lottery acceptance 和全仓质量门验收；源码另提供 commit-outcome-unknown receipt 三态对账。所有第 25～30 节 service、Repository 与 ACL 均未进入 HTTP 或 composition root；长期 `growthos_app` 仍只拥有旧两表 `SELECT`，并真实拒绝其余八表。
+第 9～31 节依次形成工程基线、Lottery/Marketing/Participation 切片，以及 Governance-owned 访问控制语言。第 31 节新增的 `internal/governance/domain` 只包含 canonical Principal/Resource/Action、exact Permission、固定 Role ceiling、四种 ScopeKind、allow/deny RoleBinding、immutable Policy 和纯 Decision evaluator；没有 session、transport、persistence、middleware、UI 或业务 use-case enforcement。第 25～31 节新内核都未进入现有 HTTP/composition root；长期 `growthos_app` 权限也没有扩宽。
 
 | 路径 | 当前职责 | 引入产品代码的章节 |
 | --- | --- | --- |
@@ -30,6 +30,7 @@
 | `internal/lottery/adapter/httpapi` | 注册默认关闭的 ephemeral selection route，校验规范 uint64 path、demo header/query/body framing，映射最小 string DTO、稳定错误、timeout、no-store 与 Request ID | 第 21 节 |
 | `internal/participation/domain` | 持久化/传输无关的 ParticipantRef、注册/风险事实快照、具体新用户/风险准入 policy 与 decision、RuleSetRevision、稳定 reason 和纯 evaluator | 第 25～26 节 |
 | `internal/participation/application` | consumer-owned registration/risk fact ports、受控 Clock、standalone 新用户用例，以及固定“新用户→风险”短路链；验证 shared as-of、freshness、取消、单类错误与 trace，不依赖 adapter/HTTP/Lottery | 第 25～26 节 |
+| `internal/governance/domain` | 统一且封闭的访问策略语言：Principal、Resource kind/type/facts、exact Permission、五种 Role template ceiling、system/tenant/owned/resource Scope、allow/deny binding、immutable Policy revision、default deny/deny precedence 与有界 evidence；构造只验证 shape，当前无 runtime consumer | 第 31 节 |
 | `internal/marketing/domain` | Marketing-owned Activity aggregate、draft/published/retired 状态机、immutable publication version、exact graph/snapshot manifest、rollback provenance、CAS plan 与 `[start,end)` resolve gate；不拥有 Lottery 内容或 Governance 审批事实 | 第 30 节 |
 | `internal/marketing/application` | CreateDraft/Publish/Rollback/Retire/Resolve 用例与 narrow ports；一次 Clock、positive maxDuration、exact candidate、低披露失败。COMMIT 应答丢失时通过 `ActivityCommitReceiptFromError` 取受信 receipt，以 `ObserveCurrentActivity` / `ObserveActivityRoot` 和 `ReconcileActivityCommit` 形成 committed/not_committed/indeterminate 三态，不建议盲重放 | 第 30 节 |
 | `internal/marketing/adapter/mysqlrepo` | Activity、publication、manifest 的 Marketing 内部事务/RR/CAS Repository；publication history 追加且 rollback 复制 exact source，adapter 不跨上下文读 Lottery 表、不拥有共享 pool | 第 30 节 |
@@ -56,10 +57,10 @@
 | `web/src/pages/user/lottery` | `/lottery` 页面与 selection Hook：规范 StrategyID、显式状态机、pending 抑制、取消和旧响应隔离；不产生浏览器随机结果 | 第 22 节 |
 | `web/src/pages/system/status` | `/system/status` 页面、并行探针 hook、取消/竞态控制和组件测试 | 第 15 节 |
 | `web/vite.config.ts` | dev/preview 的 `127.0.0.1` 严格端口和 `/health`、`/ready`、`/api` 精确同源代理 | 第 15 节 |
-| `docs` | 产品、架构、决策、QA、第一性原理设计推导、面试问答和课程事实；第 30 节增加 Strategy snapshot、Activity immutable publication、CAS/rollback/gate、Lottery ACL、commit unknown 对账与 v11 验收证据 | 全程 |
+| `docs` | 产品、架构、决策、QA、第一性原理设计推导、面试问答和课程事实；第 31 节增加访问模型基线、零 API 契约、威胁矩阵与信任停止线 | 全程 |
 | `docs/design-thinking` | 按章节保存事实到机制的推导、备选方案、失败模型、风险账本与重决策条件 | 第 13 节起，历史章节回填 |
 | `docs/interview` | 按章节保存可口述问答、追问、项目证据、选型边界与分级外部来源 | 第 13 节起，历史章节回填 |
-| `docs/runbooks` | MySQL Migration、本地 Compose、Redis Strategy 缓存、未装配 graph evaluator 与 Activity publication 的运行/故障停止条件、v11 验收与清理纪律 | 第 13、16、24、28～30 节 |
+| `docs/runbooks` | MySQL/Compose/Redis/graph/Activity 的运维验收，以及第 31 节 access catalog/role/scope/deny 模型变更、离线撤权分析和证据纪律 | 第 13、16、24、28～31 节 |
 
 ## 当前依赖规则
 
@@ -79,6 +80,7 @@
 14. `StrategyRoutingGraph` 只拥有 Lottery 的 rule/branch/default/Strategy target 拓扑；它不是跨 Participation/Governance/Benefit 的通用规则引擎。第 29 节 evaluator 只消费已验证 graph aggregate 和 typed 会员 fact，不得引入裸 SQL row、`map[string]any`、registry/DSL 或跨上下文事实袋。Graph MySQL adapter/evaluator 均尚未装配到 `cmd/growth-api`，存在代码和测试不等于长期 runtime 获得 graph 表权限。
 15. Marketing publication 与 Lottery graph/snapshot 不建立跨 bounded-context FK 或 SQL join。Marketing 只保存 exact refs，`lotteryconfig` ACL 通过 Lottery application-owned readers 复核闭合集；任一缺失、坏快照、集合不等或依赖故障均失败关闭，不能回退 latest。
 16. Activity publication 只追加；publish/rollback/retire 必须以 `state_version` CAS 拒绝并发覆盖。Governance 拥有审批决定，Marketing 只消费绑定 exact candidate 的 verifier evidence；第 30 节没有装配真实 Governance provider，也没有授权任何浏览器或 runtime 调用。
+17. Governance domain 只允许经评审的纯标准库依赖；其他 production Go 文件在第 31 节不得导入它或未来子包。Principal/Resource 构造不是信任证明，Permission 不直接绑定 Principal，unknown capability/scope 和缺失 tenant/owner 均 fail closed；第 33 节只能在可信事实与明确 enforcement point 完成后修改停止线。
 
 第 11 节的 `/health` 仍是无外部依赖的进程 liveness，只证明 Gin 路由和 handler 能响应。第 13 节的 API 在监听前必须打开并 Ping MySQL，运行中 `/ready` 每次用有界 Ping 表示数据库 readiness；依赖故障时 `/ready` 为 503 而 `/health` 仍可为 200。两者都不证明业务数据正确、Migration 最新或 SLO 达标。
 
@@ -92,6 +94,8 @@
 
 第 17～29 节形成 Strategy/Award、事务仓储、ephemeral API/React、cache-aside、资格/路由和 exact graph evaluator。第 30 节由 Lottery create-only snapshot 固化 Strategy 内容，由 Marketing Activity publication 保存 exact graph + closed terminal snapshot manifest；publish/rollback/retire 使用 CAS，rollback 追加版本并保留 provenance，resolve 在一次 Clock 下执行生命周期与 `[start,end)` gate。两上下文之间没有 FK，Lottery ACL 只走 exact readers 并 fail closed；commit acknowledgement 丢失则以 application-owned receipt 与 exact observation 三态对账。以上代码仍未装配进现有 ephemeral selection，运行链没有 DrawID、结果持久化、认证、授权、幂等、完整资格组合、库存或发奖，INV-03 尚未满足。
 
+第 31 节在这些真实受保护对象出现后才建立公共授权词典。它能对 exact Principal/Resource/Action 在 exact Policy revision 下形成 confirmed allow/deny 或 zero Decision + error，matching deny 确定覆盖 allow，并保留 BindingID/RoleID/Effect/ScopeKind/Permission evidence。架构门禁仍使 runtime import 为零，所以现有 ephemeral route 仍无主体和授权；第 32/33 节之前不能把构造出的值对象当认证或服务端事实。
+
 第 29 节保留其普通/race/fuzz/coverage 与 disposable MySQL 证据。第 30 节最终源码/文档候选又实际通过 `make verify`、真实 disposable MySQL 8.4.11、长期 Compose status/smoke 与独立 Lottery acceptance；这证明当前未装配内核和工程边界，不证明业务 SLO、运行时 Activity API 或生产容量。
 
 第一版运行时采用 [ADR-0007](../decisions/ADR-0007-modular-monolith-first.md) 确定的模块化单体：一个 Go 产品进程可以装配多个领域模块，但共享进程和数据库实例不改变事实所有权。服务拆分必须等待第 78 节起出现的负载、发布、故障域、合规或团队证据。
@@ -104,6 +108,6 @@
 - React、TypeScript、Vite、Tailwind CSS、Lucide、Recharts 和 Zustand 在第 14 节接入；第 15 节接通系统探针，第 22 节接通 Lottery ephemeral selection 并收敛共享工作台壳层。其余领域仍等待真实 API，不以 Mock 或本地交互冒充完成。
 - 第 16 节已引入 Compose 本地开发环境，第 24 节接入第一个业务 Redis 消费者和最小 ACL；它仍是单机开发拓扑：没有镜像 digest 固定、内部 TLS、生产资源配额、Secret Manager、Redis HA 或生产容量证明。
 - 第 19～29 节逐步建立 Strategy 仓储、无偏选择、ephemeral API/React、规则所有权、Redis 投影、Participation 资格、会员路由、routing graph 和 closed evaluator；第 30 节已验收 exact Strategy snapshot 与 Activity publication。以上新增内核仍未在线执行；正式 Draw/Result、幂等、库存与发奖必须由后续真实问题驱动，runtime 新表 grant、运行写权限和缓存失效总线不会被提前加入。
-- 登录认证、RBAC、租户/对象级数据范围、前后端授权强制与审计拒绝路径尚未实现；当前工作台导航分区不是权限边界。第 25 节已形成首个具体资格切片，第 26～30 节继续以真实规则、决策机制与 Activity 等受保护对象演进；第 31～35 节再以公共模型、真实会话、服务端强制、前端感知和越权验收逐步建立统一访问控制，第 36 节首个真实运营后台复用它。
+- 公共访问控制策略模型已在第 31 节实现，但登录认证、真实会话、Policy/assignment repository、租户/对象事实装配、服务端强制、前端权限投影和审计拒绝路径仍未实现；当前工作台导航不是权限边界。第 32～35 节按会话、服务端强制、前端感知和越权验收继续闭环，第 36 节首个真实运营后台再复用它。
 - 服务拆分、RPC 和注册中心延迟至第 78 节以后。
 - 最终目录图和 ER 图延迟至第 101 节复盘。

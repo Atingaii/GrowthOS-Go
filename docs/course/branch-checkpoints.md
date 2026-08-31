@@ -2,13 +2,13 @@
 
 **状态：** 当前
 
-**更新日期：** 2026-08-30
+**更新日期：** 2026-08-31
 
 本页把课程章节与可检出的 Git 分支对应起来，方便在 `main` 保持原状的同时，逐节查看实现是怎样演进的。分支记录的是学习检查点，不替代[课程状态台账](status.csv)；章节只有具备正文、API 记录、实际 QA 证据并通过质量门禁后，才能在台账中标记“已完成”。从第 13 节开始，稳定分支还必须包含对应的第一性原理设计手记与面试问答；历史章节将按这一新增规范逐节回填。
 
 ## 当前检查点
 
-| 检查点 | 分支 | 起点 | 已确认提交 | 2026-08-30 可用位置 | 学习重点 |
+| 检查点 | 分支 | 起点 | 已确认提交 | 2026-08-31 可用位置 | 学习重点 |
 | --- | --- | --- | --- | --- | --- |
 | 第 9 节：仓库工程基线 | `codex/lesson-09-repository-baseline` | `main` | `e5516b1` | 本地与 `origin` | 单 Go module、目录职责、文档与统一质量门禁 |
 | 第 10 节：模块化单体 | `codex/lesson-10-modular-monolith` | 第 9 节 | `2a8f126` | 本地与 `origin` | 单进程边界、模块依赖规则与拆分条件 |
@@ -31,6 +31,8 @@
 | 第 27 节：责任链为什么开始不够用了 | `codex/lesson-27-responsibility-chain-limits` | 第 26 节最终检查点 `47fc94d` | 产品基线 `2d7728a`；ADR `57a3216`；domain `076e399`；stable branch/explicit switch `b307f1a`；application `42caed9`；架构 guard `2dc49b1`；decision evidence `8ebc94a`；revision claim `544f4af`；课程 `a6d2d49`；API `5ecb061`；面试 `f2e5e07`；设计 `d57b963`；架构当前态 `5460bde`；QA 计划 `331c8c7`；revision 语义 `6db36dd`；递归 guard `59499fb`；停止线证据 `a04d89d`；候选门禁 `9ead6e1`；索引 `aaa4a8f`；完整章节以同名远端实际冻结 tip 为准 | 本地与 `origin` | Lottery 会员事实防腐投影、premium override、standard baseline default、单一 as-of、一跳 path 与线性 gate chain 多出口边界 |
 | 第 28 节：规则树第一次数据库升级 | `codex/lesson-28-rule-tree-schema` | 第 27 节已验收 tip `809d436` | 已推送学习小提交 `f27ce17`、`2786d96`、`17a6c54`、`ac89423`、`d53b2ec`、`4d9b074`、`e053527`、`8db8c3c`、`4b79d1d`、`97bb783`、`d7deafa`、`2d2c7c2`、`f6b537d`、`ebe0b70`、`3b3886b`、`5c757a9`、`be19827`、`54f4769`、`e4531bf`、`4057f5d`；冻结证据 `3f21b96`；完整章节以同名远端实际冻结 tip 为准 | 本地与 `origin` | Lottery-owned 有界不可变 rooted DAG、Migration latest v5、三表关系模型、严格恢复、最小权限测试身份与未装配边界 |
 | 第 29 节：实现规则决策引擎 | `codex/lesson-29-rule-decision-engine` | 第 28 节已验收 tip `90844c1` | 已推送产品/ADR `041dc30`、`27bd514`；共享 oracle/fact session `0ca25d2`、`51dbd61`；domain/application/停止线 `a173d8b`、`3863b06`、`ab056ba`；异构并发隔离 `515d776`；候选冻结 `e74037e`；完整章节以同名远端实际冻结 tip 为准 | 远端引用记录提交后再次对齐同名远端与累计分支 | exact graph 封闭 typed 求值、单一 graph/fact/as-of、完整 path、step/time/cancel budget、zero-decision 与未装配边界 |
+| 第 30 节：为什么 Strategy 不等于 Activity | `codex/lesson-30-strategy-vs-activity` | 第 29 节已验收 tip `1b7521e` | 产品/ADR `3dfc028`、`fe0c12e`；snapshot/Activity/schema/application/repository/验收 `7404f91`～`065da2f`；文档/当前态 `5d8b53a`～`cb7255f`；完成/冻结 `887754b`、`6504e91` | 本地与 `origin` | exact Strategy snapshot、Activity immutable publication、CAS/rollback/resolve、Lottery ACL、commit unknown 对账与 v11 证据 |
+| 第 31 节：统一访问控制模型与威胁边界 | `codex/lesson-31-access-control-model-threat-boundary` | 第 30 节已验收 tip `6504e91` | 产品/ADR `c7e5248`～`35c0420`；values/roles/policy/evaluator `34c3add`～`a054eb1`；停止线/威胁矩阵 `6cae442`、`ea98390`；术语/课程/设计/面试/QA `c606de1`～`06fedef`；最终冻结以同名远端实际 tip 为准 | 本地与 `origin` | Governance exact capability、角色模板上限、四种 scope、不可变 Policy、default deny/deny precedence、证据与无 session/runtime/UI 停止线 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -65,6 +67,10 @@
 第 28 节从第 27 节已验收 tip `809d436` 线性创建。实现与依赖学习提交依次为 `f27ce17`～`ebe0b70`，再由 `3b3886b`、`5c757a9`、`be19827`、`54f4769`、`e4531bf`、`4057f5d` 分别交付课程/API、第一性原理设计、QA 证据、架构当前态、运维手册和全局索引。当前数据库 Migration latest 为 5；三张图表存在不代表图已执行、已发布、已接公开 API 或已进入运行时组合根。第 29 节才实现已验证图的决策执行器。完整章节以 `origin/codex/lesson-28-rule-tree-schema` 最终实际冻结 tip 为准；最终 SHA 由 Git 内容产生，不在会改变自身 SHA 的冻结提交中虚构。
 
 第 29 节从第 28 节已验收 tip `90844c1` 线性创建。`041dc30`、`27bd514` 先冻结 exact graph/fact/time、closed typed dispatch、worst-depth admission、step/time/cancel budget 与 zero-decision；`0ca25d2`、`51dbd61` 再把第 27 节 branch oracle 和 Clock/fact/freshness session 收敛为两条 package-private 共享语义；`a173d8b` 实现 immutable decision/path 与迭代 exact-branch evaluator，`3863b06` 实现未装配 application orchestration 和低披露错误，`ab056ba` 守住 generic engine 与 runtime/API/UI stop line，`515d776` 再以两组 subject/graph/tier/target 交错的 64 请求补强并发隔离证据。后续文档/验收提交登记完整课程、API、QA、设计、面试、运维和当前态；完整章节以 `origin/codex/lesson-29-rule-decision-engine` 的最终实际冻结 tip 为准。该 tip 只证明内部 evaluator，不代表 graph 已发布、绑定 Activity、获得真实会员事实或进入受权限保护的线上链路。
+
+第 30 节从第 29 节已验收 tip `1b7521e` 线性创建。它按产品边界、Strategy snapshot、schema、Activity domain/application/repository、隔离 MySQL 门禁、commit unknown 对账和文档验收逐步推进，最终冻结于 `6504e91`。完整分支只证明 exact publication 与工程边界，不代表已有 Activity API/UI、真实审批、访问控制或正式 Draw。
+
+第 31 节从第 30 节已验收 tip `6504e91` 线性创建。前三个提交先冻结威胁边界与 Governance 所有权；随后以 values、role ceiling、immutable Policy、evaluator 四步形成纯内核，再由两轮架构/威胁矩阵和术语审查关闭子包逃逸、session 越界、capability 调包与 evidence 缺口。课程/API、设计、40 道逐题证据面试问答、QA 和模型审查手册继续拆成小提交。该分支没有 session、HTTP、DB、UI 或 runtime consumer；完整学习版本以同名远端最终实际冻结 tip 为准。
 
 ## 稳定章节分支与累计快照
 
@@ -124,6 +130,8 @@ git switch codex/lesson-26-responsibility-chain
 git switch codex/lesson-27-responsibility-chain-limits
 git switch codex/lesson-28-rule-tree-schema
 git switch codex/lesson-29-rule-decision-engine
+git switch codex/lesson-30-strategy-vs-activity
+git switch codex/lesson-31-access-control-model-threat-boundary
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
@@ -147,6 +155,8 @@ git switch --track origin/codex/lesson-26-responsibility-chain
 git switch --track origin/codex/lesson-27-responsibility-chain-limits
 git switch --track origin/codex/lesson-28-rule-tree-schema
 git switch --track origin/codex/lesson-29-rule-decision-engine
+git switch --track origin/codex/lesson-30-strategy-vs-activity
+git switch --track origin/codex/lesson-31-access-control-model-threat-boundary
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -189,11 +199,15 @@ git diff --stat 809d436..codex/lesson-28-rule-tree-schema
 git diff 809d436..codex/lesson-28-rule-tree-schema
 git diff --stat 90844c1..codex/lesson-29-rule-decision-engine
 git diff 90844c1..codex/lesson-29-rule-decision-engine
+git diff --stat 1b7521e..codex/lesson-30-strategy-vs-activity
+git diff 1b7521e..codex/lesson-30-strategy-vs-activity
+git diff --stat 6504e91..codex/lesson-31-access-control-model-threat-boundary
+git diff 6504e91..codex/lesson-31-access-control-model-threat-boundary
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23 节直接基于 `1f95779`，需求与 ADR 为 `09a45c2`，课程和配套文档为 `479947b`。第 24 节直接基于 `27a552b`，配置/Redis/cache/composition 为 `272d028`～`68fa59b`，Compose/负载/验收加固为 `17e7010`～`d33723c`，ADR/当前态/课程/索引为 `0f70f51`、`9d44eb1`、`5a0baeb`、`d621aae`、`13a3210`。第 25 节直接基于 `35f94b9`，需求/ADR、domain、application、停止线与审查加固依次为 `ea2cacd`～`c96b393`。第 26 节直接基于已验收 tip `8b2f3a6`，从产品/ADR、风险准入、固定链，到课程/API、面试、设计、产品/架构证据、索引状态和终审反证，依次对应 `974a61b`、`5271963`、`ad25dbe`、`f77e17f`、`61282ba`、`d43bbff`、`d87343e`、`eac4b92`、`ff1f24f`、`833abd0`、`c46410e`。第 27 节直接基于已验收 tip `47fc94d`，产品/ADR、domain/application、审查加固、课程/API/面试等核心提交见当前检查点表。第 28 节直接基于已验收 tip `809d436`，已推送学习小提交及停止线见当前检查点表。第 29 节直接基于第 28 节实际冻结 tip `90844c1`，产品/ADR、两次共享语义重构、domain/application 与停止线提交见当前检查点表；完整章节以根代理推送“包含最终 QA/台账的冻结提交”后形成的同名远端实际 tip 为准，随后累计分支再 fast-forward 到该 tip。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23～29 节的需求、实现和停止线提交见当前检查点表。第 30 节从第 29 节最终 tip `1b7521e` 开始并冻结于 `6504e91`。第 31 节再从 `6504e91` 开始，按产品/ADR、values、roles、Policy、evaluator、威胁矩阵和六类文档顺序推进；完整章节以根代理推送包含最终 QA/台账的冻结提交后形成的同名远端实际 tip 为准，随后累计分支再 fast-forward 到该 tip。
 
 ## 分支使用约束
 

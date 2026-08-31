@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v16 基线
-**更新日期：** 2026-08-30
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)、[第 25 节](../course/part-04/lesson-25-user-eligibility.md)、[第 26 节](../course/part-04/lesson-26-responsibility-chain.md)、[第 27 节](../course/part-04/lesson-27-responsibility-chain-limits.md)、[第 28 节](../course/part-04/lesson-28-rule-tree-schema.md)、[第 29 节](../course/part-04/lesson-29-rule-decision-engine.md)
+**状态：** v17 基线
+**更新日期：** 2026-08-31
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)、[第 25 节](../course/part-04/lesson-25-user-eligibility.md)、[第 26 节](../course/part-04/lesson-26-responsibility-chain.md)、[第 27 节](../course/part-04/lesson-27-responsibility-chain-limits.md)、[第 28 节](../course/part-04/lesson-28-rule-tree-schema.md)、[第 29 节](../course/part-04/lesson-29-rule-decision-engine.md)、[第 30 节](../course/part-04/lesson-30-strategy-vs-activity.md)、[第 31 节](../course/part-04/lesson-31-access-control-model-threat-boundary.md)
 
 ## 一句话定位
 
@@ -92,6 +92,10 @@ Domain evaluator 从显式 root 开始迭代走唯一实际 path，按 selected 
 
 第 27 节 concrete 会员路由见[产品基线](membership-strategy-routing-v1.md)、[课程正文](../course/part-04/lesson-27-responsibility-chain-limits.md)、[API 零变化记录](../api/lessons/lesson-27.md)、[QA](../qa/lessons/lesson-27.md)、[第一性原理手记](../design-thinking/lessons/lesson-27.md)、[面试问答](../interview/lessons/lesson-27.md)和 [ADR-0023](../decisions/ADR-0023-membership-strategy-routing-boundary.md)。第 28 节持久化见[Strategy Routing Graph 基线](lottery-strategy-routing-graph-v1.md)、[课程正文](../course/part-04/lesson-28-rule-tree-schema.md)、[API 零变化记录](../api/lessons/lesson-28.md)、[QA](../qa/lessons/lesson-28.md)、[第一性原理手记](../design-thinking/lessons/lesson-28.md)、[面试问答](../interview/lessons/lesson-28.md)和 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)。前者是执行语义 oracle，后者是 topology/schema/repository 输入边界。第 29 节 closed evaluator 见[求值产品基线](lottery-strategy-routing-evaluation-v1.md)、[课程正文](../course/part-04/lesson-29-rule-decision-engine.md)、[API 零变化记录](../api/lessons/lesson-29.md)、[QA](../qa/lessons/lesson-29.md)、[第一性原理手记](../design-thinking/lessons/lesson-29.md)、[面试问答](../interview/lessons/lesson-29.md)、[运维手册](../runbooks/strategy-routing-graph-evaluation.md)和 [ADR-0025](../decisions/ADR-0025-lottery-strategy-routing-graph-evaluation.md)；这三节连起了内部语义/持久化/求值，但仍不证明已发布、已装配或具备 Activity/权限/浏览器 E2E。
 
+第 30 节把可执行 Strategy 与可运营 Activity 分开：Lottery create-only snapshot 固化 exact Strategy/Award 内容，Marketing 以 immutable publication、`state_version` CAS、追加式 rollback、retire、一次 Clock 的时间窗 resolve 和 Lottery ACL 管理 Activity；commit acknowledgement 丢失通过受信 receipt 与 exact read-back 形成三态对账。第 31 节再为这些高风险管理动作建立 Governance-owned 的访问语言：16 个 exact kind/type/action capability、5 个固定角色模板上限、`system/tenant/owned/resource` 四种 scope、allow/deny RoleBinding、不可变 Policy identity/revision、default deny、deny precedence 和有界 Decision evidence 均已成为纯 Go 可执行模型。
+
+第 31 节仍没有 credential/session、Policy repository、assignment、HTTP enforcement、401/403/404 映射、审计落库、React capability projection 或越权 E2E。Principal/Resource 构造只验证 shape，不能证明 caller 或 tenant/owner facts 可信；现有 endpoint 不导入 Governance domain。完整边界见[访问控制模型基线](access-control-model-threat-boundary-v1.md)、[ADR-0027](../decisions/ADR-0027-governance-access-control-model.md)、[课程](../course/part-04/lesson-31-access-control-model-threat-boundary.md)、[QA](../qa/lessons/lesson-31.md)和[模型审查手册](../runbooks/access-control-model-review.md)。
+
 ## 成功信号
 
 最终成功不是“技术栈全部用到”，而是以下能力可以被证据验证：
@@ -102,7 +106,7 @@ Domain evaluator 从显式 root 开始迭代走唯一实际 path，按 selected 
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有 Go Lottery/Participation 领域对象、五张 Lottery 表、两个内部 Repository、可丢弃读取缓存、经过边界验证的选择器、ephemeral HTTP/React 纵向链、未装配的 Participation 资格链、routing graph Repository 和 closed evaluator；但页面展示的仍是不可恢复的临时候选选择，不是已发布/已装配的 graph evaluation、正式 Draw/Result 或奖励到账事实，抽奖、参与、权益等业务 SLO 仍全部“未测量”。算法微基准、M0/M1、MySQL 仓储回归、evaluator 覆盖/race/fuzz、领域内核和浏览器 UI 验收分别回答不同局部问题，均不能外推为正式 Draw 能力、在线资格门控、端到端业务 SLO 或生产吞吐。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有 Go Lottery/Participation/Marketing 领域切片、十张业务表、可丢弃读取缓存、ephemeral HTTP/React 纵向链、未装配的资格链、routing graph evaluator、Activity publication 和 Governance Policy evaluator；但页面仍只展示不可恢复的临时候选选择，授权内核也没有 runtime consumer。局部算法、MySQL、race/fuzz、领域内核和 UI 证据均不能外推为正式 Draw、在线资格/授权、端到端业务 SLO 或生产吞吐。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 

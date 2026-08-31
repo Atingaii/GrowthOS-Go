@@ -4,13 +4,13 @@
 
 **更新日期：** 2026-08-31
 
-**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)及第 17～29 节逐步校准；第 30 节以[Activity Publication 绑定基线](activity-publication-binding-v1.md)和 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)冻结并验收 Lottery exact Strategy snapshot 与 Marketing Activity 生命周期/发布所有权。
+**来源章节：** [第 6 节：第一次划分限界上下文](../course/part-01/lesson-06-first-bounded-contexts.md)及第 17～29 节逐步校准；第 30 节冻结 Lottery snapshot 与 Marketing publication 所有权；第 31 节以[访问控制模型基线](access-control-model-threat-boundary-v1.md)和 [ADR-0027](../decisions/ADR-0027-governance-access-control-model.md)冻结 Governance access decision 所有权。
 
 ## 1. 地图用途
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。Lottery 拥有 Strategy/Award、routing graph/evaluator 与 create-only Strategy snapshot；Marketing 拥有 Activity draft/published/retired、immutable publication history、rollback provenance、时间窗 gate 和 commit-outcome-unknown 对账 receipt。Marketing publication 只保存 exact graph/snapshot refs，不对 Lottery 表建立跨 bounded-context FK，也不猜 latest；消费方拥有的 Lottery ACL 通过 exact application readers 复核 terminal Strategy revision 闭合集。真实 MySQL 已验证 Marketing→Lottery FK 为 0，长期运行身份也未因共享 schema 扩权。Governance 仍拥有审批决定，Marketing 只消费绑定 exact candidate 的 verifier evidence。第 30 节所有新增服务/Repository/ACL 尚未装配，真实审批 provider、HTTP/UI、权限和正式 Draw 仍未实现。
+当前实现策略仍是 Modular Monolith。Lottery 拥有 Strategy/Award、routing graph/evaluator 与 create-only Strategy snapshot；Marketing 拥有 Activity lifecycle/publication/CAS/rollback/resolve。Governance 现在还拥有统一 Principal/Resource/Action/Role/Scope/Policy 语言与纯 allow/deny access decision，但没有 session、Policy repository、assignment、HTTP enforcement 或 UI projection。Marketing publication 只保存 exact Lottery refs，Governance Policy 也不接管业务 Resource facts；共享进程/数据库不会改变所有权。第 25～31 节的新内核仍未进入同一运行编排。
 
 ## 2. 划分依据
 
@@ -74,7 +74,7 @@ flowchart LR
 | Benefit | Reward、Points、Coupon 等权益的发放、余额、流水、使用和补偿 | 活动参与次数事实、活动生命周期、抽奖选择、Feed 排序 |
 | Feed | FeedItem、召回、过滤、排序、频控、游标和实验分配 | 活动与权益主数据、行为归因事实 |
 | Behavior & Analytics | 行为采集、画像、漏斗、实验指标和归因 | 修改交易事实、决定活动状态或权益余额 |
-| Governance | 操作者权限、审批策略、高风险操作分级和审计 | 活动发布、权益交付、用户参与 screening 原始事实与准入决定、AI 推理 |
+| Governance | 统一访问控制语言与 Policy decision、审批策略、高风险操作分级和审计 | credential/session 生命周期、业务 Resource tenant/owner 事实、活动发布、权益交付、用户参与 screening 原始事实与准入决定、AI 推理 |
 | AI Operations | AI Task、意图、计划、Tool 编排和人工接管 | 直接拥有或修改活动、权益与分析事实 |
 
 ## 5. 事实与数据所有权
@@ -83,6 +83,7 @@ flowchart LR
 | --- | --- | --- |
 | Activity 与 publication history/active version | Marketing | publication 保存 exact Lottery refs；Feed/Participation 未来只消费经 resolve gate 确认的可用摘要，不自行判断时间窗或回滚 |
 | 审批结果与审计轨迹 | Governance | Marketing 将审批结果作为发布条件；AI 展示状态 |
+| Access Policy snapshot 与 Decision | Governance | 业务上下文未来提供可信 Resource facts 并消费 allow/deny/error；当前只有未装配纯模型，Decision 不是浏览器 DTO 或持久审计 |
 | 账户注册原始事实 | 外部用户目录 | Participation 只通过受控事实端口消费带来源、修订和观察时刻的快照，不复制可独立修改的权威写模型 |
 | 风险 screening 原始事实 | 外部风险事实提供方 | Participation 只消费 <code>passed/blocked</code>、来源时刻、source 和 revision，不复制风险分数、模型特征、阈值或原始 payload |
 | 会员等级原始事实 | 外部会员事实提供方 | Lottery 只通过消费方拥有的端口接收带 opaque subject ref、<code>standard/premium</code>、source、revision 和 observed-at 的最小快照；不能创建、升级或降级会员，也不能接受客户端自报 tier |
@@ -116,6 +117,8 @@ flowchart LR
 第 27 节的 <code>MembershipTierFactReader</code> 是 Lottery 消费方拥有的独立查询端口，只读取外部会员 authority 的最小事实，不返回 Strategy target。Lottery 的具体 policy 才决定 premium override 或 standard baseline/default；unknown、unsupported、not-found、stale、future、provider failure 和 caller cancellation 都不能命中 default。当前没有 adapter、网络协议、缓存、API 或 composition-root 装配，Participation 的资格端口和决定模型保持不变。
 
 第 30 节的 <code>LotteryVerifier</code> 是 Marketing 消费方拥有的 ACL 端口，其 `lotteryconfig` adapter 只通过 Lottery application 的 exact graph/snapshot readers 工作。它验证 publication candidate 中的 graph identity、所有 terminal target 与 Strategy revision manifest 精确闭合，不读取 latest，也不允许 Marketing 绕过端口直连 Lottery SQL。`ApprovalVerifier` 同样只是 Marketing 消费 Governance 证据的窄端口；真实 Governance 实现尚未装配。
+
+第 31 节的 `internal/governance/domain` 只拥有纯 Policy language/evaluator。Principal 构造不认证 caller，Resource 构造不证明 tenant/owner facts 可信；第 32 节才建立 credential/session 到 trusted Principal，第 33 节由资源所有者加载事实并在服务端强制。当前其他 production Go package 被架构门禁禁止导入该内核，避免 UI/HTTP 先于信任边界装配。
 
 ## 7. 统一语言
 
@@ -183,13 +186,13 @@ flowchart LR
 
 第 27 节没有把会员路由塞成 Participation 的第三个 gate，而是在 Lottery domain/application 内实现一个受限具体 router。外部 authority 只提供经构造校验的会员等级事实；Lottery policy 分别拥有 premium target 与 standard baseline/default target。服务在一次受控 UTC evaluated-at 下读取一次事实并校验主体、future 与 freshness，domain 再形成稳定 rule/branch/reason、Strategy ID、policy/fact provenance 和不可由调用方改写的一跳 path。两个 branch 即使暂时指向同一 Strategy ID 也保留不同证据；任何错误或取消都返回零决定。这个内核未装配，不加载 Strategy、不调用 <code>WeightedSelector</code>，没有会员 adapter、Migration、Redis、HTTP/React、权限、规则树或通用引擎，并且没有改变第 26 节 Participation 资格链。
 
-第 28～29 节把 branch/default/target/path 固化为 exact graph 并实现未装配 evaluator；第 30 节已经验收 Strategy snapshot 与 Activity publication/CAS/rollback/gate/ACL，源码同时提供 commit unknown receipt 三态对账。它仍不装配 runtime/API/UI/auth，也不把审批并入 Marketing。下一节第 31 节先定义跨上下文共享的主体、资源、动作、数据范围与拒绝语义，第 32～35 节再实现真实会话、服务端强制、前端权限感知和越权端到端验收。
+第 28～30 节把 exact graph evaluator、Strategy snapshot 与 Activity publication/CAS/rollback/gate/ACL 连起来，但仍未装配。第 31 节已经定义跨上下文共享的主体、资源、动作、数据范围、角色上限、Policy revision 与拒绝证据，并保持 HTTP/UI/schema 零变化。第 32～35 节再实现真实会话、服务端强制、前端权限感知和越权端到端验收；当前任何隐藏菜单、会员 tier 或构造出的 Principal 都不是授权证明。
 
 ## 8. 外部系统和防腐边界
 
 | 外部系统 | GrowthOS 需要的信息 | 边界要求 |
 | --- | --- | --- |
-| 用户、会员、身份系统 | 用户标识、会员等级、认证结果 | 不复制身份生命周期；注册事实只供 Participation 决策，会员 tier 只供 Lottery 路由，opaque ref 都不是 Principal 或授权证明 |
+| 用户、会员、身份系统 | 用户标识、会员等级、credential/session 认证结果 | 不复制身份生命周期；注册事实只供 Participation，会员 tier 只供 Lottery；第 32 节才把验证结果映射为 trusted Principal，客户端 opaque ref 不是授权证明 |
 | 风险事实提供方 | 最小 screening verdict、来源时刻、source 与 revision | Participation 只形成本场景准入决定，不复制分数、特征、阈值或把 provider failure 当业务拒绝 |
 | 支付与订单系统 | 消费事实、退款或撤销结果 | 转化必须注明来源，不能由埋点伪造交易事实 |
 | 外部券与消息渠道 | 发券、核销、短信或 Push 结果 | 将外部状态映射为 GrowthOS 可理解的结果 |

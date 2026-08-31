@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-30%20lessons%20completed-2563EB?style=flat-square" alt="已完成 30 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-31%20lessons%20completed-2563EB?style=flat-square" alt="已完成 31 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成并验收第 1～30 节，共 30 节。第 30 节在 exact graph/evaluator 之后区分 Lottery create-only Strategy snapshot 与 Marketing-owned Activity：immutable numeric publication、追加式 rollback、`state_version` CAS、一次 Clock 的 `[start,end)` resolve gate 与 exact Lottery ACL 已通过源码、真实 MySQL 8.4.11、长期 Compose v5→v11、最小权限、独立 Lottery acceptance 和全仓质量门验证。所有新增 service/Repository/ACL 仍刻意不装配 API、UI、composition root 或长期运行权限；第 31～35 节的公共权限模型、真实会话、服务端 RBAC、前端裁剪与越权 E2E 停止线不变。正式 Draw/Result、幂等、在线资格门控、库存和发奖同样未实现。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成并验收第 1～31 节，共 31 节。第 30 节建立 Lottery Strategy snapshot 与 Marketing Activity publication；第 31 节再建立 Governance-owned 的纯访问控制策略内核：16 个 exact capability、5 个角色模板上限、4 种 ScopeKind、不可变 Policy revision、default deny、deny precedence、确定性 evidence 与 zero Decision + error 已形成。它没有 session、Policy repository、HTTP enforcement、React projection 或浏览器 E2E，任何现有 endpoint 都没有因此自动受保护。第 32～35 节继续真实会话、服务端强制、前端裁剪与越权验收；正式 Draw/Result、幂等、在线资格门控、库存和发奖同样未实现。
 
 ## 项目简介
 
@@ -177,6 +177,8 @@ curl --request POST \
 
 第 30 节把“可执行 Strategy”与“可运营 Activity”拆开：Lottery 以 exact create-only snapshot 固化 Strategy/Award 内容；Marketing 只拥有 Activity draft/published/retired 生命周期与不可变 publication history。真实 MySQL 已验证 snapshot 并发/回滚，以及 Activity publish/replace/rollback/retire、RR、CAS 与 half-write 回滚。publication 不跨 bounded context 建外键，只保存 exact graph/snapshot refs，并由 Lottery ACL 验证 terminal Strategy revision 集与 manifest 精确相等。对于 COMMIT 应答丢失，application 还提供 `ActivityCommitReceiptFromError`、`ObserveCurrentActivity` / `ObserveActivityRoot` 与 `ReconcileActivityCommit`，把 exact read-back 关闭为 `committed` / `not_committed` / `indeterminate` 三态而不建议盲重放。完整证据见[发布绑定基线](docs/product/activity-publication-binding-v1.md)、[课程](docs/course/part-04/lesson-30-strategy-vs-activity.md)、[ADR-0026](docs/decisions/ADR-0026-activity-publication-binding.md)、[API 零变化记录](docs/api/lessons/lesson-30.md)、[QA](docs/qa/lessons/lesson-30.md)、[设计手记](docs/design-thinking/lessons/lesson-30.md)、[面试问答](docs/interview/lessons/lesson-30.md)和[运维/验收手册](docs/runbooks/activity-publication.md)。服务、Repository、ACL 与审批 verifier 仍未装配，API/UI、权限系统和正式 Draw 不属于本节完成范围。
 
+第 31 节在 Activity、Strategy、Routing Graph 等真实受保护对象出现后，才在 `internal/governance/domain` 建立统一授权语言。Permission 精确到 collection/object、ResourceType 和业务 Action；五种 RoleID 只是构造器强制的 capability ceiling，RoleBinding 再关联 Principal、Scope 与 allow/deny。`Policy.Evaluate` 对 exact revision 形成 confirmed allow/deny 或严格 `Decision{}` + error，matching deny 确定覆盖 allow，DecisionMatch 保留 Binding/Role/Effect/Scope/Permission 最小证据。完整证据见[访问控制模型基线](docs/product/access-control-model-threat-boundary-v1.md)、[课程](docs/course/part-04/lesson-31-access-control-model-threat-boundary.md)、[ADR-0027](docs/decisions/ADR-0027-governance-access-control-model.md)、[API 零变化记录](docs/api/lessons/lesson-31.md)、[QA](docs/qa/lessons/lesson-31.md)、[设计手记](docs/design-thinking/lessons/lesson-31.md)、[40 道面试问答](docs/interview/lessons/lesson-31.md)和[模型审查手册](docs/runbooks/access-control-model-review.md)。Principal 构造不等于认证成功，Resource tenant/owner 也尚未由 trusted service layer 加载；架构门禁仍禁止其他 production package 导入本内核。
+
 ### React 前端框架
 
 `web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛桌面侧栏、移动抽屉、顶栏、搜索、主题、通知样例、内容宽度和可访问交互，并重构为高密度、扁平的工作台信息架构。真实前端链路目前只有两类：`/system/status` 消费 Go 的 `GET /health` 与 `GET /ready`；`/lottery` 通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 消费 development/test ephemeral selection API。活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用带时间标签的 Mock 快照或浏览器内本地状态，不是实时后端数据。工作台分组也不是身份或权限系统；当前没有登录认证、RBAC、租户/对象级数据范围或服务端授权强制。
@@ -237,8 +239,8 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化配置、`slog`、请求关联、统一错误、健康/readiness、`sqlx` 与可选 Redis pool；Lottery Strategy/Award、cache-aside、Selector、ephemeral API、会员路由、exact graph/evaluator、create-only Strategy snapshot；Marketing Activity immutable publication、CAS、rollback/retire/resolve gate 与 Lottery ACL 均已落源码但未装配；Participation 新用户/风险准入与固定短路链 | 真实注册/风险/会员 fact adapter、Activity/graph/snapshot 运行时装配、正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
-| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时解码；系统状态页和 ephemeral Lottery 页面已真实联调；第 24 节缓存不扩张浏览器契约 | 第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
+| 后端 | Go 1.26.6、Gin v1.12.0、MySQL/Redis 工程基线；Lottery/Participation/Marketing 未装配切片；Governance exact capability/role/scope/Policy/evaluator 纯内核 | 真实会话、Policy/assignment repository、服务端 enforcement、事实 adapter、正式 Draw、幂等、gRPC + Protobuf、OpenTelemetry |
+| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`；系统状态页和 ephemeral Lottery 页面已真实联调；当前无权限 projection | 第 32～35 节依次建立会话、服务端强制、前端权限感知和越权验收 |
 | 数据 | MySQL 8.4、API/Migrator 身份隔离；源码 latest 11、十张业务表：旧 Strategy/Award、graph 三表、Strategy snapshot 两表、Marketing Activity publication 三表。跨上下文只存 exact refs、不建 FK；长期运行身份仍仅旧两表 `SELECT`，对八张未装配表零权限已在 v11 真实验证。Redis 只保存旧版 Strategy 读取投影 | Draw/Result、库存与发奖事实、运行装配、精准缓存失效、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
@@ -255,7 +257,7 @@ make verify
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 已完成：Strategy/Award、两表、仓储、选择、API/React、规则边界与 Redis 读取投影/M1 均已验收 |
-| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～30 节已验收；下一节第 31 节建立统一访问控制模型与威胁边界，第 32～35 节再完成会话、服务端强制、前端裁剪与越权验收 |
+| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～31 节已验收；下一节第 32 节建立真实会话，第 33～35 节再完成服务端强制、前端裁剪与越权验收 |
 | 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
 | 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |
 | 7 | 54～61 | 积分、优惠券、返利与权益中心 | 计划中 |
@@ -265,7 +267,7 @@ make verify
 | 11 | 86～93 | AI MCP Gateway | 计划中 |
 | 12 | 94～101 | AI Agent、可观测、压测与上线 | 计划中 |
 
-> 访问控制不是看到 UI 后临时补一组菜单判断，而是所有操作者和工作台共享的平台能力。路线保留第 23～30 节的 Lottery 规则与 Activity 建模，让主体、资源、动作和数据范围先有真实业务对象；随后在第 31～35 节依次完成公共权限模型与威胁边界、真实会话认证、服务端 RBAC 强制执行、前端按权限裁剪和越权端到端验收，并在第 36 节首个真实运营后台复用这套能力。当前四类工作台仍只是信息架构分区，没有认证或授权证据。
+> 访问控制不是看到 UI 后临时补菜单判断。第 31 节已经完成公共权限模型与威胁边界；第 32～35 节仍需真实会话、服务端 RBAC 强制、前端按权限裁剪和越权端到端验收，再由第 36 节首个真实运营后台复用。当前四类工作台仍只是信息架构分区，没有认证或授权证据。
 
 ### 可部署里程碑
 
@@ -282,7 +284,7 @@ M0 工程联调 → M1 Lottery 读取/临时选择基线 → M2 营销活动 MVP
 ```text
 GrowthOS-Go/
 ├── cmd/             # Go 可执行程序与项目工具
-├── internal/        # 私有领域与基础设施模块；含 Lottery 聚合/路由图/Strategy snapshot 与未装配 Marketing Activity publication 切片
+├── internal/        # 私有领域与基础设施模块；含 Lottery/Participation/Marketing 切片及未装配 Governance Policy evaluator
 ├── pkg/             # 少量稳定的公共 Go 包
 ├── configs/         # 可版本化且不包含秘密的配置示例
 ├── migrations/      # 嵌入式前向 SQL Migration；当前源码 000001～000011、latest 11，共十张业务表
