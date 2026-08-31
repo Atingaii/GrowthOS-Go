@@ -467,9 +467,9 @@ Approval通过不等于caller获权。当前没有真实adapter，禁止用固�
 
 升级时提供reviewed error class、受控identity、时间线、exact read-back三态和环境信息；不要在普通渠道粘贴底层cause或secret。
 
-## 19. 当前真实证据与最终冻结模板
+## 19. 当前真实证据与 root 冻结剩余项
 
-2026-08-31（Asia/Shanghai）的冻结前候选已经完成：
+2026-08-31（Asia/Shanghai）的此前候选已经完成：
 
 - disposable MySQL **8.4.11**门禁连续两次完整 exit 0：真实v5 baseline→v11、repeat no-change、dirty
   fail-closed、五张新表、6个RESTRICT FK、20个enforced CHECK、binary collation、snapshot/Marketing
@@ -482,20 +482,29 @@ Approval通过不等于caller获权。当前没有真实adapter，禁止用固�
   container/volume/network/image/BuildKit/secret清理完毕，长驻identity未变；
 - `make verify` exit 0，覆盖Go vet/test/doccheck、Web 152 tests、typecheck与production build。
 
-这些是commit receipt/reconciliation收口**之前**的真实候选证据，不是accepted tip或远端冻结结论。
-最终冻结时仍须填写且真实复跑：
+Commit receipt/reconciliation收口后的完整最终候选又取得以下实际结果：
 
 ```text
-candidate commit: <最终实际 SHA>
-execution date/timezone: <最终实际值>
-Go version: <最终实际值>
-focused tests / 20 shuffle seeds: <最终命令、exit code与seed>
-race / fuzz / coverage: <最终命令、时间与结果>
-real MySQL constraints/grants: <最终复跑结果>
-commit-receipt three-state fixtures: <最终结果>
-doc/full-repo gates: <最终结果>
-cleanup: <最终实际删除与保留项>
+execution date/timezone: 2026-08-31 / Asia/Shanghai
+Go: go1.26.6
+module context: GOMOD=当前GrowthOS-Go/go.mod；GOWORK为空
+focused normal: exit 0
+focused race (Marketing/Lottery): exit 0
+full repository race: go test -race -count=1 ./...，exit 0
+shuffle: seeds 1788183001..1788183020，20/20 exit 0
+fuzz 10s each: exec 2,019,397 / 1,087,335 / 1,469,462；new interesting 0/0/0；corpus 11/44/10
+coverage Lottery: domain 93.5% / application 88.3% / MySQL 81.8%
+coverage Marketing: domain 96.0% / application 77.1% / ACL 81.9% / MySQL 84.8%
+make verify: exit 0；Go vet/test/doccheck；Web 19 files/152 tests；typecheck；build 2462 modules
+real MySQL 8.4.11: exit 0；schema 11:0；probes 0；cleanup 0；long-lived resources unchanged
+Compose: clean 11/latest 11；status/smoke exit 0；resource identities unchanged
+commit receipt: zero-result/explicit extraction/defensive copy/three-state fixtures exit 0
 known exclusions: API/auth/RBAC/UI/Draw/inventory/MQ/gray
 ```
 
-模板中的占位符不能在命令真正执行前替换成“通过”。
+Fuzz exec/corpus与coverage数字只记录本次环境，不是KPI、SLO或生产风险结论。MySQL cleanup `0`指该
+disposable gate核对的临时资源零残留；root仍需在全部文档/索引完成后处理本任务最终build artifact与工作树
+清理。
+
+尚未写入本文、也不得预写的是accepted tip/SHA/远端同名ref/线性历史。Root还需最终复跑architecture、
+doccheck、diff，完成精确清理并冻结远端；这些剩余项不代表代码门禁仍待复跑。

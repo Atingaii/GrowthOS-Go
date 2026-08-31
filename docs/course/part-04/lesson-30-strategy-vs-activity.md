@@ -11,7 +11,7 @@
 - **设计手记：** [第 30 节第一性原理手记](../../design-thinking/lessons/lesson-30.md)
 - **面试问答：** [第 30 节面试问答](../../interview/lessons/lesson-30.md)
 - **运行手册：** [Activity publication 验收与故障分诊](../../runbooks/activity-publication.md)
-- **证据状态：** 已记录冻结前候选的真实 MySQL/Compose/全仓门禁；最终 race/fuzz/coverage 与 accepted tip 仍待收口复跑，不预写 SHA 或远端冻结结论
+- **证据状态：** 最终候选的 normal/race/shuffle/fuzz/coverage/real MySQL/Compose/`make verify` 已真实执行；accepted tip、SHA、远端冻结与 root 最终清理仍待收口
 
 ## 1. 本节真正补上的缺口
 
@@ -610,7 +610,7 @@ go run ./cmd/doccheck
 
 `lesson30-mysql-acceptance` 是有显式确认口令、随机命名、tmpfs MySQL 8.4.11 与清理保护的隔离门禁；它不是长期 Compose runtime。
 
-冻结前候选已经形成以下真实执行证据，但这些事实不等于 accepted tip 已冻结：
+此前候选已经形成以下真实执行证据：
 
 - disposable MySQL 8.4.11 门禁连续两次完整 exit 0，覆盖真实 v5 baseline、v5→v11、重复 no-change、
   dirty-state fail-closed、五张新表/owned FK/20 个 CHECK/binary collation、隔离 writer grant 与 1142 拒绝、
@@ -625,9 +625,25 @@ go run ./cmd/doccheck
 - `make verify` 已在该冻结前候选上 exit 0，覆盖 Go vet/test/doccheck、Web 152 tests、typecheck 与生产
   build。
 
-此后 application 又收口了 commit receipt/reconciliation contract，因此最终全量 race、20 轮 shuffle、
-逐项 fuzz、coverage、disposable MySQL 与 `make verify` 仍必须在完整冻结候选上复跑。Fuzz 的执行次数与新增
-语料数量依机器和 cache 而变，不应写成固定 KPI；本文也不写 accepted SHA 或远端冻结结论。
+Commit receipt/reconciliation 收口后，完整最终候选又真实执行并通过：
+
+- 环境为 Go `go1.26.6`，`GOMOD` 指向当前 GrowthOS-Go 的 `go.mod`，`GOWORK` 为空；
+- 定向 normal、Marketing/Lottery 定向 race 及全仓 `go test -race -count=1 ./...` 均 exit 0；
+- 固定 seed `1788183001`～`1788183020` 的 20 轮 shuffle 全部 exit 0；
+- 三个 Marketing domain fuzz target 各运行 10 秒，exec 分别为 `2,019,397 / 1,087,335 /
+  1,469,462`，new interesting 均为 0，total corpus 分别为 `11 / 44 / 10`；这些是复现记录，不是性能
+  或质量 KPI；
+- 最终 statement coverage：Lottery domain `93.5%`、application `88.3%`、MySQL adapter `81.8%`；
+  Marketing domain `96.0%`、application `77.1%`、Lottery ACL `81.9%`、MySQL adapter `84.8%`；
+- `make verify` exit 0，覆盖 Go vet/test/doccheck、Web 19 files / 152 tests、typecheck 与 Vite production
+  build（2462 modules）；
+- disposable MySQL 8.4.11 在最终候选再次 exit 0，最终 schema `11:0`、probe `0`、临时资源 cleanup
+  `0`，长驻资源不变；`make compose-status` 为 clean 11/latest 11，`make compose-smoke` exit 0 且资源
+  identity 保持。
+
+因此代码与数据库门禁不再处于“待复跑”。仍待 root 在全部索引/文档收口后复核 architecture、doccheck、
+diff、工作树清理、accepted tip、远端同名 ref 与线性历史；本文不预写 SHA 或远端冻结结论。Fuzz exec 与
+corpus 数依机器、语料和 cache 变化，只用于记录本次执行。
 
 ## 24. 第 30 节没有新增公开 API
 

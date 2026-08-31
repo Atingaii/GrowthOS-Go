@@ -9,7 +9,7 @@
 - **面试问答：** [第 30 节面试问答](../../interview/lessons/lesson-30.md)
 - **运行手册：** [Activity publication 验收与故障分诊](../../runbooks/activity-publication.md)
 - **设计日期：** 2026-08-30
-- **证据纪律：** 只记录真实执行的冻结前候选证据并明确停止线；不预写最终测试数字、提交或生产结论
+- **证据纪律：** 只记录真实执行的候选证据并明确停止线；最终门禁数字可复核，但不据此预写提交、远端冻结、SLO 或生产结论
 
 > 这不是“先决定用状态机、DDD、版本表，再找理由”的倒推文档。思考顺序是：先问系统必须保存哪些不可逆事实、谁拥有这些事实、并发和失败会破坏什么，再选择最小模型与机制。
 
@@ -698,9 +698,19 @@ repository fixture覆盖 exact RR、并发单赢家、rollback/retire、half-wri
 
 长驻 Compose 也已在保持原 MySQL container、volume、network identity 与旧表数据/checksum不变的前提下
 完成 v5→v11；长期 `growthos_app` grant仍只含旧两表 SELECT，八张未装配表继续1142拒绝，status/smoke
-均 exit 0。独立 Lottery Compose acceptance 已通过并完成随机资源清理；`make verify` 已覆盖 Go 与 Web
-现有回归。以上都是此前候选的真实证据，不是 accepted tip 结论；commit receipt收口后的最终 race、
-shuffle、fuzz、coverage、real MySQL 与全仓门禁仍需复跑。
+均 exit 0。独立 Lottery Compose acceptance 已通过并完成随机资源清理。
+
+Commit receipt 收口后的最终候选不再只依赖早期证据：Go `go1.26.6`、正确 `GOMOD` 与空 `GOWORK`
+环境下，定向normal、Marketing/Lottery定向race、20个固定seed shuffle及全仓race均exit 0；三个Marketing
+domain fuzz各运行10秒并通过。Coverage实测为Lottery domain/application/MySQL `93.5% / 88.3% /
+81.8%`，Marketing domain/application/ACL/MySQL `96.0% / 77.1% / 81.9% / 84.8%`。最终
+`make verify` exit 0（Go vet/test/doccheck、Web 19 files/152 tests、typecheck、2462 modules build）；
+disposable MySQL 8.4.11再次exit 0，schema `11:0`、probe/cleanup均为0、长驻资源不变；Compose
+status为clean 11/latest 11且smoke通过。
+
+这些数字只描述本次执行路径：coverage不是分支覆盖，fuzz exec不是KPI，race通过不证明未来任意负载，
+Compose验收也不表示Activity已runtime装配。Accepted tip、SHA、远端ref、最终architecture/diff与工作树
+清理仍由root收口。
 
 ### Architecture guard
 

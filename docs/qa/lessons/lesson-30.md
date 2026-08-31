@@ -9,7 +9,7 @@
 - **设计手记：** [第 30 节设计手记](../../design-thinking/lessons/lesson-30.md)
 - **面试问答：** [第 30 节面试问答](../../interview/lessons/lesson-30.md)
 - **运行手册：** [Activity publication 验收与故障分诊](../../runbooks/activity-publication.md)
-- **证据日期：** 2026-08-31（冻结前候选真实执行记录）；accepted tip、最终 race/fuzz/coverage 与远端冻结仍待 root 收口，不预写 SHA
+- **证据日期：** 2026-08-31（完整最终候选真实执行记录）；accepted tip、SHA、远端冻结、最终 architecture/diff 与工作树清理仍待 root 收口
 
 > 本节验收未装配的内部发布内核：Marketing Activity 以不可变 publication 精确绑定 Lottery graph 与全部 terminal Strategy revision，并通过 CAS、strict restore、一次受控 Clock 和 fail-closed verifier 形成可核查结果。它不验收运营 API、真实审批、身份、RBAC、UI、正式 Draw、库存、发奖或 MQ。
 
@@ -18,9 +18,9 @@
 | 状态 | 精确定义 |
 | --- | --- |
 | **IMPLEMENTED-SURFACE** | 当前工作树中已有实现与测试代码，可进行代码审查；不代表命令已在最终候选上通过 |
-| **EXECUTED-CANDIDATE-EVIDENCE** | 命令已在冻结前候选上真实执行并保留结果；后续相关代码变化后仍须在最终候选复跑 |
-| **REQUIRED-GATE** | 冻结前必须实际执行并记录 exit code、环境与覆盖范围；本文只给命令和判定标准 |
-| **FINAL-FREEZE-PENDING** | 全部代码、文档与索引收口后的 accepted candidate 尚待复跑 |
+| **EXECUTED-CANDIDATE-EVIDENCE** | 命令已在完整最终候选上真实执行并保留结果；只证明所列环境与执行路径 |
+| **REQUIRED-GATE** | root冻结前仍必须实际执行并记录的最终architecture/diff/cleanup/ref检查 |
+| **FINAL-FREEZE-PENDING** | 代码门禁已完成，但accepted tip、SHA、远端同名ref与线性历史尚未由root冻结 |
 | **OUT-OF-SCOPE** | 本节刻意不交付；其他命令通过也不能推导该能力已实现 |
 | **NOT-CLAIMED** | 没有足够证据形成通过、容量、SLO、生产或合规结论 |
 
@@ -250,9 +250,9 @@ COMMIT read transaction
 - 两个writer不能跨bounded-context写入；
 - 长期`growthos_app` grant不变，因为服务未runtime装配。
 
-DDL、checksum和SQL mock属于IMPLEMENTED-SURFACE。冻结前候选已经取得真实MySQL、isolated grants与坏引用
-fixture的EXECUTED-CANDIDATE-EVIDENCE；但commit receipt加入后的最终候选仍需复跑，真实COMMIT transport
-不确定性也不能由DBA成功或脚本名称替代。
+DDL、checksum和SQL mock属于IMPLEMENTED-SURFACE。完整最终候选已经取得真实MySQL、isolated grants与坏引用
+fixture的EXECUTED-CANDIDATE-EVIDENCE；真实COMMIT transport acknowledgement丢失仍不能由DBA成功或脚本
+名称替代，其可执行恢复契约由application commit receipt三态fixture证明。
 
 ## 6. Error 与 context 验收
 
@@ -317,7 +317,7 @@ rg -n 'github.com/Atingaii/GrowthOS-Go/internal/marketing' \
 - 多租户、跨区域复制、灾备演练；
 - 生产QPS、P95/P99、容量、SLO、渗透、合规或零故障结论。
 
-## 9. Required gates
+## 9. 验收门禁与最终证据
 
 ### 9.1 定向普通测试
 
@@ -335,6 +335,10 @@ go test -count=1 -shuffle=on \
 
 判定：exit 0。输出不得被本文预写成固定package/test数量。
 
+**最终候选证据：** 在 Go `go1.26.6`、`GOMOD` 指向当前模块、`GOWORK` 为空的环境中，定向普通测试
+exit 0；commit receipt 的 publish/rollback/retire zero-result、显式提取、防御复制、低披露及三态
+reconciliation fixtures均随application package执行通过。
+
 ### 9.2 Race
 
 ```bash
@@ -346,6 +350,9 @@ go test -race -count=1 \
 
 判定：exit 0且无race report。它只证明被执行测试路径，不证明未来任意adapter或生产负载。
 
+**最终候选证据：** Marketing与Lottery上述定向race均exit 0且无race report；此外全仓
+`go test -race -count=1 ./...` 也exit 0。
+
 ### 9.3 Shuffle replay
 
 ```bash
@@ -354,7 +361,8 @@ for run in $(seq 1 20); do
 done
 ```
 
-实际记录应保存每轮seed或完整输出；本文不预写二十轮已通过。
+**最终候选证据：** 固定seed `1788183001`～`1788183020` 共20轮全部exit 0；保存连续范围是为了可复放，
+不表示只需这些seed即可穷尽顺序依赖。
 
 ### 9.4 Fuzz
 
@@ -378,6 +386,10 @@ go test ./internal/marketing/domain -run '^$' \
 
 Fuzz exec数随机器、cache和语料变化，不作为课程KPI。
 
+**最终候选证据：** 三个target各运行10秒并通过，按上方顺序exec分别为`2,019,397`、`1,087,335`、
+`1,469,462`；new interesting均为0，total corpus分别为`11`、`44`、`10`。这些数字只记录本次机器、
+cache与语料状态，不是质量或性能KPI，也不能替代seed corpus和边界单测审查。
+
 ### 9.5 Coverage
 
 ```bash
@@ -394,6 +406,10 @@ go test -count=1 -cover \
 必须记录最终候选的实际package coverage，不沿用早期候选数字，也不把statement coverage解释成分支、
 并发、真实数据库或业务场景覆盖。
 
+**最终候选证据：** Lottery domain `93.5%`、application `88.3%`、MySQL adapter `81.8%`；Marketing
+domain `96.0%`、application `77.1%`、Lottery ACL `81.9%`、MySQL adapter `84.8%`。这些是statement
+coverage，不是分支覆盖、生产风险评分或SLO。
+
 ### 9.6 全仓回归
 
 ```bash
@@ -404,13 +420,17 @@ go test -race ./...
 go run ./cmd/doccheck
 ```
 
-Web未被本节修改，但accepted tip仍应按全仓门禁执行：
+Web未被本节修改，完整最终候选仍通过以下既有门禁（由`make verify`调用）：
 
 ```bash
 make web-verify
 ```
 
 这些命令分别证明格式、静态分析、普通测试、race、文档完整性和现有Web回归；不能合并成“生产可用”。
+
+**最终候选证据：** `make verify` exit 0，包含Go vet/test/doccheck、Web 19 files / 152 tests、typecheck与
+Vite production build（2462 modules）；全仓`go test -race -count=1 ./...`另行exit 0。第30节仍未装配
+Activity runtime/API/UI，因此这些结果不构成上线、容量或浏览器业务验收。
 
 ### 9.7 真实 MySQL
 
@@ -425,7 +445,7 @@ GROWTHOS_LESSON30_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 \
 
 它使用随机命名、tmpfs MySQL 8.4.11、独立migrator/snapshot/Marketing identities，并运行schema、exact snapshot与Activity repository integration fixtures，最后核对清理与现有GrowthOS Docker资源未被改变。
 
-冻结前候选上，该命令已连续两次完整 exit 0，形成以下EXECUTED-CANDIDATE-EVIDENCE：
+此前候选上，该命令已连续两次完整 exit 0，形成以下EXECUTED-CANDIDATE-EVIDENCE：
 
 - true embedded v5 baseline与旧五表数据/结构fingerprint；v5→v11、repeat no-change与dirty fail-closed；
 - 五张新表的exact columns/PK、6个RESTRICT FK、20个enforced CHECK、binary collation，且无
@@ -438,14 +458,20 @@ GROWTHOS_LESSON30_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 \
 - 最终schema `11:0`、临时CHECK probe归零；随机container/volume/network/identity/secret零残留，长驻
   Docker资源identity未改变。
 
-同一冻结前候选还完成：长驻Compose原MySQL container/volume/network identity不变的v5→v11升级，旧五表
+同一此前候选还完成：长驻Compose原MySQL container/volume/network identity不变的v5→v11升级，旧五表
 行数/checksum与长期grant不变，`make compose-status`/`make compose-smoke` exit 0；独立Lottery Compose
 acceptance exit 0并清理全部随机资源；`make verify` exit 0，覆盖Go vet/test/doccheck与Web 152 tests、
 typecheck、生产build。
 
-这些结果发生在commit receipt/reconciliation收口之前，因此该命令在最终候选仍是REQUIRED-GATE。实际
-输出若没有模拟真实COMMIT transport acknowledgement丢失，就只能证明repository/schema/事务与权限面；
-三态reconciliation的最终application测试也必须单独执行，不能由脚本名称推导。
+Commit receipt/reconciliation收口后的完整最终候选又执行一次同一disposable MySQL 8.4.11门禁并exit 0：
+最终schema为`11:0`、临时probe为`0`、脚本cleanup计数为`0`，长驻GrowthOS资源identity保持不变。
+随后`make compose-status`报告clean 11/latest 11，`make compose-smoke` exit 0，长期container/volume/network
+identity仍保持。由此real MySQL gate不再是REQUIRED-GATE。
+
+该脚本没有把“真实COMMIT transport acknowledgement丢失”伪装成已注入的网络事实；它证明的是repository/
+schema/事务/权限与清理面。Commit receipt的committed/not_committed/indeterminate语义由最终application
+normal/race/shuffle fixtures另行证明。独立Lottery Compose acceptance来自此前已验收且本次未受
+application-only receipt变更影响的runtime切片；不能据此宣称Activity已装配。
 
 ## 10. 故障注入清单
 
@@ -488,32 +514,32 @@ typecheck、生产build。
 
 ## 12. 冻结检查单
 
-- [x] 六份第30节章节文档已按当前 commit receipt/reconciliation API 同步（最终代码冻结后仍需diff复核）；
-- [ ] 定向普通测试实际执行；
-- [ ] race实际执行；
-- [ ] shuffle seeds实际留存；
-- [ ] fuzz target逐个实际执行；
-- [ ] final package coverage实际执行并记录，不沿用早期数字；
-- [x] real MySQL 8.4 DDL/FK/CHECK/RESTRICT已在冻结前候选连续两次实际执行；
-- [x] isolated grant与immutable mutation rejection已在冻结前候选连续两次实际执行；
-- [ ] commit receipt committed/not_committed/indeterminate fixtures在最终候选实际执行；
-- [x] 长驻v5→v11升级、Compose status/smoke与资源identity/旧数据/grant不变已实际核对；
+- [x] 六份第30节章节文档已按最终 commit receipt/reconciliation API 同步；
+- [x] 定向普通测试在最终候选exit 0；
+- [x] Marketing/Lottery定向race与全仓race在最终候选exit 0；
+- [x] 固定seed `1788183001`～`1788183020` 全部exit 0并留存；
+- [x] 三个fuzz target各10秒实际执行并记录exec/corpus（非KPI）；
+- [x] final package coverage实际执行并记录；
+- [x] real MySQL 8.4 DDL/FK/CHECK/RESTRICT已在此前候选连续两次、最终候选再次执行；
+- [x] isolated grant与immutable mutation rejection已实际执行；
+- [x] commit receipt committed/not_committed/indeterminate fixtures已随最终application测试执行；
+- [x] 长驻v5→v11升级及最终Compose status/smoke、资源identity/旧数据/grant不变已实际核对；
 - [x] 独立Lottery Compose acceptance已执行并核对随机资源清理；
-- [x] `make verify`已在冻结前候选实际执行；完整最终候选仍待复跑；
-- [ ] `go run ./cmd/doccheck`在索引收口后实际执行；
-- [ ] diff/architecture stopline检查；
-- [ ] 工作树无意外产物；
+- [x] `make verify`已在完整最终候选exit 0；
+- [ ] root在全部索引收口后再次执行`go run ./cmd/doccheck`；
+- [ ] root最终diff/architecture stopline检查；
+- [ ] root最终清理并确认工作树无意外产物；
 - [ ] accepted tip、远端同名ref与线性历史由root任务实际核查。
 
-所有对应证据形成以前，不得把勾选框、通过数量、commit SHA或远端状态预写为事实。
+未勾选项仍不得预写成通过、commit SHA或远端冻结事实。
 
 ## 13. QA 结论边界
 
-当前可以审查“实现是否与冻结模型一致”，并且冻结前候选已经取得真实MySQL、长驻Compose升级、独立
-Lottery Compose与`make verify`证据；最终通过结论仍只能来自commit receipt与全部文档收口后的完整候选
-门禁。准确的阶段性说法是：
+完整最终候选已经取得normal/race/shuffle/fuzz/coverage、真实MySQL、长驻Compose、独立Lottery Compose与
+`make verify`证据。尚未完成的是root在全部文档/索引收口后的最终architecture/diff/cleanup/ref冻结，而
+不是代码门禁待复跑。准确的阶段性说法是：
 
 > 第30节的Strategy snapshot、Activity domain/application、Lottery ACL和Marketing MySQL adapter已形成
-> IMPLEMENTED-SURFACE；真实MySQL/Compose/全仓回归已有EXECUTED-CANDIDATE-EVIDENCE；公开API、认证授权、
-> 真实审批、runtime/UI/Draw等保持OUT-OF-SCOPE；最终普通/race/shuffle/fuzz/coverage/真实MySQL/全仓门禁、
-> accepted tip与远端冻结仍须由root任务实际核查。
+> IMPLEMENTED-SURFACE；完整候选的Go/MySQL/Compose/全仓回归已有EXECUTED-CANDIDATE-EVIDENCE；公开API、
+> 认证授权、真实审批、runtime/UI/Draw等保持OUT-OF-SCOPE；accepted tip、SHA、远端冻结与root最终
+> architecture/diff/cleanup仍待实际核查。
