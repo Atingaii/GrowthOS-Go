@@ -119,7 +119,8 @@ func (scope Scope) Validate() error {
 // Kind returns system, tenant, owned, or resource.
 func (scope Scope) Kind() ScopeKind { return scope.kind }
 
-// TenantID returns the exact tenant carried by tenant or resource scope.
+// TenantID returns the exact tenant carried by tenant, owned, or resource
+// scope.
 func (scope Scope) TenantID() (TenantID, bool) {
 	return scope.tenantID, scope.tenantID != ""
 }

@@ -141,6 +141,7 @@ func TestScopeMatchingIsExactAndFailClosed(t *testing.T) {
 
 	principal := mustPrincipal(t, PrincipalKindHuman, "operator-1")
 	otherPrincipal := mustPrincipal(t, PrincipalKindHuman, "operator-2")
+	sameIDService := mustPrincipal(t, PrincipalKindService, "operator-1")
 	tenantA := mustTenantID(t, "tenant-a")
 	tenantB := mustTenantID(t, "tenant-b")
 	resourceID := mustResourceID(t, "activity-1")
@@ -158,6 +159,13 @@ func TestScopeMatchingIsExactAndFailClosed(t *testing.T) {
 		resourceID,
 		tenantA,
 		otherPrincipal,
+	)
+	sameIDKindMismatch := mustObjectResource(
+		t,
+		ResourceTypeMarketingActivity,
+		resourceID,
+		tenantA,
+		sameIDService,
 	)
 	tenantBObject := mustObjectResource(
 		t,
@@ -190,6 +198,14 @@ func TestScopeMatchingIsExactAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new exact scope: %v", err)
 	}
+	systemExactScope, err := NewResourceScope(
+		ResourceTypeMarketingActivity,
+		resourceID,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("new system exact scope: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -206,11 +222,15 @@ func TestScopeMatchingIsExactAndFailClosed(t *testing.T) {
 		{"tenant fact missing", tenantScope, missingFacts, principal, false},
 		{"owned exact owner", mustOwnedScope(t, tenantA), ownedTenantA, principal, true},
 		{"owned other owner", mustOwnedScope(t, tenantA), otherOwnedTenantA, principal, false},
+		{"owned same id different principal kind", mustOwnedScope(t, tenantA), sameIDKindMismatch, principal, false},
 		{"owned tenant mismatch", mustOwnedScope(t, tenantA), tenantBObject, principal, false},
 		{"owned collection", mustOwnedScope(t, tenantA), tenantACollection, principal, false},
 		{"owned fact missing", mustOwnedScope(t, tenantA), missingFacts, principal, false},
 		{"resource exact", exactScope, ownedTenantA, principal, true},
 		{"resource tenant mismatch", exactScope, tenantBObject, principal, false},
+		{"tenant resource scope rejects missing tenant", exactScope, missingFacts, principal, false},
+		{"system resource scope rejects present tenant", systemExactScope, ownedTenantA, principal, false},
+		{"system resource exact", systemExactScope, missingFacts, principal, true},
 		{"resource collection", exactScope, tenantACollection, principal, false},
 	}
 	for _, test := range tests {

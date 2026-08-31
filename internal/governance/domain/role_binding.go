@@ -70,8 +70,9 @@ func (binding RoleBinding) Validate() error {
 	}
 	if !binding.effect.Valid() {
 		return fmt.Errorf(
-			"%w: effect %q",
+			"%w: %w: effect %q",
 			ErrRoleBindingInvalid,
+			ErrBindingEffectUnsupported,
 			binding.effect,
 		)
 	}

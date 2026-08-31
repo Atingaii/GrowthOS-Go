@@ -100,6 +100,17 @@ func TestRoleBindingRejectsZeroPartialAndUnsupportedState(t *testing.T) {
 	if BindingEffect("permit").Valid() || BindingEffect("").Valid() {
 		t.Fatal("unknown binding effect became valid")
 	}
+	_, err := NewRoleBinding(
+		id,
+		principal,
+		RoleMarketingOperator,
+		system,
+		BindingEffect("permit"),
+	)
+	if !errors.Is(err, ErrRoleBindingInvalid) ||
+		!errors.Is(err, ErrBindingEffectUnsupported) {
+		t.Fatalf("unsupported effect error = %v", err)
+	}
 }
 
 func TestPolicyIdentityIsExactNonZeroCorrelation(t *testing.T) {

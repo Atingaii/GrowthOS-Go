@@ -19,18 +19,26 @@ func TestLesson31GovernanceDomainRemainsPureTypedAndBounded(t *testing.T) {
 	t.Parallel()
 
 	forbiddenIdentifiers := map[string]struct{}{
-		"RuleEngine":       {},
-		"PolicyEngine":     {},
-		"ExpressionEngine": {},
-		"Registry":         {},
-		"PolicyRegistry":   {},
-		"Plugin":           {},
-		"DSL":              {},
-		"FactBag":          {},
-		"AttributeBag":     {},
-		"IsAdmin":          {},
-		"SuperAdmin":       {},
-		"AllowAll":         {},
+		"RuleEngine":          {},
+		"PolicyEngine":        {},
+		"ExpressionEngine":    {},
+		"Registry":            {},
+		"PolicyRegistry":      {},
+		"Plugin":              {},
+		"DSL":                 {},
+		"FactBag":             {},
+		"AttributeBag":        {},
+		"IsAdmin":             {},
+		"SuperAdmin":          {},
+		"AllowAll":            {},
+		"PrincipalPermission": {},
+		"DirectPermission":    {},
+		"Session":             {},
+		"Credential":          {},
+		"Password":            {},
+		"Token":               {},
+		"JWT":                 {},
+		"Middleware":          {},
 	}
 	violations, files, err := lesson31DomainArchitectureViolations(
 		".",
@@ -98,12 +106,48 @@ var _ = engine.Decide
 	}
 	joined := strings.Join(violations, "\n")
 	for _, expected := range []string{
-		"imports non-standard package",
+		"imports package outside the reviewed pure-domain allowlist",
 		"declares forbidden authorization shortcut AttributeBag",
 		"declares untyped string policy bag",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("violations %q do not contain %q", joined, expected)
+		}
+	}
+}
+
+func TestLesson31DomainGuardDetectsPrematureAuthenticationVocabulary(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fixture := filepath.Join(root, "session.go")
+	source := `package domain
+type Session struct{}
+type Credential struct{}
+type Password string
+type Token string
+type JWT string
+type Middleware func()
+`
+	if err := os.WriteFile(fixture, []byte(source), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	forbidden := map[string]struct{}{
+		"Session": {}, "Credential": {}, "Password": {},
+		"Token": {}, "JWT": {}, "Middleware": {},
+	}
+	violations, files, err := lesson31DomainArchitectureViolations(root, forbidden)
+	if err != nil {
+		t.Fatalf("inspect fixture: %v", err)
+	}
+	if files != 1 {
+		t.Fatalf("parsed files = %d, want 1", files)
+	}
+	joined := strings.Join(violations, "\n")
+	for identifier := range forbidden {
+		if !strings.Contains(joined, "declares forbidden authorization shortcut "+identifier) {
+			t.Fatalf("violations %q do not contain %q", joined, identifier)
 		}
 	}
 }
@@ -118,7 +162,7 @@ func TestLesson31RuntimeGuardDetectsNestedGovernanceImport(t *testing.T) {
 	}
 	fixture := filepath.Join(nested, "main.go")
 	source := `package main
-import governance "github.com/Atingaii/GrowthOS-Go/internal/governance/domain"
+import governance "github.com/Atingaii/GrowthOS-Go/internal/governance/domain/subpackage"
 var _ = governance.Decision{}
 `
 	if err := os.WriteFile(fixture, []byte(source), 0o600); err != nil {
@@ -141,6 +185,13 @@ func lesson31DomainArchitectureViolations(
 	root string,
 	forbiddenIdentifiers map[string]struct{},
 ) ([]string, int, error) {
+	allowedImports := map[string]struct{}{
+		"cmp":    {},
+		"errors": {},
+		"fmt":    {},
+		"slices": {},
+		"time":   {},
+	}
 	var violations []string
 	parsedFiles := 0
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -161,9 +212,9 @@ func lesson31DomainArchitectureViolations(
 			if err != nil {
 				return fmt.Errorf("unquote import in %s: %w", path, err)
 			}
-			if strings.Contains(importPath, ".") {
+			if _, allowed := allowedImports[importPath]; !allowed {
 				violations = append(violations, fmt.Sprintf(
-					"%s imports non-standard package %q",
+					"%s imports package outside the reviewed pure-domain allowlist %q",
 					path,
 					importPath,
 				))
@@ -233,7 +284,8 @@ func lesson31ExternalGovernanceImportViolations(
 			if err != nil {
 				return fmt.Errorf("unquote import in %s: %w", path, err)
 			}
-			if importPath == lesson31DomainImport {
+			if importPath == lesson31DomainImport ||
+				strings.HasPrefix(importPath, lesson31DomainImport+"/") {
 				violations = append(violations, fmt.Sprintf(
 					"%s prematurely imports the Lesson 31 policy kernel",
 					path,
