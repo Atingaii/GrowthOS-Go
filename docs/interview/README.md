@@ -100,3 +100,4 @@
 - [第 27 节：责任链边界、会员多出口路由与显式缺省](lessons/lesson-27.md)
 - [第 28 节：有界不可变路由图、三表持久化与严格恢复](lessons/lesson-28.md)
 - [第 29 节：封闭类型化路由图求值、确定性证据与取消预算](lessons/lesson-29.md)
+- [第 30 节：Strategy 快照、Activity 不可变发布、CAS、回滚与跨上下文校验](lessons/lesson-30.md)

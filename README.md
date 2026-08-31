@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26.6" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7" />
-  <img src="https://img.shields.io/badge/Course-29%20lessons%20completed-2563EB?style=flat-square" alt="已完成 29 个课程章节" />
+  <img src="https://img.shields.io/badge/Course-30%20lessons%20completed-2563EB?style=flat-square" alt="已完成 30 个课程章节" />
   <img src="https://img.shields.io/badge/Docs-中文-059669?style=flat-square" alt="中文文档" />
   <img src="https://img.shields.io/github/last-commit/Atingaii/GrowthOS-Go?style=flat-square&label=last%20commit" alt="最近提交" />
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成第 1～29 节，共 29 节：M0 Compose 工程基线与 M1 Strategy 缓存本地基线均已验收。第 17～24 节建立 Lottery 领域、两表、仓储、无偏选择、ephemeral API/React、规则所有权与 Redis Strategy 投影；第 25～26 节在 Participation 中依次实现新用户、风险准入与固定“新用户 → 风险准入”短路链；第 27 节用具体会员路由证明线性 gate chain 无法表达分支选择，第 28 节再把 branch/default/target 固化为有界、不可变、可恢复的 rooted DAG 和三表仓储。第 29 节现在只对调用方显式给出的 exact graph revision 实现封闭 typed 求值：一次 graph、一次 Clock、一次会员事实、确定单路径、1～16 step、合作式总时长预算、固定错误优先级与 zero-decision 失败协议。它仍没有发布/Activity 绑定、公开 API、UI、composition-root、真实会员 adapter、认证或权限系统；当前也没有正式 Draw/Result、幂等、在线资格门控、库存或发奖。领域/仓储/执行测试通过、缓存命中和可见的 ephemeral selection 都不等于在线抽奖闭环。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成并验收第 1～30 节，共 30 节。第 30 节在 exact graph/evaluator 之后区分 Lottery create-only Strategy snapshot 与 Marketing-owned Activity：immutable numeric publication、追加式 rollback、`state_version` CAS、一次 Clock 的 `[start,end)` resolve gate 与 exact Lottery ACL 已通过源码、真实 MySQL 8.4.11、长期 Compose v5→v11、最小权限、独立 Lottery acceptance 和全仓质量门验证。所有新增 service/Repository/ACL 仍刻意不装配 API、UI、composition root 或长期运行权限；第 31～35 节的公共权限模型、真实会话、服务端 RBAC、前端裁剪与越权 E2E 停止线不变。正式 Draw/Result、幂等、在线资格门控、库存和发奖同样未实现。
 
 ## 项目简介
 
@@ -120,7 +120,7 @@ make db-status
 make db-migrate
 ```
 
-当前源码内嵌 Migration latest 为 `5`：`000001` / `000002` 创建 Strategy/Award 两表，`000003` / `000004` / `000005` 依次创建 Strategy routing graph header、node 和 edge。运行当前构建并完成前向迁移后，`status` 应为 `clean` 且 `version=latest=5`，重复执行 `up` 应为 `no_change`；已经运行的旧环境不会因为拉取代码自动升级，必须先核对实际状态再迁移。数据库基线仍是长期 `growthos` 栈在同一 MySQL 容器与原 named resources 上从 `2:0` 前向升级到 `5:0`，旧两表空数据指纹前后相同，新三表为空。第 29 节没有新增 Migration 或运行账号授权。完整变量见[配置参考](docs/configuration.md)，第 29 节仍为零公开 API，Migration 发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
+当前源码内嵌 Migration latest 为 `11`：`000001` / `000002` 创建 Strategy/Award，`000003`～`000005` 创建 routing graph/node/edge，`000006` / `000007` 创建 Lottery Strategy snapshot/award snapshot，`000008`～`000010` 创建 Marketing Activity/publication/publication-strategy，`000011` 只追加 Marketing 内部 active-publication 反向外键。一次性 MySQL 8.4.11 已从含 7 条非空 FK 基线行的真实 v5 前向到 v11，证明旧五表结构与数据哈希不变、重复迁移 `no_change`、dirty/restore 可恢复，以及五张新表、6 个 `RESTRICT` FK、20 个 CHECK、binary collation 和 Marketing→Lottery 外键数为 0。长期 `growthos` Compose 也已从 v5 原地升级 v11，MySQL/Redis/Web/网络/卷身份、旧表零行与 checksum 均保持，新表为空；`growthos_app` 仍只有旧两表 `SELECT`，对其余八表的读取真实返回 1142。完整变量见[配置参考](docs/configuration.md)，当前仍为零新增公开 API；发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
 
 第 28 节还提供独立的真实 MySQL 引擎门禁：
 
@@ -128,9 +128,9 @@ make db-migrate
 make lesson28-mysql-acceptance
 ```
 
-它使用一次性 `mysql:8.4.11`、随机回环端口、tmpfs 数据目录和任务专用身份，验证 latest 5、旧两表 Repository、graph 三表 Repository、权限负向路径及清理边界；不会连接或修改长期 `growthos` Compose 数据。长期 `growthos_app` 仍只有旧两张表的 `SELECT`，必须被拒绝访问三张 graph 表；测试写能力分别属于隔离 legacy writer 和隔离 graph repository 身份，不能据此扩宽运行账号。
+它使用一次性 `mysql:8.4.11`、随机回环端口、tmpfs 数据目录和任务专用身份，保留第 28 节 historical latest 5、旧两表与 graph 三表 Repository 证据；第 30 节另由 `make lesson30-mysql-acceptance` 完成 v5→v11、snapshot/Marketing Repository、最小权限与清理验收。两个门禁都不会连接或修改长期 `growthos` Compose 数据，隔离测试写能力也不能据此扩宽运行账号。
 
-### Lottery 领域、五表持久化、仓储、加权选择与临时 API
+### Lottery/Marketing 领域、十表源码结构与未装配发布切片
 
 第 17 节在 `internal/lottery/domain` 建立第一组业务对象：`Strategy` 聚合拥有至少一个 `Award`，拒绝零 ID、非法名称、零权重、未知 Outcome、重复 AwardID 与总权重溢出；候选使用正整数相对权重，合法未中奖由显式 `no_reward` Award 表达，slice 所有权与 AwardID 规范顺序由聚合维护。
 
@@ -173,7 +173,9 @@ curl --request POST \
 
 第 28 节据此新增 Lottery-owned `StrategyRoutingGraph`：`(GraphID, Revision)` 标识一份 create-only schema v1，显式 root、`decision` / `strategy_target` node、`premium_override` / `baseline_default` edge 组成可共享后继但无环的 rooted DAG。构造和恢复同时验证全可达、无悬空、terminal 无出边、每个 decision 精确两条分支、default 一致性，以及 128 nodes / 256 edges / 16 edges depth 的硬上限；集合规范排序并防御性复制。application 只暴露 `Create` 与 `FindByIdentity` 两个聚合级窄端口，独立 MySQL Repository 在单事务中写完整 revision，并在只读 `REPEATABLE READ` 快照中有界读取后严格恢复。三张新表以复合键、外键、CHECK/UNIQUE 保护局部完整性；graph header 的 root 刻意不反向引用 node，避免 InnoDB 立即外键检查造成无合法首次插入顺序。完整证据见[路由图基线](docs/product/lottery-strategy-routing-graph-v1.md)、[课程](docs/course/part-04/lesson-28-rule-tree-schema.md)、[ADR-0024](docs/decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)、[API 零变化记录](docs/api/lessons/lesson-28.md)、[QA](docs/qa/lessons/lesson-28.md)、[设计手记](docs/design-thinking/lessons/lesson-28.md)和[面试问答](docs/interview/lessons/lesson-28.md)。该 Repository 尚未进入 composition root，长期 runtime 没有 graph 表权限；本节没有执行器、Activity、发布状态、HTTP/React、认证、权限或端到端业务链。
 
-第 29 节在这份可信图之上增加 `EvaluateStrategyRoutingGraph` 与未装配的 `StrategyRoutingGraphEvaluationService`。领域执行器先要求 graph 最坏深度不超过服务端 `maxSteps`，再从显式 root 迭代执行唯一批准的 `lottery.membership_tier.route_strategy`：复用第 27 节 typed branch oracle，按 exact branch 找唯一 edge，不以 edge 顺序或 default 吞掉 unknown/error；每一步记录 rule/branch/reason/from/to，最终 decision 还绑定 exact graph identity、schema、terminal target、fact provenance 和 canonical evaluated-at，并以 defensive-copy Path 与 `Confirmed()` 保护完整证据。application 固定 `caller error > internal maxDuration > provider error > invalid value`，让更早或相同 caller deadline 拥有终止语义，内部 timeout 使用私有 cause 且不对外匹配 `context.DeadlineExceeded`；所有失败均返回整个 zero decision。完整证据见[求值基线](docs/product/lottery-strategy-routing-evaluation-v1.md)、[课程](docs/course/part-04/lesson-29-rule-decision-engine.md)、[ADR-0025](docs/decisions/ADR-0025-lottery-strategy-routing-graph-evaluation.md)、[API 零变化记录](docs/api/lessons/lesson-29.md)、[QA](docs/qa/lessons/lesson-29.md)、[设计手记](docs/design-thinking/lessons/lesson-29.md)、[面试问答](docs/interview/lessons/lesson-29.md)和[运维/验收手册](docs/runbooks/strategy-routing-graph-evaluation.md)。本节仍不加载 Strategy/Award、不形成 Draw，也不装配 Repository/会员 adapter/HTTP/React；第 30 节才处理发布与 Activity 绑定，第 31～35 节再按顺序实现统一访问控制。
+第 29 节在这份可信图之上增加 `EvaluateStrategyRoutingGraph` 与未装配的 `StrategyRoutingGraphEvaluationService`。领域执行器先要求 graph 最坏深度不超过服务端 `maxSteps`，再从显式 root 迭代执行唯一批准的 `lottery.membership_tier.route_strategy`，按 exact branch 形成不可变 path；application 固定 caller/internal/provider 错误优先级，所有失败返回 zero decision。完整证据见[求值基线](docs/product/lottery-strategy-routing-evaluation-v1.md)、[课程](docs/course/part-04/lesson-29-rule-decision-engine.md)和 [ADR-0025](docs/decisions/ADR-0025-lottery-strategy-routing-graph-evaluation.md)。第 30 节已在此基础上验收发布/Activity 绑定，但两节代码都未装配进 HTTP/React 运行链。
+
+第 30 节把“可执行 Strategy”与“可运营 Activity”拆开：Lottery 以 exact create-only snapshot 固化 Strategy/Award 内容；Marketing 只拥有 Activity draft/published/retired 生命周期与不可变 publication history。真实 MySQL 已验证 snapshot 并发/回滚，以及 Activity publish/replace/rollback/retire、RR、CAS 与 half-write 回滚。publication 不跨 bounded context 建外键，只保存 exact graph/snapshot refs，并由 Lottery ACL 验证 terminal Strategy revision 集与 manifest 精确相等。对于 COMMIT 应答丢失，application 还提供 `ActivityCommitReceiptFromError`、`ObserveCurrentActivity` / `ObserveActivityRoot` 与 `ReconcileActivityCommit`，把 exact read-back 关闭为 `committed` / `not_committed` / `indeterminate` 三态而不建议盲重放。完整证据见[发布绑定基线](docs/product/activity-publication-binding-v1.md)、[课程](docs/course/part-04/lesson-30-strategy-vs-activity.md)、[ADR-0026](docs/decisions/ADR-0026-activity-publication-binding.md)、[API 零变化记录](docs/api/lessons/lesson-30.md)、[QA](docs/qa/lessons/lesson-30.md)、[设计手记](docs/design-thinking/lessons/lesson-30.md)、[面试问答](docs/interview/lessons/lesson-30.md)和[运维/验收手册](docs/runbooks/activity-publication.md)。服务、Repository、ACL 与审批 verifier 仍未装配，API/UI、权限系统和正式 Draw 不属于本节完成范围。
 
 ### React 前端框架
 
@@ -199,13 +201,13 @@ make compose-up
 make compose-smoke
 ```
 
-访问 `http://127.0.0.1:8088/system/status` 查看真实系统状态。启动门仍为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，不进入 API readiness。当前源码与已验收长期栈均为 Migration clean latest 5；`growthos_app` 仍只有旧两表 `SELECT`，对三张 graph 表的真实读取返回 MySQL 1142。`compose-smoke` 已验证 lesson-28 tags、v5、graph 拒绝、Redis internal 网络/Secret/ACL/内存策略、探针、HTTP 契约和端口隔离。第 24 节真实成功/失败/cache/fault 链路使用会自行验证所有权并清理的独立环境：
+访问 `http://127.0.0.1:8088/system/status` 查看实际运行实例状态。启动门仍为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，不进入 API readiness。长期栈已达到 Migration clean latest 11，`compose-status` 与 `compose-smoke` 通过；`growthos_app` 只有旧两表 `SELECT`，对 graph/snapshot/Marketing 八张未装配表的真实读取被拒绝。独立 Lottery/cache acceptance 也已在 v11 schema 上通过并完成随机 project、卷、网络、镜像、builder、Secret 与响应清理，长期资源 identity 不变：
 
 ```bash
 make compose-lottery-api-acceptance
 ```
 
-该 acceptance 不写长期 `growthos` 数据；本节已在 latest 5 上再次通过 graph 权限负证、ACL、poison 修复、Redis/MySQL warm/cold 故障恢复、并发与三组 50 RPS×10s M1 路径，随机 project/volumes/networks/images/builder/Secret/响应均完成精确清理，长期资源 identity 不变。三组均 500/500 成功，warm-cache 的 MySQL prepared execute 为 0，cache-disabled/Redis-down 均为 1000；这不是正式 Draw SLO 或生产容量。完整 M0 门禁仍执行健康探针 100 RPS×5 分钟以及 readiness 20 RPS×30 秒：
+该 acceptance 不写长期 `growthos` 数据；它在 latest 11 上回归权限负证、ACL、poison 修复、Redis/MySQL warm/cold 故障恢复、并发与既有 M1 路径，并完成精确清理。既有 M1 数字仍只属于本机短窗口，不是正式 Draw SLO 或生产容量。完整 M0 门禁仍执行健康探针 100 RPS×5 分钟以及 readiness 20 RPS×30 秒：
 
 ```bash
 make compose-m0
@@ -235,9 +237,9 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、类型化配置、`slog`、请求关联、统一错误、健康/readiness、`sqlx` 与可选 Redis pool；Lottery Strategy/Award、仓储、cache-aside、无偏 Selector、crypto adapter、development/test ephemeral API、会员具体路由，以及未装配的有界不可变 Strategy routing graph/窄仓储；Participation 新用户/风险准入与固定短路链 | 真实注册/风险/会员 fact adapter、路由图执行与 Activity、正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
+| 后端 | Go 1.26.6、Gin v1.12.0、类型化配置、`slog`、请求关联、统一错误、健康/readiness、`sqlx` 与可选 Redis pool；Lottery Strategy/Award、cache-aside、Selector、ephemeral API、会员路由、exact graph/evaluator、create-only Strategy snapshot；Marketing Activity immutable publication、CAS、rollback/retire/resolve gate 与 Lottery ACL 均已落源码但未装配；Participation 新用户/风险准入与固定短路链 | 真实注册/风险/会员 fact adapter、Activity/graph/snapshot 运行时装配、正式 Draw API、认证/授权、幂等、gRPC + Protobuf、OpenTelemetry |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`、同源 Fetch Client 与运行时解码；系统状态页和 ephemeral Lottery 页面已真实联调；第 24 节缓存不扩张浏览器契约 | 第 31～35 节在首个真实运营后台前依次建立公共访问控制模型、会话认证、服务端强制、前端权限感知和越权验收 |
-| 数据 | MySQL 8.4、API/Migrator 身份隔离、latest 5 前向 Migration、Strategy/Award 两表和 routing graph/node/edge 三表；两类 Repository 均使用事务创建与 RR 快照；长期运行身份仅旧两表 `SELECT` 且拒绝 graph 三表；Redis 只保存版本化 Strategy 投影，48 MiB `allkeys-lru`、无持久化、最小 ACL | Draw/Result、库存与发奖事实、图发布/更新协议、聚合版本及精准缓存失效、ClickHouse、OpenSearch |
+| 数据 | MySQL 8.4、API/Migrator 身份隔离；源码 latest 11、十张业务表：旧 Strategy/Award、graph 三表、Strategy snapshot 两表、Marketing Activity publication 三表。跨上下文只存 exact refs、不建 FK；长期运行身份仍仅旧两表 `SELECT`，对八张未装配表零权限已在 v11 真实验证。Redis 只保存旧版 Strategy 读取投影 | Draw/Result、库存与发奖事实、运行装配、精准缓存失效、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
 | 交付 | 本地质量门禁、隔离 Compose 开发栈、smoke、故障演练与 M0 定速负载门禁 | GitHub Actions、Kubernetes、可观测体系 |
@@ -253,7 +255,7 @@ make verify
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 已完成：Strategy/Award、两表、仓储、选择、API/React、规则边界与 Redis 读取投影/M1 均已验收 |
-| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～26 节形成两个具体 Participation gate 与最小线性链，第 27～29 节依次交付具体会员路由、bounded immutable rooted DAG/三表仓储和封闭有预算求值；下一步第 30 节建立 Strategy/Activity 发布绑定，第 31～35 节再形成统一访问控制 |
+| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～30 节已验收；下一节第 31 节建立统一访问控制模型与威胁边界，第 32～35 节再完成会话、服务端强制、前端裁剪与越权验收 |
 | 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
 | 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |
 | 7 | 54～61 | 积分、优惠券、返利与权益中心 | 计划中 |
@@ -280,10 +282,10 @@ M0 工程联调 → M1 Lottery 读取/临时选择基线 → M2 营销活动 MVP
 ```text
 GrowthOS-Go/
 ├── cmd/             # Go 可执行程序与项目工具
-├── internal/        # 私有领域与基础设施模块；已含 Lottery 聚合/路由图、封闭求值器、仓储、选择用例与 HTTP adapter
+├── internal/        # 私有领域与基础设施模块；含 Lottery 聚合/路由图/Strategy snapshot 与未装配 Marketing Activity publication 切片
 ├── pkg/             # 少量稳定的公共 Go 包
 ├── configs/         # 可版本化且不包含秘密的配置示例
-├── migrations/      # 嵌入式前向 SQL Migration；000001～000005 创建 Strategy/Award 与路由 graph/node/edge
+├── migrations/      # 嵌入式前向 SQL Migration；当前源码 000001～000011、latest 11，共十张业务表
 ├── deploy/          # Compose 拓扑、容器镜像入口、网关配置与本地秘密挂载约定
 ├── scripts/         # Secret 生成、Compose smoke、隔离 Lottery API 与 Lesson 28 MySQL acceptance 等自动化
 ├── docs/            # 产品、架构、ADR、API、QA、设计推导、面试与课程事实源
@@ -305,12 +307,14 @@ GrowthOS-Go/
 | [限界上下文地图](docs/product/bounded-context-map-v1.md) | 业务语言、事实所有权和上下文协作 |
 | [Lottery 规则需求基线](docs/product/lottery-rule-requirements-v1.md) | 规则阶段、权威事实、失败语义、版本边界与渐进实现停止线 |
 | [Strategy Routing Graph 求值基线](docs/product/lottery-strategy-routing-evaluation-v1.md) | exact revision、封闭 operator、完整 path、执行预算与 zero-decision 协议 |
+| [Activity Publication 绑定基线](docs/product/activity-publication-binding-v1.md) | exact Strategy snapshot、不可变发布版本、CAS、回滚、时间窗、resolve gate 与跨上下文边界 |
 | [非功能需求基线](docs/product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复与降级目标 |
 | [前端架构](docs/frontend/frontend-architecture.md) | 页面边界、路由、Mock 和运行方式 |
 | [运行配置](docs/configuration.md) | `GROWTHOS_` 变量、默认值、校验和秘密边界 |
 | [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md) | 状态检查、前向发布、故障停止条件与清理 |
 | [Docker Compose 运维手册](docs/runbooks/local-compose.md) | 本地 Secret、启停、M0 验收、故障定位与数据重置 |
 | [路由图求值验收与故障分诊](docs/runbooks/strategy-routing-graph-evaluation.md) | 内部验证、caller/internal/provider 优先级、低披露分诊与装配停止条件 |
+| [Activity Publication 运维与验收](docs/runbooks/activity-publication.md) | v11 schema、exact publication、回滚、CAS、resolve 与未装配停止条件 |
 | [章节 API 台账](docs/api/lessons/README.md) | 每节新增或调整的前端调用契约 |
 | [第一性原理设计手记](docs/design-thinking/README.md) | 每章的事实、推导链、备选矩阵、失败模型与重决策条件 |
 | [章节面试问答](docs/interview/README.md) | 每章核心问题、追问、项目证据与选型边界 |
