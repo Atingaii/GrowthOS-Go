@@ -1,6 +1,6 @@
 # GrowthOS 本地 Docker Compose 运维手册
 
-**适用范围：** 第 16～28 节单机 Docker Desktop/Engine 开发环境
+**适用范围：** 第 16～30 节单机 Docker Desktop/Engine 开发环境
 
 **默认入口：** `http://127.0.0.1:8088`
 
@@ -8,13 +8,13 @@
 
 **数据边界：** 只有本项目 `mysql_data` named volume 持久业务/迁移数据；`mysql_socket` named volume 只承载运行期 Unix socket；Redis 明确不持久；用户已有 MySQL、Redis、RabbitMQ、PostgreSQL 等资源不在本手册操作范围内
 
-架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)、[ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)、[ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)与 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)。当前缓存契约见[第 24 节 API](../api/lessons/lesson-24.md)，第 28 节 graph 仍为[零公开 API](../api/lessons/lesson-28.md)；MySQL 结构与权限证据见[第 28 节 QA](../qa/lessons/lesson-28.md)和 [MySQL Migration 运维手册](mysql-migrations.md)。
+架构依据见 [ADR-0012](../decisions/ADR-0012-compose-development-topology.md)、[ADR-0015](../decisions/ADR-0015-compose-schema-grant-reconciliation.md)、[ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)、[ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)与 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)。第 30 节仍为[零公开 API](../api/lessons/lesson-30.md)；MySQL 结构与权限边界见[第 30 节 QA](../qa/lessons/lesson-30.md)、[Activity Publication 运维手册](activity-publication.md)和 [MySQL Migration 运维手册](mysql-migrations.md)。
 
 ## 1. 目的
 
-本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境，包括 latest 5 Lottery Migration、长期 runtime 的旧两表 SELECT-only/新三表 denied 授权门、Redis Strategy 投影缓存、长期 smoke、一次性 Lottery/cache acceptance，以及第 28 节 disposable MySQL 8.4.11 gate。所有命令默认从包含 `go.mod`、`Makefile` 和 `deploy/compose/compose.yaml` 的仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
+本手册说明如何安全创建、启动、检查、演练、停止和排查 GrowthOS Compose 环境。当前已验收基线是 Migration latest 11、十张业务表、长期 runtime 仅旧两表 `SELECT` 且拒绝八张未装配表；Strategy snapshot、Marketing Activity publication 和 Lottery ACL 均未装配。所有命令默认从仓库根目录执行；不要把某位开发者的绝对路径写入脚本或交接材料。
 
-这里区分“当前源码契约”和“某个已经运行的本地实例”：源码、镜像 tag、Migration 与 smoke 已要求 latest 5，旧 volume 仍只有实际执行前向迁移后才能记录为 v5。本节默认长期 `growthos` 已在保持同一 MySQL container ID、named volumes 和 networks 的情况下从 `2:0` 前向到 `5:0`；旧两表 `0:0:empty` 指纹前后相同，新三表 `0:0:0`，`growthos_app` graph SELECT 真实返回 1142，随后 `make compose-smoke` exit 0。隔离 Lottery/cache acceptance 也已在 v5 exit 0，并清理其随机 project、volumes、networks、images、builder、Secret 和响应；长期资源 identity 不变。这是本节验收事实，不代表以后任意旧 volume 会自动升级。
+这里严格区分“源码契约”和“实际实例”。长期 `growthos` 已从 v5 原地升级到 clean latest 11，MySQL/Redis/Web container、网络与卷 identity 保持；旧五表仍为零行且 checksum 不变，新五表为空。`growthos_app` 仍只有旧两表 `SELECT`，对 graph/snapshot/Marketing 八表读取真实返回 1142；`compose-status`、`compose-smoke` 与独立 Lottery/cache acceptance 均已通过，隔离任务完成精确清理。其他旧 volume 不会自动升级，仍须按本手册独立取证。
 
 它不是生产发布手册，不授权操作者删除用户现有容器/volume、修改共享数据库账号、绕过 Secret guard，或把本地 HTTP/密码/TLS 配置复制到 staging/production。
 
@@ -205,7 +205,7 @@ make compose-up
 
 ```text
 MySQL healthy (Migrator identity authenticated SELECT 1)
-  -> Migration reaches clean latest 5 and exits 0
+  -> Migration reaches clean latest 11 and exits 0
   -> mysql-grants reconciles exact app allowlist and exits 0
   -> API starts and /health becomes healthy
 
@@ -237,7 +237,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 | `migrate` | exited, code 0 |
 | `mysql-grants` | exited, code 0 |
 
-不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。前者执行到 latest 5，后者只经 Unix socket 撤销旧应用授权、建立旧两表 `SELECT` allowlist，并确保 graph 三表不可访问；两者职责不可互换。
+不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。当前构建前者应执行到 latest 11，后者只经 Unix socket 撤销旧应用授权、建立旧两表 `SELECT` allowlist；smoke 再逐表确认 graph 三表、snapshot 两表与 Marketing 三表不可访问。两者职责不可互换，且未实际运行时不能预写成功。
 
 ### 7.2 手工只读检查
 
@@ -265,13 +265,15 @@ make compose-smoke
 
 脚本对 MySQL 与业务事实保持只读；为证明 Redis ACL，会在专用 StrategyID=0 key 上执行一次 `SET ... EX 30` / `GETRANGE` / 精确 `DEL`，并在退出路径清理该探针。检查包括：
 
+以下 v11 检查契约已在长期 `growthos` 栈实际通过；未来提交或其他环境仍须重新执行，不能复用本次结论：
+
 - Web/API/MySQL/Redis 四个常驻服务 running + healthy；
 - Migration 与 mysql-grants 两个 one-shot 均 exited 0；
-- Migrator 身份读取到 `schema_migrations version=5, dirty=0`；
+- Migrator 身份读取到 `schema_migrations version=11, dirty=0`；
 - 两张表存在预期的 `*_name_basic` 约束，不残留旧约束名；
 - 应用身份的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT`，`@@GLOBAL.mandatory_roles` 为空；
-- graph header/node/edge 三张表已经由 `000003` / `000004` / `000005` 创建；
-- 应用身份能读旧两张业务表；其 INSERT、UPDATE、DELETE、`schema_migrations` 访问，以及对 graph 三表的 SELECT/INSERT 均被拒绝，smoke 的负向语句不改变数据；
+- 十张业务表存在：旧 Strategy/Award、graph 三表、Strategy snapshot 两表、Marketing Activity publication 三表；`000011` 是 ALTER，不新增表；
+- 应用身份能读旧两张业务表；其 INSERT、UPDATE、DELETE、`schema_migrations` 访问，以及对 graph/snapshot/Marketing 八表的 SELECT 均被拒绝，graph INSERT 负证不改变数据；
 - API 只在内部 `cache` 网络消费 Redis Secret；其余服务没有缓存网络/Secret；
 - Redis 默认用户关闭，`growthos_api` 可执行无 key 的 `PING`，并只可对缓存前缀执行 `GETRANGE/SET/DEL`；普通 `GET`、前缀外 `SET`、`KEYS`、`SCAN`、`FLUSHALL`、`CONFIG`、`ACL`、`PUBLISH`、`SUBSCRIBE` 均被拒绝；
 - Redis 精确启用 `48mb`、`allkeys-lru`、无 RDB/AOF 持久化；
@@ -292,7 +294,7 @@ make compose-smoke
 make compose-lottery-api-acceptance
 ```
 
-该脚本创建随机 Compose project、任务专用 Secret 目录、MySQL data/socket volumes 和 acceptance image tags；Migrator 应用到 latest 5 并写入隔离旧表 fixture，随后把 runtime app 收敛为旧两表 SELECT-only、graph 三表 denied。它会核对：
+该脚本创建随机 Compose project、任务专用 Secret 目录、MySQL data/socket volumes 和 acceptance image tags；Migrator 到 latest 11，写入的仍只是旧表 fixture，runtime app 收敛为旧两表 SELECT-only、其余八表 denied。本节已在 v11 schema 上重新执行下列 Lottery/cache 场景并通过：
 
 - `reward`、`no_reward` 与 MaxUint64 identity 的最小 decimal-string DTO；
 - invalid ID/demo header/query/body/idempotency、方法与尾斜杠错误；
@@ -308,7 +310,7 @@ make compose-lottery-api-acceptance
 - MySQL 停止时 warm cache hit 仍可选择，`/ready` 与 cold miss 按既有 unavailable 语义失败；MySQL 恢复后无需重启 API即可回源并填充；
 - 调用前后两张 Lottery 业务表的内容 fingerprint 不变；这只说明该用例没有 Lottery 业务状态写路径，不排除访问日志、连接统计等技术副作用；
 - API stop 时 502/504 的 JSON、no-store 与 request ID 保持关联，恢复后重新通过检查。
-- graph 三表存在且 `growthos_app` 的 SELECT/INSERT 均被 MySQL 拒绝；隔离 cache/API 回归没有把尚未装配的 graph Repository 偷偷接入运行链。
+- graph/snapshot/Marketing 八张未装配表存在且 `growthos_app` 的 SELECT 被拒绝，graph INSERT 被拒绝；隔离 cache/API 回归不得把任何新 Repository/ACL 偷偷接入运行链。
 
 2 MiB sentinel、1000 Award、最多 10% TTL jitter、同一 cold key 合并和不同 key fill 不串行，分别由 Strategy cache 的 unit/race 测试证明，不属于上述 Compose 脚本已直接探测的场景；证据分层与未实测边界见[第 24 节 QA](../qa/lessons/lesson-24.md)。
 
@@ -327,6 +329,15 @@ make lesson28-mysql-acceptance
 脚本启动随机 name/label、回环动态端口、`/var/lib/mysql` tmpfs 的一次性 `mysql:8.4.11`，在任务 `mktemp` 目录生成 root/Migrator/legacy writer/graph writer Secret。Migrator 应用 latest 5；legacy writer 只获旧两表 `SELECT, INSERT`，graph writer 只获新三表 `SELECT, INSERT`，长期 runtime 能力不会参与或被扩宽。随后顺序运行 MySQL platform、Migration、schema 与两个 Repository 的六组 Integration。
 
 第 28 节实跑已 exit 0：六组全部通过；脚本按精确 container ID + name + label 停止 `--rm` 容器，删除明确的任务 Secret 文件和空目录，并确认没有本次 label 残留，长期 `growthos` containers/volumes/networks 快照前后相同。若 `mysql:8.4.11` 镜像是本次首次下载，它作为可复用依赖保留。不要手工按名称前缀删除容器，不要删除长期 volume/Secret，也不要用全局 prune“补清理”。
+
+### 8.3.1 第 30 节 disposable MySQL v11 acceptance
+
+```bash
+GROWTHOS_LESSON30_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 \
+  make lesson30-mysql-acceptance
+```
+
+该门禁已在一次性 MySQL 8.4.11 上通过：从含 7 条非空 FK 行的真实 v5 基线前向到 v11，验证旧表结构/数据哈希保持、repeat no_change、dirty/restore、五张新表、6 个 `RESTRICT` FK、20 个 CHECK、binary collation、Marketing→Lottery 零 FK、隔离 writer 最小权限与 1142 拒绝；并覆盖 Strategy snapshot 并发/回滚、Activity publish/replace/rollback/retire/RR/CAS/half-write rollback 与精确清理。
 
 ### 8.4 代码 + Compose 验证
 
@@ -423,7 +434,7 @@ make compose-status
 make compose-migrate
 ```
 
-当前源码 Migration latest 为 5：`000001` / `000002` 创建 Strategy/Award，`000003` / `000004` / `000005` 创建 routing graph/node/edge。`make compose-status` 应报告 `clean` 且 `version=latest=5`；从旧 volume 前向执行 `make compose-migrate` 可为 `applied`，重复执行应为 `no_change`。该目标随后运行 `mysql-grants`，因此成功条件还包括长期应用授权被重新收敛。迁移前后都要记录真实 status；不能只根据源码或镜像 tag 宣布现有 volume 已是 v5。
+当前源码 Migration latest 为 11：旧 `000001`～`000005` 保留，`000006`～`000010` 新增 snapshot/Marketing 五表，`000011` 追加 Marketing 内部 active-publication FK。`make compose-status` 应报告 `clean` 且 `version=latest=11`；从旧 volume 前向执行可为 `applied`，重复执行应为 `no_change`。该目标随后运行 `mysql-grants`，因此成功条件还包括长期应用授权被重新收敛。迁移前后都要记录真实 status；不能根据源码、镜像 tag 或历史 v5 证据宣布现有 volume 已是 v11。
 
 如只需在已经完成 Migration 的当前栈重新核对/收敛授权，可执行：
 
@@ -431,7 +442,7 @@ make compose-migrate
 make compose-grants
 ```
 
-授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份的旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT`，精确比较 `SHOW GRANTS`，要求 `@@GLOBAL.mandatory_roles` 为空，并确认 routing graph/node/edge 的 SELECT/INSERT 都被拒绝。任何多余权限、mandatory role 或 socket/Secret 错误都会非零退出。不要为“兼容”已有额外角色而放宽脚本；legacy/graph Repository 的隔离测试写身份都不是给长期 runtime 恢复 INSERT 或 graph SELECT 的理由。
+授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先 `REVOKE` 应用身份旧权限，再只授予 `lottery_strategy` / `lottery_strategy_award` 的 `SELECT`，精确比较 `SHOW GRANTS` 并要求 mandatory role 为空。当前 v11 的完整负证由 smoke/acceptance 对 graph/snapshot/Marketing 八表逐表执行。不要为兼容额外角色而放宽脚本；隔离 Repository 测试身份不是给长期 runtime 恢复 INSERT 或新表 SELECT 的理由。
 
 遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status 和授权核对。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
 
@@ -545,7 +556,7 @@ make compose-up
 make compose-smoke
 ```
 
-确保四个常驻服务恢复、Migration/mysql-grants 均退出 0、latest 5、旧两表 SELECT-only 与 graph 三表 denied 均成立、唯一端口边界不变，再决定是否执行 M0。不要让“已恢复”只基于首页一次 200。
+确保四个常驻服务恢复、Migration/mysql-grants 均退出 0、latest 11、旧两表 SELECT-only 与八张未装配表 denied 均成立、唯一端口边界不变，再决定是否执行 M0。不要让“已恢复”只基于首页一次 200；未实跑时也不要填写这些结果。
 
 ## 12. 常见故障排查
 
@@ -599,7 +610,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 make compose-status
 ```
 
-`service_completed_successfully` 正在按设计阻断后续授权与 API。检查稳定 stage、dirty/version（当前构建必须 clean latest 5）、账号权限和 timeout；不要临时删除 `depends_on`，不要让 API 使用 Migrator 密码。
+`service_completed_successfully` 正在按设计阻断后续授权与 API。检查稳定 stage、dirty/version（当前构建必须 clean latest 11）、账号权限和 timeout；不要临时删除 `depends_on`，不要让 API 使用 Migrator 密码。
 
 ### 12.6 mysql-grants 非零退出，API 未创建/未启动
 
@@ -609,7 +620,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 make compose-status
 ```
 
-先确认 Migration 已 clean latest 5，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。脚本要求 mandatory role 为空，最终授权精确等于 USAGE + 旧两张 Lottery 表 `SELECT`，并要求 graph 三表不可访问；任意额外角色/权限都会故意失败。不要把脚本切换到 TCP、授予 schema wildcard、恢复 INSERT/graph SELECT、改用 Migrator 身份启动 API 或删掉校验。
+先确认 Migration 已 clean latest 11，再由受控管理员核查 root Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'` 与 `@@GLOBAL.mandatory_roles`。最终授权必须精确等于 USAGE + 旧两表 `SELECT`，并由 v11 smoke 验证八张未装配表不可访问；任意额外角色/权限都应失败。不要授予 schema wildcard、恢复 INSERT/新表 SELECT、改用 Migrator 身份启动 API 或删掉校验。
 
 ### 12.7 API 启动失败
 
@@ -734,7 +745,7 @@ rm -rf deploy/compose/secrets
 - Docker Engine、Compose、Go 版本和主机架构；
 - Compose project/file、Web loopback 端口；
 - 六个 service 最终状态：四个常驻 healthy，Migration 与 mysql-grants 两个 one-shot exit code 0；
-- `schema_migrations` clean latest 5、五张 Lottery 表存在、运行应用精确旧两表 `SELECT`、graph 三表 denied 和 mandatory role 为空；
+- 对当前源码验收：`schema_migrations` clean latest 11、十张业务表存在、运行应用精确旧两表 `SELECT`、其余八表 denied 和 mandatory role 为空；若记录的是历史环境，则必须明确写 v5/五表/graph 三表 denied，不能混写为当前结果；
 - smoke 输出；
 - 两段 healthload 单行 JSON、退出码；
 - 资源快照及其“瞬时非峰值”限制；
