@@ -24,6 +24,7 @@ var (
 	// Policy snapshot failures.
 	ErrRoleBindingInvalid       = errors.New("governance role binding invalid")
 	ErrPolicyInvalid            = errors.New("governance policy invalid")
+	ErrPolicyIdentityInvalid    = errors.New("governance policy identity invalid")
 	ErrPolicyRevisionInvalid    = errors.New("governance policy revision invalid")
 	ErrPolicyRoleDuplicate      = errors.New("governance policy role duplicate")
 	ErrPolicyBindingDuplicate   = errors.New("governance policy binding duplicate")

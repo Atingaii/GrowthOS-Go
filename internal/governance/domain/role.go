@@ -50,6 +50,15 @@ type Role struct {
 // NewRole constructs a canonical immutable role. An empty GrowthMember role is
 // valid and intentionally carries no current operator-resource capability.
 func NewRole(id RoleID, permissions []Permission) (Role, error) {
+	if len(permissions) > MaxPermissionsPerRole {
+		return Role{}, fmt.Errorf(
+			"%w: %w: got %d, maximum %d",
+			ErrRoleInvalid,
+			ErrRolePermissionLimit,
+			len(permissions),
+			MaxPermissionsPerRole,
+		)
+	}
 	ownedPermissions := append([]Permission(nil), permissions...)
 	slices.SortFunc(ownedPermissions, comparePermission)
 	role := Role{id: id, permissions: ownedPermissions}
