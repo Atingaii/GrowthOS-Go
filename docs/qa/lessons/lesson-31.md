@@ -393,7 +393,7 @@ git diff --exit-code 6504e91..HEAD -- \
   scripts Makefile go.mod go.sum
 ```
 
-命令 exit 0。三条 production stopline 搜索也均为零命中：没有外部 production package 导入 Governance kernel，没有在纯 domain 中混入 Session/Credential/Token/JWT/Middleware 等认证词汇，也没有 runtime/HTTP/Web wiring。`git diff --check 6504e91 --` exit 0。这证明最终证据候选没有改写既有 runtime/business/infrastructure/Web/module surface；remote freeze 与线性历史仍需在提交后单独核对。
+命令 exit 0。三条 production stopline 搜索也均为零命中：没有外部 production package 导入 Governance kernel，没有在纯 domain 中混入 Session/Credential/Token/JWT/Middleware 等认证词汇，也没有 runtime/HTTP/Web wiring。`git diff --check 6504e91 --` exit 0。这证明最终证据候选没有改写既有 runtime/business/infrastructure/Web/module surface。证据候选 `a4097e4` 推送后，root 又独立核对了 remote 与线性历史；本次冻结提交只更新验收记录。
 
 ## 11. 最终全仓门禁
 
@@ -459,13 +459,13 @@ git diff --check
 - [x] root 在最终候选执行 exact path whitelist、runtime zero-diff、architecture 三条精确停止线与 `git diff --check`，全部通过；
 - [x] root 在最终文档态执行全仓 vet/doccheck/Web test/typecheck/build/聚合门禁并全部通过；
 - [x] root 已精确列出并清理本轮生成的 `/tmp/growthos-lesson31-final.cover` 与 `web/dist`，未触碰依赖、Secrets、Docker 资源或用户数据；
-- [ ] accepted tip、远端同名 branch、main 不变与第 30→31 节线性历史实际核对。
+- [x] 冻结前证据候选 `a4097e4`、远端同名 branch、第 30→31 节首提交父节点与本地/远端 `main` 已实际核对并一致；冻结记录提交推送后再做最终 ref 复核。
 
-未勾选项不得由文档作者提前改成已通过。
+任一项目都只能在真实命令取得证据后勾选；冻结记录提交本身不改变已验收的代码、测试或架构范围。
 
 ## 14. QA 结论
 
-截至本文本轮证据更新，纯 Governance model 的 focused normal/race/vet/fuzz/coverage、全仓 normal/race、最终 vet/doccheck/Web test/typecheck/build/`make verify`、exact path whitelist、runtime zero-diff、architecture stopline、`git diff --check` 与 disposable artifact cleanup 均已取得 `ACTUAL-PASS`。核心威胁矩阵与停止线已有代码证据；第 30→31 节线性历史、accepted tip、远端同名分支与 `main` 不变仍是 `FINAL-GATE-PENDING`，将在证据提交后独立核对。
+截至本文冻结记录，纯 Governance model 的 focused normal/race/vet/fuzz/coverage、全仓 normal/race、最终 vet/doccheck/Web test/typecheck/build/`make verify`、exact path whitelist、runtime zero-diff、architecture stopline、`git diff --check`、disposable artifact cleanup，以及证据候选 `a4097e4` 的第 30→31 节线性历史、远端同名分支和 `main` 不变均已取得 `ACTUAL-PASS`。本次只写验收结果；提交并推送后还会在仓库外层再次核对最终 branch ref，并将累计实现分支严格快进到最终冻结点。
 
 本节最终可宣称的上限是：
 
