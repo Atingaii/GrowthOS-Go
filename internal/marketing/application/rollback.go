@@ -190,13 +190,20 @@ func (service *RollbackActivityService) Rollback(
 	if contextErr := activityOperationContextError(callerCtx, operationCtx); contextErr != nil {
 		return domain.ActivityPublication{}, contextErr
 	}
+	receipt, err := newActivityCommitReceipt(current, transition)
+	if err != nil {
+		return domain.ActivityPublication{}, wrapActivityOperationError(ErrActivityOperationFailure, err)
+	}
 
 	dependencyErr = service.publications.CompareAndSwapPublication(operationCtx, transition)
 	if contextErr := activityOperationContextError(callerCtx, operationCtx); contextErr != nil {
 		return domain.ActivityPublication{}, contextErr
 	}
 	if dependencyErr != nil {
-		return domain.ActivityPublication{}, classifyRepositoryOperationError(dependencyErr)
+		return domain.ActivityPublication{}, classifyRepositoryOperationErrorWithCommitReceipt(
+			dependencyErr,
+			receipt,
+		)
 	}
 	return record, nil
 }

@@ -104,6 +104,17 @@ func classifyRepositoryOperationError(err error) error {
 	return wrapActivityOperationError(class, err)
 }
 
+func classifyRepositoryOperationErrorWithCommitReceipt(
+	err error,
+	receipt ActivityCommitReceipt,
+) error {
+	classified := classifyRepositoryOperationError(err)
+	if !errors.Is(classified, ErrCommitOutcomeUnknown) {
+		return classified
+	}
+	return wrapActivityOperationErrorWithCommitReceipt(ErrCommitOutcomeUnknown, err, receipt)
+}
+
 func classifyLotteryVerificationError(err error) error {
 	class := ErrLotteryPublicationUnavailable
 	if errors.Is(err, ErrLotteryPublicationInvalid) {

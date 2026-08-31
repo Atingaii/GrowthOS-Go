@@ -27,6 +27,9 @@ var (
 	// ErrActivityRollbackTargetInvalid reports a source that is not an older,
 	// restorable, not-ended publication of the same Activity.
 	ErrActivityRollbackTargetInvalid = errors.New("marketing activity: rollback target is invalid")
+	// ErrActivityCommitReceiptInvalid reports an untrusted or corrupt recovery
+	// receipt without disclosing its embedded state or evidence references.
+	ErrActivityCommitReceiptInvalid = errors.New("marketing activity: commit receipt is invalid")
 
 	// ErrActivityApprovalRejected means Governance explicitly rejected the exact
 	// candidate. It is distinct from caller authorization.
@@ -184,8 +187,10 @@ func knownDependencyErrorClass(class error) bool {
 // ActivityOperationError prevents domain, storage, provider, and private
 // deadline details from leaking through ordinary error chains.
 type ActivityOperationError struct {
-	class error
-	cause error
+	class      error
+	cause      error
+	receipt    ActivityCommitReceipt
+	hasReceipt bool
 }
 
 func wrapActivityOperationError(class, cause error) *ActivityOperationError {
@@ -193,6 +198,26 @@ func wrapActivityOperationError(class, cause error) *ActivityOperationError {
 		class = ErrActivityOperationFailure
 	}
 	return &ActivityOperationError{class: class, cause: cause}
+}
+
+func wrapActivityOperationErrorWithCommitReceipt(
+	class error,
+	cause error,
+	receipt ActivityCommitReceipt,
+) *ActivityOperationError {
+	if class != ErrCommitOutcomeUnknown || receipt.Validate() != nil {
+		return wrapActivityOperationError(ErrActivityOperationFailure, cause)
+	}
+	clone, err := cloneActivityCommitReceipt(receipt)
+	if err != nil {
+		return wrapActivityOperationError(ErrActivityOperationFailure, cause)
+	}
+	return &ActivityOperationError{
+		class:      ErrCommitOutcomeUnknown,
+		cause:      cause,
+		receipt:    clone,
+		hasReceipt: true,
+	}
 }
 
 func (e *ActivityOperationError) Error() string {
@@ -216,6 +241,31 @@ func (e *ActivityOperationError) Cause() error {
 		return nil
 	}
 	return e.cause
+}
+
+// CommitReceipt explicitly exposes a verified defensive copy only for an
+// ErrCommitOutcomeUnknown operation. It is never part of Error, Is, or an
+// ordinary Unwrap chain.
+func (e *ActivityOperationError) CommitReceipt() (ActivityCommitReceipt, bool) {
+	if e == nil || e.class != ErrCommitOutcomeUnknown || !e.hasReceipt {
+		return ActivityCommitReceipt{}, false
+	}
+	receipt, err := cloneActivityCommitReceipt(e.receipt)
+	if err != nil {
+		return ActivityCommitReceipt{}, false
+	}
+	return receipt, true
+}
+
+// ActivityCommitReceiptFromError performs explicit trusted inspection of an
+// operation error. It does not make repository causes or receipts available to
+// ordinary error rendering or errors.Is.
+func ActivityCommitReceiptFromError(err error) (ActivityCommitReceipt, bool) {
+	var operationError *ActivityOperationError
+	if !errors.As(err, &operationError) {
+		return ActivityCommitReceipt{}, false
+	}
+	return operationError.CommitReceipt()
 }
 
 func knownActivityOperationErrorClass(class error) bool {

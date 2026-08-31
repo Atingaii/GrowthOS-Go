@@ -127,12 +127,19 @@ func (service *RetireActivityService) Retire(
 	if contextErr := activityOperationContextError(callerCtx, operationCtx); contextErr != nil {
 		return domain.Activity{}, contextErr
 	}
+	receipt, err := newActivityCommitReceipt(current, transition)
+	if err != nil {
+		return domain.Activity{}, wrapActivityOperationError(ErrActivityOperationFailure, err)
+	}
 	dependencyErr = service.retirer.CompareAndSwapRetirement(operationCtx, transition)
 	if contextErr := activityOperationContextError(callerCtx, operationCtx); contextErr != nil {
 		return domain.Activity{}, contextErr
 	}
 	if dependencyErr != nil {
-		return domain.Activity{}, classifyRepositoryOperationError(dependencyErr)
+		return domain.Activity{}, classifyRepositoryOperationErrorWithCommitReceipt(
+			dependencyErr,
+			receipt,
+		)
 	}
 	return transition.Next(), nil
 }
