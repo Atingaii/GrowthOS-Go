@@ -43,14 +43,14 @@ GrowthOS 已经拥有 Lottery Strategy/Graph 和 Marketing Activity publication 
 - `Action`；
 - `Permission(resourceKind, resourceType, action)`；
 - `Role(id, permissions)`；
-- `Scope(system|tenant|tenant-qualified-owned|resource)`；
+- `Scope(system|tenant|owned|resource)`；其中 `owned` 是 tenant-qualified owned，`resource` 是 exact-object resource；
 - `RoleBinding(id, principal, role, scope, effect)`；
-- `Policy(id, revision, roles, bindings)`；
-- `AuditContext(evaluationRef, correlationRef, evaluatedAt)`；
+- `PolicyIdentity(policyID, non-zero revision)` 与 `Policy(identity, roles, bindings)`；
+- `AuditReference` 与 `AuditContext(evaluationReference, correlationReference, evaluatedAt)`；
 - `AuthorizationRequest(principal, resource, action, auditContext)`；
 - `Decision(outcome, reason, exact policy/request evidence, matches)`。
 
-模型不导入 HTTP、Gin、context、SQL、Redis、MQ、JWT 或任何业务上下文包。输入切片防御性复制并规范排序；策略 revision 非零；容量上限在构造期强制。ID/audit ref 最多 128 bytes 且使用 lowercase ASCII canonical grammar；时间是 UTC microsecond；Policy 最多 64 roles、每 role 64 permissions、1024 bindings/evidence。
+模型不导入 HTTP、Gin、context、SQL、Redis、MQ、JWT 或任何业务上下文包。输入切片防御性复制并规范排序；策略 revision 非零；容量上限在构造期强制。ID/audit ref 最多 128 bytes 且使用 lowercase ASCII canonical grammar；时间是 UTC microsecond。`MaxRolesPerPolicy=64` 与 `MaxPermissionsPerRole=64` 是防御性容量 guard，不是当前有效基数：v1 只有 5 个唯一 RoleID，角色模板最大只有 16 个 Permission；每个 Policy 最多 1024 bindings/evidence。
 
 ### 3. 封闭目录
 
@@ -75,7 +75,7 @@ Role 聚合精确到 ResourceKind/ResourceType/Action 的 permission；RoleBindi
 
 五个封闭 role template 是构造器强制的 capability 上限；一个 Policy revision 可以使用模板子集，但不能给同名 role 注入表外权限。`growth_member` 的空模板是合法的显式默认拒绝角色。
 
-system、tenant、tenant-qualified-owned、exact-resource 是 GrowthOS v1 的应用扩展，不宣称属于 NIST Core RBAC。owned 必须同时匹配 exact tenant 与 owner，禁止跨 tenant owned。没有第 32 节 session role activation，因此第 31 节只能称访问控制策略模型或 RBAC-inspired model。
+`system`、`tenant`、`owned`、`resource` 四个 `ScopeKind` 是 GrowthOS v1 的应用扩展，不宣称属于 NIST Core RBAC；其中 owned 实现 tenant-qualified owned 语义，resource 实现 exact-object resource 语义。owned 必须同时匹配 exact tenant 与完整 Principal owner，禁止跨 tenant owned。窄 deny 覆盖宽 allow 是典型配置，而不是构造器强制的宽窄关系。没有第 32 节 session role activation，因此第 31 节只能称访问控制策略模型或 RBAC-inspired model。
 
 ### 5. 判定组合规则
 
@@ -101,7 +101,7 @@ deny precedence 是本项目的确定性策略，而非 Core RBAC 的必然组�
 
 ### 7. 判定证据
 
-Decision 固定携带 exact PolicyID/Revision、Principal、Resource、Action、纯领域 AuditContext 和决定性 binding/role/effect/scope match。证据规范排序、有界并防御性复制。deny 与 allow 同时匹配时两组证据都保留，reason 明确 `explicit_deny_overrode_allow`。
+Decision 固定携带 exact PolicyID/Revision、Principal、Resource、Action、纯领域 AuditContext 和决定性 BindingID/RoleID/Effect/ScopeKind/exact Permission match。证据规范排序、有界并防御性复制。deny 与 allow 同时匹配时两组证据都保留，reason 明确 `explicit_deny_overrode_allow`。
 
 AuditContext 的 EvaluationRef/CorrelationRef 只是有界 opaque correlation，不是 HTTP RequestID、trace、session 或 credential。Decision 也不是持久化审计日志。第 33 节才定义 trusted service layer 如何关联真实 request/operation、做低披露映射并写入受保护审计 sink。
 
@@ -185,7 +185,7 @@ AuditContext 的 EvaluationRef/CorrelationRef 只是有界 opaque correlation，
 4. 错误时必须返回 zero Decision；
 5. resource/action 必须 exact 且属于封闭目录；
 6. scope 缺失或 facts 缺失不得回退 system；
-7. collection 不能匹配 owned/exact-resource；
+7. collection 不能匹配 `owned`/`resource`；
 8. Policy/Role/Decision 输入输出必须不可变；
 9. 决定不依赖 roles/bindings/permissions 输入顺序；
 10. capability 必须精确匹配 ResourceKind、ResourceType 与 Action；

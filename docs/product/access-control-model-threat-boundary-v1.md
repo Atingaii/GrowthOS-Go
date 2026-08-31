@@ -24,7 +24,7 @@
 - `Principal`、`Role`、`Permission`、`Resource`、`Action`、`Scope`、`RoleBinding`、`Policy` 与 `Decision` 的统一词汇；
 - Human、Service、Agent 三类主体引用；
 - GrowthOS 当前真实管理资源和动作的封闭目录；
-- system、tenant、tenant-qualified-owned、exact-resource 四种封闭作用域；
+- `system`、`tenant`、`owned`、`resource` 四种封闭 `ScopeKind`；其中 `owned` 承载 tenant-qualified owned 语义，`resource` 承载 exact-object resource 语义；
 - 默认拒绝、显式拒绝优先、精确匹配和确定性证据；
 - 不可变且有 revision 的策略快照；
 - 无匹配绑定、无匹配权限、scope 不匹配、显式拒绝、允许与技术不可判定的分离；
@@ -108,7 +108,7 @@ Permission 是三元组：
 resource_kind + resource_type + action
 ```
 
-Role 是命名 Permission 集合；RoleBinding 把一个 Principal、Role、Scope 和 `allow|deny` effect 关联。固定角色模板规定能力上限，`NewRole` 只允许模板 capability 的子集；binding effect 才表达窄范围例外，例如 tenant allow 被 exact-resource deny 覆盖。v1 不允许把 Permission 直接绑定给 Principal，也不实现角色继承或 session 内角色激活。
+Role 是命名 Permission 集合；RoleBinding 把一个 Principal、Role、Scope 和 `allow|deny` effect 关联。固定角色模板规定能力上限，`NewRole` 只允许模板 capability 的子集；binding effect 才表达范围内的 grant 或 restriction。窄 deny 覆盖宽 allow 是典型配置，例如 tenant allow 被 `resource` deny 覆盖，但构造器不要求 deny 必须比 allow 更窄。v1 不允许把 Permission 直接绑定给 Principal，也不实现角色继承或 session 内角色激活。
 
 这是一套使用 RBAC 词汇并增加 GrowthOS scope/deny 语义的应用模型，不应声称完整实现 NIST Core/Hierarchical/Constrained RBAC。
 
@@ -165,7 +165,7 @@ PolicyID + non-zero Revision + Roles + RoleBindings
 - Permission 与 Binding 规范排序；
 - 输入切片防御性复制；
 - 同一个 role 内完全重复的 permission 被拒绝；permission 必须属于该 role 模板能力上限；
-- 完全重复或语义重复的 binding 被拒绝，但同一 Principal/Role 的 allow 与更窄 deny binding 可以并存。
+- 完全重复或语义重复且 effect 相同的 binding 被拒绝；同一 Principal/Role 的 allow 与 deny binding 可以重叠并存，典型用法是用较窄 deny 限制较宽 allow，但“deny 必须更窄”不是构造器不变量。
 
 Policy 对外只返回防御性副本。revision 是非零 `uint64` snapshot correlation value，不是 content hash，也不凭纯构造器保证 `(PolicyID, Revision)` 全局唯一；未来 repository 必须强制 exact identity 唯一。revision 进入每个 Decision；本节没有 repository 或 cache。
 
@@ -177,7 +177,7 @@ Policy 对外只返回防御性副本。revision 是非零 `uint64` snapshot cor
 trusted Principal + server-derived Resource + exact Action + AuditContext
 ```
 
-`AuditContext` 只含 bounded `EvaluationRef`、`CorrelationRef` 与 canonical UTC-microsecond `EvaluatedAt`。它不是 HTTP RequestID、trace、session、credential 或持久审计记录；第 33 节才能从可信 request/operation context 建立它并写入 audit sink。
+`AuditContext` 只含两个 bounded `AuditReference` 值（通过 `EvaluationReference()` 与 `CorrelationReference()` 读取）和 canonical UTC-microsecond `EvaluatedAt`。Evaluation/Correlation reference 是字段语义，不是两个独立 Go 类型。它不是 HTTP RequestID、trace、session、credential 或持久审计记录；第 33 节才能从可信 request/operation context 建立它并写入 audit sink。
 
 纯求值顺序：
 
@@ -213,7 +213,7 @@ deny 是成功形成的安全决定；error 表示没有形成决定。未来调
 - outcome 与内部 reason；
 - exact PolicyID/Revision；
 - Principal、Resource、Action 与完整 AuditContext；
-- 决定性 matching evidence：BindingID、RoleID、Effect、ScopeKind。
+- 决定性 matching evidence：BindingID、RoleID、Effect、ScopeKind 与 exact matched Permission。
 
 证据有固定容量上限、规范排序并以防御性副本返回。deny 决定保留所有 matching deny 与 allow，确保能区分 deny-only 和 deny-overrode-allow；allow 只保留 matching allow；默认拒绝没有伪造 match。
 
