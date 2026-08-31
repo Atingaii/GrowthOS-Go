@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql lesson28-mysql-acceptance doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql lesson28-mysql-acceptance lesson30-mysql-acceptance doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
 
 COMPOSE_FILE ?= deploy/compose/compose.yaml
 COMPOSE_PROJECT ?= growthos
@@ -25,6 +25,7 @@ help:
 		'  make db-status  Inspect the current MySQL migration status' \
 		'  make test-integration-mysql  Verify MySQL migrations, permissions, and Lottery repository' \
 		'  make lesson28-mysql-acceptance  Run the disposable MySQL 8.4.11 Lesson 28 gate' \
+		'  make lesson30-mysql-acceptance  Run the confirmed disposable MySQL 8.4.11 Lesson 30 gate' \
 		'  make doc-check  Check documentation integrity and course evidence' \
 		'  make web-test   Run frontend unit and component tests' \
 		'  make web-verify Run frontend tests, typecheck, and production build' \
@@ -88,6 +89,10 @@ test-integration-mysql:
 
 lesson28-mysql-acceptance:
 	./scripts/lesson28-mysql-acceptance.sh
+
+lesson30-mysql-acceptance:
+	@test "$${GROWTHOS_LESSON30_MYSQL_ACCEPTANCE:-}" = 'run-disposable-mysql-8.4.11' || (printf '%s\n' 'set GROWTHOS_LESSON30_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 to authorize the one-time tmpfs container' && exit 1)
+	./scripts/lesson30-mysql-acceptance.sh
 
 doc-check:
 	go run ./cmd/doccheck
