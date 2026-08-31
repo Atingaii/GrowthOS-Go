@@ -1,6 +1,6 @@
 # Activity 发布与 Lottery 配置精确绑定基线 v1
 
-- **状态：** 第 30 节已批准实现基线；实现与验收证据尚未形成
+- **状态：** 第 30 节已实现并完成工程验收；新增内核保持未装配，公开 API/UI/认证授权仍不在本节范围
 - **日期：** 2026-08-30
 - **所有者：** Marketing bounded context；Lottery 对被引用的 Strategy/graph 配置继续拥有事实
 - **适用范围：** Activity 最小生命周期、不可变发布版本、Strategy exact revision、Activity 对 exact graph/Strategy revision 闭合集的绑定、并发发布、回滚、退役与 `[start,end)` 时间门控
@@ -96,7 +96,7 @@ graph v1 的 terminal 也只保存 `StrategyID`。该 FK 可以证明 target 行
 2. **把 `updated_at` 当 revision：** 子 Award 更新不一定推进根时间，时间戳也不是受控业务版本；
 3. **只保存 content hash，不保存内容：** 可以发现漂移，却无法在原内容被替换后恢复完整历史快照。
 
-因此新增 Lottery-owned create-only `StrategyRevisionSnapshot`。其 exact identity 是：
+因此新增 Lottery-owned create-only `StrategySnapshot`。其 exact identity 是：
 
 ```text
 (StrategyID, StrategyRevision)
@@ -116,7 +116,7 @@ graph v1 的 terminal 也只保存 `StrategyID`。该 FK 可以证明 target 行
 | schema version | 决定某类持久内容怎样解析 | 业务内容 revision |
 | approval evidence | Governance 对 exact publication candidate 的可信审批结果引用 | caller role、前端勾选框 |
 | published | Activity 已选择一份 immutable publication 作为当前版本 | 当前时刻一定在窗口内 |
-| scheduled/running/ended | 由 publication window 与一次受控时刻派生的时间相位 | 持久 lifecycle status |
+| scheduled/active/ended | 由 publication window 与一次受控时刻派生的时间相位 | 持久 lifecycle status |
 | retired | Activity 永久拒绝新的参与解析，同时保留最后 active version | 删除历史、撤销已完成事实 |
 | rollback | 追加一个更高 ActivityVersion，复制旧 exact publication 内容并重新成为 active | UPDATE 旧版本、active 指针倒退 |
 
@@ -456,7 +456,7 @@ rollback 只改变 commit 之后**新解析**的 Activity publication。它不�
 
 ### 12.3 confirmed rejection 与 technical failure
 
-draft/retired/not-started/ended 都是基于完整可信 Activity snapshot 形成的 confirmed business decision。下列情况没有可信业务决定：
+`not_published` / `scheduled` / `ended` / `retired` 都是基于完整可信 Activity snapshot 形成的 confirmed reject，`active` 是 confirmed allow。下列情况没有可信业务决定：
 
 - Activity 不存在；
 - header/publication/binding 损坏；
@@ -466,7 +466,7 @@ draft/retired/not-started/ended 都是基于完整可信 Activity snapshot 形�
 - Repository/approval/verifier unavailable；
 - caller cancellation/deadline。
 
-technical failure 必须返回 zero gate decision 和 error，不能 fallback 为 `activity_ended`、`not_published` 或 `no_reward`。
+technical failure 必须返回 zero gate decision 和 error，不能 fallback 为 `ended`、`not_published` 或 `no_reward`。
 
 ## 13. 审批边界
 
@@ -475,10 +475,10 @@ technical failure 必须返回 zero gate decision 和 error，不能 fallback �
 Marketing 不创建角色、权限或审批规则，也不自行判断申请人与审批人是否分离。发布 application 只依赖 consumer-owned approval verifier port：
 
 ```text
-VerifyApproved(ctx, exact ActivityPublicationCandidate)
+VerifyPublication(ctx, exact ActivityPublicationCandidate)
   -> trusted approval evidence | rejected | unavailable
 
-VerifyRetirement(ctx, exact ActivityRetirementIntent)
+VerifyRetirement(ctx, exact ActivityRetirementCandidate)
   -> trusted retirement evidence | rejected | unavailable
 ```
 
@@ -511,10 +511,9 @@ retirement intent 至少绑定 ActivityID、expected state version、last active
 
 最小 Lottery 能力：
 
-- `StrategySnapshotCreator.Create`：保存一个完整 exact snapshot；
-- `StrategySnapshotReader.FindByIdentity`：严格恢复 exact snapshot；
+- `StrategySnapshotCreator.CreateSnapshot`：保存一个完整 exact snapshot；
+- `StrategySnapshotReader.FindSnapshotByIdentity`：严格恢复 exact snapshot；
 - 现有 `StrategyRoutingGraphReader.FindByIdentity`：读取 exact graph；
-- `LotteryPublicationVerifier.Verify`：核对 graph terminal 与 exact Strategy revision 闭合集。
 
 不得把现有 `StrategyReader.FindByID` 改造成隐式 latest revision reader，也不得给 graph Repository 增加 `FindActive(ActivityID)`。
 
@@ -526,20 +525,23 @@ retirement intent 至少绑定 ActivityID、expected state version、last active
 - current Activity snapshot reader；
 - exact publication reader；
 - atomic publication writer；
-- CAS retire writer。
+- CAS retire writer；
+- `ApprovalVerifier.VerifyPublication` / `VerifyRetirement`；
+- Marketing consumer-owned `LotteryVerifier.VerifyPublication`，由 `adapter/lotteryconfig` 通过上述 Lottery exact readers 与 Lottery domain validation 核对 graph terminal / Strategy revision 闭合集。
 
 端口不叫通用 `Save` / `Update` / `Upsert` / `Delete`。Publication writer 的契约是“插入完整不可变版本、插入全部 binding、CAS 切 active”，不能被 adapter 拆成三个可单独调用的 public 方法。
 
 ### 14.3 应用服务
 
-本节允许以下未装配服务：
+本节允许以下未装配 Marketing application services：
 
-1. Create draft；
-2. Create Strategy revision snapshot；
-3. Publish Activity；
-4. Roll back Activity；
-5. Retire Activity；
-6. Evaluate current Activity gate。
+1. `CreateDraftService`；
+2. `PublishActivityService`；
+3. `RollbackActivityService`；
+4. `RetireActivityService`；
+5. `ResolveActivityService`。
+
+Strategy snapshot 本节只有 Lottery domain aggregate、create/read ports 与 MySQL Repository adapter，没有虚构一个 application service；未来真实配置写入口必须另行定义 command、授权与治理边界。
 
 服务持有只读 ports/config，不保存请求级 candidate、timer、path 或 current state；并发安全取决于注入端口和 Clock 自身可并发。
 

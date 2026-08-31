@@ -134,7 +134,7 @@
 
 **结论：拒绝。** 回滚追加新 ActivityVersion，精确复制 source 内容并记录 `rollback_of`，再原子切 active。
 
-### 方案八：把 scheduled/running/ended 持久化为状态并由 scheduler 更新
+### 方案八：把 scheduled/active/ended 持久化为状态并由 scheduler 更新
 
 | 优点 | 代价 / 风险 |
 | --- | --- |
@@ -319,13 +319,13 @@ published && now >= end     -> ended         / allow=false
 
 start inclusive、end exclusive。Browser time 和客户端 timezone 不可信；本地排期到 UTC/DST 的转换留给未来 API adapter。
 
-Draft/retired/not-started/ended 是 confirmed business decisions。Not-found、损坏 snapshot、verifier/Repository/Clock error 或 cancellation 返回 zero decision + error，不伪装业务拒绝。
+`not_published` / `scheduled` / `ended` / `retired` 是 confirmed reject，`active` 是 confirmed allow。Not-found、损坏 snapshot、verifier/Repository/Clock error 或 cancellation 返回 zero decision + error，不伪装业务拒绝。
 
 ### 12. 审批归 Governance，Marketing 消费 exact evidence
 
-Marketing application 定义 consumer-owned verifier port，输入完整 `ActivityPublicationCandidate`；retire 使用独立的 exact `ActivityRetirementIntent`。可信 publication evidence 必须绑定 candidate 的 Activity/version、kind/source、graph ref、canonical Strategy ref set 与 window；retirement evidence 必须绑定 ActivityID、expected state、last active version 与 canonical retired_at。
+Marketing application 定义 consumer-owned verifier port，输入完整 `ActivityPublicationCandidate`；retire 使用独立的 exact `ActivityRetirementCandidate`。可信 publication evidence 必须绑定 candidate 的 Activity/version、kind/source、graph ref、canonical Strategy ref set 与 window；retirement evidence 必须绑定 ActivityID、expected state、last active version 与 canonical retired_at。
 
-修改 candidate/intent 任一字段后必须重新验证。Publication evidence 与 retirement evidence 不得互相复用。Marketing 不接受浏览器 checkbox、自由文本“已批准”、caller role 或任意 token 自报。
+修改 publication/retirement candidate 任一字段后必须重新验证。Publication evidence 与 retirement evidence 不得互相复用。Marketing 不接受浏览器 checkbox、自由文本“已批准”、caller role 或任意 token 自报。
 
 本节不实现 verifier adapter、Principal 或权限；服务保持未装配。第 31～35 节必须在 access decision 允许之后才能调用发布服务。Approval 通过不等于当前 caller 获权，Authorization 允许也不等于 candidate 已批准。
 
@@ -368,9 +368,9 @@ Lottery cross-context resolve 在得到完整 Marketing snapshot 后 exact 验�
 
 ### 17. 按用例定义窄端口与错误
 
-Lottery application 端口：StrategySnapshotCreator/Reader、existing exact graph Reader、LotteryPublicationVerifier。
+Lottery application 端口：`StrategySnapshotCreator.CreateSnapshot`、`StrategySnapshotReader.FindSnapshotByIdentity` 与 existing exact graph reader。Lottery 不拥有 publication verifier。
 
-Marketing application 端口：ActivityDraftCreator、ActivityReader、ActivityCurrentReader、ActivityPublicationReader、atomic ActivityPublicationWriter、ActivityRetirer、ApprovalVerifier、Clock。Application-owned recovery surface 另提供 `ActivityCommitReceiptFromError`、`ObserveCurrentActivity` / `ObserveActivityRoot` 与纯 `ReconcileActivityCommit`；它们不新增 generic Repository、网络调用或自动 retry。
+Marketing application 端口：ActivityDraftCreator、ActivityReader、ActivityCurrentReader、ActivityPublicationReader、atomic ActivityPublicationWriter、ActivityRetirer、ApprovalVerifier、consumer-owned `LotteryVerifier.VerifyPublication`、Clock。`adapter/lotteryconfig` 使用 Lottery-owned exact readers 与 domain validation 实现该 ACL。Application-owned recovery surface 另提供 `ActivityCommitReceiptFromError`、`ObserveCurrentActivity` / `ObserveActivityRoot` 与纯 `ReconcileActivityCommit`；它们不新增 generic Repository、网络调用或自动 retry。
 
 不提供 generic Save/CRUD、partial binding writer、publication updater、latest graph/Strategy reader。
 
