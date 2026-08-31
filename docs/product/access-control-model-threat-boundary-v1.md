@@ -24,7 +24,7 @@
 - `Principal`、`Role`、`Permission`、`Resource`、`Action`、`Scope`、`RoleBinding`、`Policy` 与 `Decision` 的统一词汇；
 - Human、Service、Agent 三类主体引用；
 - GrowthOS 当前真实管理资源和动作的封闭目录；
-- system、tenant、owned、exact-resource 四种封闭作用域；
+- system、tenant、tenant-qualified-owned、exact-resource 四种封闭作用域；
 - 默认拒绝、显式拒绝优先、精确匹配和确定性证据；
 - 不可变且有 revision 的策略快照；
 - 无匹配绑定、无匹配权限、scope 不匹配、显式拒绝、允许与技术不可判定的分离；
@@ -75,7 +75,7 @@ Principal 不是认证证明。知道合法 Principal ID 不能证明 caller 就
 
 ### 4.2 Resource
 
-Resource 是服务端授权的目标，分为 collection 和 object：
+Resource 是服务端授权的目标，分为 collection 和 object。Resource kind 也是 capability 的一部分，不能只校验 type/action：
 
 - collection 用于 `create` 等尚无对象 ID 的动作；
 - object 必须有精确 ResourceID，用于 read/publish/rollback/retire 等对象级动作；
@@ -86,11 +86,11 @@ Resource 是服务端授权的目标，分为 collection 和 object：
 
 | ResourceType | 所有者 | 当前动作 |
 | --- | --- | --- |
-| `marketing.activity` | Marketing | `create/read/publish/rollback/retire` |
-| `lottery.strategy` | Lottery | `create/read` |
-| `lottery.routing_graph` | Lottery | `create/read` |
-| `governance.policy` | Governance | `read/change` |
-| `governance.audit` | Governance | `read` |
+| `marketing.activity` | Marketing | collection `create/read`；object `read/publish/rollback/retire` |
+| `lottery.strategy` | Lottery | collection `create/read`；object `read` |
+| `lottery.routing_graph` | Lottery | collection `create/read`；object `read` |
+| `governance.policy` | Governance | collection `read`；object `read/change` |
+| `governance.audit` | Governance | collection `read` |
 
 目录只描述授权语言，不表示这些公开 API、管理页面或审计仓储已经存在。新增资源或动作必须显式改代码、测试、文档和威胁矩阵；没有通配符和字符串前缀匹配。
 
@@ -105,10 +105,10 @@ Action 表达业务意图，而不是 HTTP method 或页面名称。`POST /activ
 Permission 是三元组：
 
 ```text
-effect + resource_type + action
+resource_kind + resource_type + action
 ```
 
-effect 是 `allow` 或 `deny`。Role 是命名 Permission 集合；RoleBinding 把一个 Principal 绑定到一个 Role 和一个 Scope。v1 不允许把 Permission 直接绑定给 Principal，也不实现角色继承或 session 内角色激活。
+Role 是命名 Permission 集合；RoleBinding 把一个 Principal、Role、Scope 和 `allow|deny` effect 关联。固定角色模板规定能力上限，`NewRole` 只允许模板 capability 的子集；binding effect 才表达窄范围例外，例如 tenant allow 被 exact-resource deny 覆盖。v1 不允许把 Permission 直接绑定给 Principal，也不实现角色继承或 session 内角色激活。
 
 这是一套使用 RBAC 词汇并增加 GrowthOS scope/deny 语义的应用模型，不应声称完整实现 NIST Core/Hierarchical/Constrained RBAC。
 
@@ -120,10 +120,10 @@ Scope 约束 RoleBinding 能影响哪些 Resource：
 | --- | --- | --- | --- |
 | `system` | 所有合法目标 | 平台管理员或受控服务 | 仍需精确 Permission |
 | `tenant` | Resource.tenant 与绑定 tenant 完全一致 | 租户运营者 | 不匹配，默认拒绝 |
-| `owned` | object.owner 与当前 Principal 完全一致 | 个人资源 | 不匹配，默认拒绝 |
+| `owned` | Resource.tenant 与绑定 tenant 完全一致，且 object.owner 与当前 Principal 完全一致 | 租户内个人资源 | tenant/owner 任一缺失都不匹配 |
 | `resource` | kind、type、ID、tenant 完全一致 | 临时或精确对象授权 | collection 不匹配 |
 
-Scope 不使用 `*`、父子继承、隐式全局、路径前缀或空值回退。`system` 是明确且高风险的全局范围，不是 scope 缺失时的默认值。
+Scope 不使用 `*`、父子继承、隐式全局、路径前缀或空值回退。`system` 是明确且高风险的全局范围，不是 scope 缺失时的默认值。v1 不提供跨 tenant 的 owned scope；同一个 Principal 在多个 tenant 拥有对象时必须分别绑定。
 
 当前仓库还没有可信 tenant lifecycle、tenant membership 或 tenant-scoped repository，因此 tenant scope 只是可执行匹配语义和威胁边界，不等于已经实现多租户隔离。
 
@@ -133,15 +133,16 @@ v1 角色 ID 是封闭集合。它们是 Permission 模板，不包含人员、�
 
 | Role | Activity | Strategy | Routing Graph | Policy | Audit |
 | --- | --- | --- | --- | --- | --- |
-| `platform_administrator` | create/read/publish/rollback/retire | create/read | create/read | read/change | read |
-| `marketing_operator` | create/read/publish/rollback/retire | read | read | — | — |
-| `lottery_designer` | read | create/read | create/read | — | — |
-| `security_auditor` | read | read | read | read | read |
+| `platform_administrator` | collection create/read；object read/publish/rollback/retire | collection create/read；object read | collection create/read；object read | collection/object read；object change | collection read |
+| `marketing_operator` | collection create/read；object read/publish/rollback/retire | collection/object read | collection/object read | — | — |
+| `lottery_designer` | collection/object read | collection create/read；object read | collection create/read；object read | — | — |
+| `security_auditor` | collection/object read | collection/object read | collection/object read | collection/object read | collection read |
 | `growth_member` | — | — | — | — | — |
 
 关键解释：
 
-- 表中是能力上限，真实可操作对象还由 RoleBinding scope 决定；
+- 表中是构造器强制的能力上限，Policy revision 可以采用其子集，不能给同名 role 注入表外 capability；
+- RoleBinding effect 决定这个 scope 是 grant 还是 restriction；一个 matching deny binding 覆盖 matching allow；
 - `platform_administrator` 仍需显式列出每个 resource/action，不存在 `*:*`；
 - `marketing_operator` 的 publish 权限不替代 Approval；两项都通过才可发布；
 - `growth_member` 对当前运营资源没有权限，未来个人资源出现时再新增精确权限；
@@ -163,27 +164,30 @@ PolicyID + non-zero Revision + Roles + RoleBindings
 - binding 引用的 role 必须存在；
 - Permission 与 Binding 规范排序；
 - 输入切片防御性复制；
-- 同一个 role 内完全重复的 permission 被拒绝，但同一 capability 的 allow/deny 可以并存，以便显式冲突确定性求值。
+- 同一个 role 内完全重复的 permission 被拒绝；permission 必须属于该 role 模板能力上限；
+- 完全重复或语义重复的 binding 被拒绝，但同一 Principal/Role 的 allow 与更窄 deny binding 可以并存。
 
-Policy 对外只返回防御性副本。revision 进入每个 Decision，未来持久化、缓存、撤权与审计必须以 exact revision 为边界；本节没有 repository 或 cache。
+Policy 对外只返回防御性副本。revision 是非零 `uint64` snapshot correlation value，不是 content hash，也不凭纯构造器保证 `(PolicyID, Revision)` 全局唯一；未来 repository 必须强制 exact identity 唯一。revision 进入每个 Decision；本节没有 repository 或 cache。
 
 ## 7. 授权请求与判定算法
 
 请求由以下最小事实组成：
 
 ```text
-trusted Principal + server-derived Resource + exact Action + canonical EvaluatedAt
+trusted Principal + server-derived Resource + exact Action + AuditContext
 ```
+
+`AuditContext` 只含 bounded `EvaluationRef`、`CorrelationRef` 与 canonical UTC-microsecond `EvaluatedAt`。它不是 HTTP RequestID、trace、session、credential 或持久审计记录；第 33 节才能从可信 request/operation context 建立它并写入 audit sink。
 
 纯求值顺序：
 
 1. 重新校验 Policy 与 Request；损坏或非法输入返回 `Decision{}` 与错误；
 2. 只选择 Principal 完全相同的 bindings；
 3. 解析 binding 指向的 role；
-4. 只选择 resource type/action 完全相同的 permissions；
+4. 只选择 resource kind/type/action 完全相同的 permissions；
 5. 用 binding scope 与 Resource 的 server facts 精确匹配；
-6. 任一 matching explicit deny 存在时，结果为 deny；
-7. 否则任一 matching allow 存在时，结果为 allow；
+6. 任一 matching deny binding 存在时，结果为 deny，并保留所有 matching allow/deny 冲突证据；
+7. 否则任一 matching allow binding 存在时，结果为 allow；
 8. 否则形成有原因的 default deny。
 
 算法不依赖输入顺序。deny precedence 是 GrowthOS v1 的明确应用策略，参考 AWS IAM 的一种成熟组合语义，但不声称复刻 AWS IAM。
@@ -193,7 +197,8 @@ trusted Principal + server-derived Resource + exact Action + canonical Evaluated
 | 结果 | reason | 含义 |
 | --- | --- | --- |
 | allow | `explicit_allow` | 至少一个精确 allow，且没有 matching deny |
-| deny | `explicit_deny` | 至少一个精确 matching deny |
+| deny | `explicit_deny` | 至少一个精确 matching deny，且没有 matching allow |
+| deny | `explicit_deny_overrode_allow` | 同时存在 matching deny 与 allow；deny 确定覆盖 |
 | deny | `no_binding` | Principal 没有任何 binding |
 | deny | `no_permission` | 有 binding，但没有目标 capability |
 | deny | `scope_mismatch` | 有 capability，但无 binding scope 匹配目标 |
@@ -207,10 +212,10 @@ deny 是成功形成的安全决定；error 表示没有形成决定。未来调
 
 - outcome 与内部 reason；
 - exact PolicyID/Revision；
-- Principal、Resource、Action 与 evaluated-at；
+- Principal、Resource、Action 与完整 AuditContext；
 - 决定性 matching evidence：BindingID、RoleID、Effect、ScopeKind。
 
-证据有固定容量上限、规范排序并以防御性副本返回。显式 deny 只保留决定性 deny matches；allow 只保留 allow matches；默认拒绝没有伪造 match。
+证据有固定容量上限、规范排序并以防御性副本返回。deny 决定保留所有 matching deny 与 allow，确保能区分 deny-only 和 deny-overrode-allow；allow 只保留 matching allow；默认拒绝没有伪造 match。
 
 Decision 不是 durable audit record，也不能直接 JSON 序列化给浏览器。后续可信 service layer 需要将内部 reason 映射为低披露错误，并把必要字段写入受保护审计 sink。禁止记录 token、Cookie、password、raw credential、会员事实 payload、Approval payload、Secret、完整策略或敏感对象内容。
 
@@ -263,9 +268,13 @@ Business use case (Marketing / Lottery / ...)
 - 前端 capability 只能改善体验，不能接收 internal reason、完整 role binding 或全量 policy；
 - 日志必须能区分 deny 与 technical indeterminate，同时不能泄露凭据和敏感业务内容。
 
-## 12. 容量与确定性边界
+## 12. 规范值、容量与确定性边界
 
-v1 在构造时限制 policy、role、permission、binding 和 evidence 数量。目的不是宣称性能 SLO，而是避免一个纯同步判定被无界配置拖垮，并让最坏复杂度可审查。
+v1 scalar 不静默 trim、lowercase 或 Unicode normalize。PrincipalID、TenantID、ResourceID、PolicyID、RoleBindingID、EvaluationRef 与 CorrelationRef 最多 128 bytes，只允许小写 ASCII 字母、数字以及内部的点、下划线、冒号、连字符，并要求首尾为字母或数字。evaluated-at 规范为 UTC microsecond。
+
+构造期上限为：每个 Policy 最多 64 Roles、每个 Role 最多 64 Permissions、每个 Policy 最多 1024 RoleBindings；每个 binding 对同一 capability 至多形成一个 match，因此 evidence 最多 1024 项。超限是技术错误并返回 zero Decision。
+
+这些限制不是性能 SLO，而是避免一个纯同步判定被无界配置拖垮，并让最坏复杂度可审查。
 
 当前求值采用内存快照上的有界线性扫描，适合模块化单体和课程阶段。只有在出现真实策略规模、跨服务一致性、关系查询或独立治理需求后，才比较索引、缓存、OPA/OpenFGA 或外置 PDP。没有证据时提前引入网络策略服务，会先增加一致性、可用性、撤权和运维问题。
 
@@ -307,4 +316,3 @@ v1 在构造时限制 policy、role、permission、binding 和 evidence 数量�
 5. [NIST SP 800-162](https://csrc.nist.gov/pubs/sp/800/162/upd2/final)：用于校准 subject、object、operation 和环境属性的 ABAC 扩展语言；本节不实现 ABAC engine。
 6. [OASIS XACML 3.0](https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-os-en.html)：用于比较 Permit/Deny/NotApplicable/Indeterminate；GrowthOS 没有采用 XACML。
 7. [RFC 9110 §15.5.4](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.4)：用于后续 403/404 低披露策略，不在本节定义 HTTP 映射。
-

@@ -41,15 +41,16 @@ GrowthOS 已经拥有 Lottery Strategy/Graph 和 Marketing Activity publication 
 - `Principal(kind, id)`；
 - `Resource(kind, type, id?, tenant?, owner?)`；
 - `Action`；
-- `Permission(effect, resourceType, action)`；
+- `Permission(resourceKind, resourceType, action)`；
 - `Role(id, permissions)`；
-- `Scope(system|tenant|owned|resource)`；
-- `RoleBinding(id, principal, role, scope)`；
+- `Scope(system|tenant|tenant-qualified-owned|resource)`；
+- `RoleBinding(id, principal, role, scope, effect)`；
 - `Policy(id, revision, roles, bindings)`；
-- `AuthorizationRequest(principal, resource, action, evaluatedAt)`；
+- `AuditContext(evaluationRef, correlationRef, evaluatedAt)`；
+- `AuthorizationRequest(principal, resource, action, auditContext)`；
 - `Decision(outcome, reason, exact policy/request evidence, matches)`。
 
-模型不导入 HTTP、Gin、context、SQL、Redis、MQ、JWT 或任何业务上下文包。输入切片防御性复制并规范排序；策略 revision 非零；容量上限在构造期强制。
+模型不导入 HTTP、Gin、context、SQL、Redis、MQ、JWT 或任何业务上下文包。输入切片防御性复制并规范排序；策略 revision 非零；容量上限在构造期强制。ID/audit ref 最多 128 bytes 且使用 lowercase ASCII canonical grammar；时间是 UTC microsecond；Policy 最多 64 roles、每 role 64 permissions、1024 bindings/evidence。
 
 ### 3. 封闭目录
 
@@ -70,15 +71,17 @@ v1 使用精确的 PrincipalKind、RoleID、ResourceType、Action、ScopeKind、
 
 ### 4. RBAC 与 Scope 的关系
 
-Role 聚合 permission；RoleBinding 将 Principal、Role 与 Scope 关联。Permission 回答“这一角色理论上能对哪类资源执行什么动作”，Scope 回答“这次绑定覆盖哪些具体目标”。
+Role 聚合精确到 ResourceKind/ResourceType/Action 的 permission；RoleBinding 将 Principal、Role、Scope 与 allow/deny effect 关联。Permission 回答“这一角色理论上能对哪类资源执行什么动作”，Scope 回答“这次绑定覆盖哪些具体目标”，binding effect 支持窄范围 restriction 覆盖较宽 grant。
 
-system、tenant、owned、exact-resource 是 GrowthOS v1 的应用扩展，不宣称属于 NIST Core RBAC。没有第 32 节 session role activation，因此第 31 节只能称访问控制策略模型或 RBAC-inspired model。
+五个封闭 role template 是构造器强制的 capability 上限；一个 Policy revision 可以使用模板子集，但不能给同名 role 注入表外权限。`growth_member` 的空模板是合法的显式默认拒绝角色。
+
+system、tenant、tenant-qualified-owned、exact-resource 是 GrowthOS v1 的应用扩展，不宣称属于 NIST Core RBAC。owned 必须同时匹配 exact tenant 与 owner，禁止跨 tenant owned。没有第 32 节 session role activation，因此第 31 节只能称访问控制策略模型或 RBAC-inspired model。
 
 ### 5. 判定组合规则
 
 `Policy.Evaluate` 执行 exact principal、capability 和 scope 匹配：
 
-1. 匹配的显式 deny 覆盖所有 allow；
+1. 匹配的 deny RoleBinding 覆盖所有 allow binding；
 2. 没有 deny 且存在匹配 allow 时允许；
 3. 其他情况按 no-binding、no-permission 或 scope-mismatch 默认拒绝；
 4. policy/request 非法时返回 zero Decision 与错误。
@@ -98,13 +101,13 @@ deny precedence 是本项目的确定性策略，而非 Core RBAC 的必然组�
 
 ### 7. 判定证据
 
-Decision 固定携带 exact PolicyID/Revision、Principal、Resource、Action、evaluated-at 和决定性 binding/role/effect/scope match。证据规范排序、有界并防御性复制。
+Decision 固定携带 exact PolicyID/Revision、Principal、Resource、Action、纯领域 AuditContext 和决定性 binding/role/effect/scope match。证据规范排序、有界并防御性复制。deny 与 allow 同时匹配时两组证据都保留，reason 明确 `explicit_deny_overrode_allow`。
 
-Decision 不是持久化审计日志。第 33 节才定义 trusted service layer 如何关联 request/operation、做低披露映射并写入受保护审计 sink。
+AuditContext 的 EvaluationRef/CorrelationRef 只是有界 opaque correlation，不是 HTTP RequestID、trace、session 或 credential。Decision 也不是持久化审计日志。第 33 节才定义 trusted service layer 如何关联真实 request/operation、做低披露映射并写入受保护审计 sink。
 
 ### 8. 角色模板
 
-定义五个封闭角色模板：platform administrator、marketing operator、lottery designer、security auditor、growth member。每个模板只列精确 capability；即使 platform administrator 也没有 wildcard。
+定义五个封闭角色模板：platform administrator、marketing operator、lottery designer、security auditor、growth member。每个模板只列精确 collection/object capability；即使 platform administrator 也没有 wildcard。角色构造器只接受模板能力上限的子集。
 
 角色模板不带 assignment。本节没有身份目录或绑定 repository，所以不会自动给任何真实用户授权。
 
@@ -185,12 +188,15 @@ Decision 不是持久化审计日志。第 33 节才定义 trusted service layer
 7. collection 不能匹配 owned/exact-resource；
 8. Policy/Role/Decision 输入输出必须不可变；
 9. 决定不依赖 roles/bindings/permissions 输入顺序；
-10. Decision 必须引用 exact Policy revision；
-11. internal reason/evidence 不能被默认当作客户端 DTO；
-12. Principal 构造成功不等于认证成功；
-13. Role template 存在不等于任何真实主体已绑定；
-14. UI 裁剪、数据库 ACL、会员 tier、approval 与业务 gate 都不能替代 Decision；
-15. 本节不得新增公开路由、session、middleware、数据库或前端权限实现。
+10. capability 必须精确匹配 ResourceKind、ResourceType 与 Action；
+11. owned 必须同时匹配 tenant 与 Principal owner；
+12. Decision 必须引用 exact Policy revision 和 AuditContext；
+13. Revision 只是 correlation value，不是 content hash；未来 repository 必须保证 exact identity 唯一；
+14. internal reason/evidence 不能被默认当作客户端 DTO；
+15. Principal 构造成功不等于认证成功；
+16. Role template 存在不等于任何真实主体已绑定；
+17. UI 裁剪、数据库 ACL、会员 tier、approval 与业务 gate 都不能替代 Decision；
+18. 本节不得新增公开路由、session、middleware、数据库或前端权限实现。
 
 ## 验收
 
@@ -212,4 +218,3 @@ Decision 不是持久化审计日志。第 33 节才定义 trusted service layer
 4. 第 35 节：direct API、跨角色、跨对象和浏览器 E2E；
 5. 第 36 节：首个真实运营后台复用上述能力；
 6. 只有真实复杂性出现后，才新增 role hierarchy、SoD、delegation、ABAC/ReBAC、cache 或外置 PDP ADR。
-
