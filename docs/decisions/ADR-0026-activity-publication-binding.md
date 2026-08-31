@@ -262,7 +262,9 @@ Publication binding 的 StrategyID set 必须与 exact graph 的所有 unique te
 3. 拒绝 binding zero/duplicate/missing/extra；
 4. exact read + Validate 每个 Strategy snapshot；
 5. 核对返回 identity；
-6. 只在整体完整时返回 sealed evidence。
+6. 只在整体完整时返回 `nil` 成功裁决，任一失败都不返回 partial proof。
+
+v1 不定义额外 sealed-proof 类型。被验证的 immutable candidate 已经是完整输入；`nil` 只是本次调用的整体裁决，不会被持久化，也不替代 Governance approval evidence。Resolve 仍每次重新验证 exact refs。
 
 不得使用 `FindLatest`、max revision、empty fallback、Redis current value或“缺失时继续旧配置”。Publish 前验证，未来每次 resolve current publication 时也必须 fail closed，防止特权旁路写入坏 ref 后直接使用。
 
@@ -283,13 +285,15 @@ Publication application 在事务前完成 read-only Lottery/approval 验证；M
 
 任一步在 commit 前失败，整体 rollback。Header 不可指向半个 publication，orphan publication/binding 也不能在 CAS 失败后保留。
 
-Commit failure 若 caller 未明确取消，归类 outcome unknown。调用方按 exact Activity/version 查询 publication、binding 与 header active，不能假定 rollback，也不能盲目改版本重试。
+Commit failure 若 caller 与 operation context 在 Repository 返回后仍存活，且错误精确分类为 `ErrCommitOutcomeUnknown`，application 仍返回 zero domain result，但在低披露的 `ActivityOperationError` 内保留一份经校验、防御复制的 `ActivityCommitReceipt`。Receipt 保存 exact before/after；publish/rollback 还保存完整 publication，retire 的 after root保存本次 retiredAt/evidence。它只能由可信恢复流程通过显式 accessor 取得，不进入错误文本、`errors.Is` 或普通 unwrap chain；其他错误类别与 context 结束不携带 receipt。
+
+恢复 I/O 与 receipt value 分离：publish/rollback 用新健康连接读取一个 RR current snapshot并构造 `ObserveCurrentActivity`，retire exact读 root并构造 `ObserveActivityRoot`。纯 `ReconcileActivityCommit` 仅返回 `committed | not_committed | indeterminate`：exact after（以及完整 publication）命中才是 committed；exact before 或同一 next generation 的另一合法 winner 是 not_committed；坏/缺/partial/mismatched observation 与更晚 generation 都是 indeterminate。它不重读 Clock/approval、不猜 latest、不授权 retry；调用方不能盲目改版本重试。
 
 ### 9. 回滚追加新版本，不倒退 active
 
 Rollback 仅允许 published Activity 指向同 Activity 的早期、严格恢复且满足 `evaluated_at < source.ends_at` 的 publication。Source 可以尚未开始或正在开放，但不能已经 ended。它再次经过 Lottery verifier 和 exact-candidate approval verifier，然后追加 current+1 rollback publication。
 
-Source window 已结束时，不允许修改 ends_at 后仍称 rollback；应构造新的 release candidate。若 source 尚未开始，rollback 仍精确复制原窗口并立即成为 active，gate 像普通 future release 一样返回 `activity_not_started`，不会继续旧 active。
+Source window 已结束时，不允许修改 ends_at 后仍称 rollback；应构造新的 release candidate。若 source 尚未开始，rollback 仍精确复制原窗口并立即成为 active，gate 像普通 future release 一样返回 `scheduled`，不会继续旧 active。
 
 Rollback 只影响 commit 后新解析的请求，不撤销已经读取旧 snapshot 的请求，不删除参与、Draw、库存或权益事实。
 
@@ -304,12 +308,14 @@ Retire 只允许 published->retired，使用 expected state CAS 和一次 canoni
 Publication `start < end`，所有时间为 UTC、无 monotonic component、可按 MySQL `DATETIME(6)` 无损往返。Gate 使用一次 controlled Clock：
 
 ```text
-draft                       -> reject activity_not_published
-retired                     -> reject activity_retired
-published && now < start    -> reject activity_not_started
-published && start<=now<end -> allow  activity_window_open
-published && now >= end     -> reject activity_ended
+draft                       -> not_published / allow=false
+retired                     -> retired       / allow=false
+published && now < start    -> scheduled     / allow=false
+published && start<=now<end -> active        / allow=true
+published && now >= end     -> ended         / allow=false
 ```
+
+`not_published | scheduled | active | ended | retired` 是 v1 唯一闭集 domain status。本节没有 HTTP/API，不同时冻结另一套 `activity_*` transport reason；未来 adapter 只能对这五个 status 做显式映射。
 
 start inclusive、end exclusive。Browser time 和客户端 timezone 不可信；本地排期到 UTC/DST 的转换留给未来 API adapter。
 
@@ -356,7 +362,7 @@ Snapshot/publication/binding 是 immutable rows，运行 writer 不拥有 UPDATE
 
 ### 16. Current read 使用一个 RR snapshot
 
-Marketing current reader 在一个 read-only REPEATABLE READ transaction 中读取 header、active publication 和全部 bindings，事务结束后严格 Restore。它不在两次独立请求间读取 header 与 child，也不依赖最大 publication version猜 active。
+Marketing current reader 在一个 read-only REPEATABLE READ transaction 中读取 header、active publication 和全部 bindings，仍在该事务内用已读行做严格 Restore；只有 Restore 成功才结束只读事务并返回。它不在两次独立请求间读取 header 与 child，也不依赖最大 publication version猜 active。
 
 Lottery cross-context resolve 在得到完整 Marketing snapshot 后 exact 验证 refs。失败返回 zero resolution；不能尝试另一个 ActivityVersion 或当前 latest Strategy。
 
@@ -364,7 +370,7 @@ Lottery cross-context resolve 在得到完整 Marketing snapshot 后 exact 验�
 
 Lottery application 端口：StrategySnapshotCreator/Reader、existing exact graph Reader、LotteryPublicationVerifier。
 
-Marketing application 端口：ActivityDraftCreator、ActivityCurrentReader、ActivityPublicationReader、atomic ActivityPublicationWriter、ActivityRetirer、ApprovalVerifier、Clock。
+Marketing application 端口：ActivityDraftCreator、ActivityReader、ActivityCurrentReader、ActivityPublicationReader、atomic ActivityPublicationWriter、ActivityRetirer、ApprovalVerifier、Clock。Application-owned recovery surface 另提供 `ActivityCommitReceiptFromError`、`ObserveCurrentActivity` / `ObserveActivityRoot` 与纯 `ReconcileActivityCommit`；它们不新增 generic Repository、网络调用或自动 retry。
 
 不提供 generic Save/CRUD、partial binding writer、publication updater、latest graph/Strategy reader。
 
@@ -427,7 +433,7 @@ Marketing application 端口：ActivityDraftCreator、ActivityCurrentReader、Ac
 | 无跨上下文 FK写入坏 ref | 最小权限、严格 verifier、坏 ref MySQL fixture、resolve fail closed |
 | 并发 publish/rollback 覆盖 | expected lifecycle/state/active CAS + unique ActivityVersion |
 | partial publication 可见 | publication+all bindings+header CAS 同事务 |
-| commit error 被误重试 | commit outcome unknown + exact read-back runbook |
+| commit error 被误重试 | zero result + trusted receipt + exact observation 三态对账；reconcile 不授权 retry |
 | rollback 擦除事故证据 | append current+1 + rollback_of，旧行 RESTRICT/immutable |
 | time boundary/DST 漂移 | UTC canonical microsecond + `[start,end)`；timezone conversion后置 |
 | persisted running 状态漂移 | 只持久 draft/published/retired，phase按 Clock派生 |
@@ -448,7 +454,7 @@ Activity publication 对 graph/snapshot 的依赖是业务 contract，不是“�
 - 将来拆库/拆服务时先打破数据库约束才能部署；
 - 团队误以为 FK 已证明 terminal closed set，而它实际上只能证明单行存在。
 
-所以本节选择 exact typed refs + provider-owned verifier。这个选择不是放弃完整性：每次 publish 和 current resolve 都必须验证，bad ref 不得进入 gate allow 或 evaluator。
+所以本节选择 exact typed refs + Marketing-owned ACL verifier，由它调用 Lottery-owned exact readers 和 domain validation。这个选择不是放弃完整性：每次 publish 和 current resolve 都必须验证，bad ref 不得进入 gate allow 或 evaluator。
 
 ### 为什么 Marketing 内部仍应使用 FK
 
@@ -541,7 +547,7 @@ Strategy snapshot 是权威 immutable publication history：
 2. 现有 Strategy path/cache/API 不被改成 versioned latest；
 3. Activity draft/published/retired 形状和非法 transition 全覆盖；
 4. ActivityVersion 从 1 连续追加，StateVersion 从 0 开始并满足 draft/published/retired 的 0、active、active+1 形状，同时独立承担 CAS 语义；
-5. 普通 publish/rollback/retire 的 success/conflict/cancel/commit unknown 语义；
+5. 普通 publish/rollback/retire 的 success/conflict/cancel/commit unknown 语义；仅 live commit unknown 可显式取得 defensive receipt，其余失败无 receipt 且全部返回 zero domain result；
 6. rollback exact复制 source graph/Strategy/window并记录 source；scheduled/open source 允许，`evaluated_at >= source.ends_at` 拒绝；
 7. retired 保留 active history且不能恢复；
 8. exact graph terminal set 与 Strategy revision binding set 的 equal/missing/extra/duplicate/wrong-identity fixtures；
@@ -549,7 +555,7 @@ Strategy snapshot 是权威 immutable publication history：
 10. UTC microsecond canonicalization与start-1µs/start/end-1µs/end gate；
 11. confirmed rejection 与 technical zero decision 分离；
 12. 两个 concurrent publishers恰一个成功，最终只有一个完整 active version；
-13. child insert/header CAS/commit故障不暴露半 publication；
+13. child insert/header CAS/commit故障不暴露半 publication；commit unknown receipt 通过 exact current/root observation 只产生 committed/not_committed/indeterminate，later generation 与坏/缺/partial input 均 fail closed；
 14. Marketing current RR snapshot不混 header/publication/bindings；
 15. Migration latest 5->11、repeat no_change、dirty fail closed、旧五表指纹不变；
 16. MySQL PK/CHECK、Lottery内部FK、Marketing内部FK、000011 active reverse FK和RESTRICT；

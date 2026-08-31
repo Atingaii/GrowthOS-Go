@@ -282,7 +282,9 @@ Lottery publication verifier 必须：
 5. 要求 binding StrategyID 集合与 terminal unique set 精确相等；
 6. 对每个 binding 按 exact `(StrategyID, StrategyRevision)` 读取一次 snapshot；
 7. 重新验证 snapshot identity、schema 与完整 Strategy；
-8. 只在全部成功后返回完整 sealed binding evidence。
+8. 只在全部成功后返回 `nil` 成功裁决；任一步失败只返回 error，不返回 partial proof。
+
+v1 不另造一个“sealed evidence”输出类型：完整、不可变的 candidate 始终是 verifier 输入，成功 `nil` 只表示它已在本次调用中被整体验证。这不是可持久化 proof，也不能替代 Governance approval evidence；resolve 仍必须重新验证 exact refs。
 
 集合必须满足：
 
@@ -347,7 +349,7 @@ publication、全部 bindings 与 header CAS 必须在同一个 InnoDB transacti
 
 published Activity 可以直接追加一个新的 release version。新 version 一旦 commit 就立即成为唯一 active publication；旧 version 保留但不再供新 gate 解析。
 
-v1 不实现“提前发布未来版本、当前版本继续运行、到时自动切换”的双版本调度。若替换版本的 `starts_at` 在未来，Activity 会处于 confirmed `not_started`，这是可见且需要操作者承担的结果，不得暗中继续旧版本。
+v1 不实现“提前发布未来版本、当前版本继续运行、到时自动切换”的双版本调度。若替换版本的 `starts_at` 在未来，Activity 会处于 confirmed `scheduled`，这是可见且需要操作者承担的结果，不得暗中继续旧版本。
 
 ## 10. 回滚协议
 
@@ -384,7 +386,7 @@ v1 rollback 只允许：
 - rollback 使用一次受控 evaluated-at，且满足 `evaluated_at < source.ends_at`；source 可以尚未开始或正在开放，但不能已经 ended；
 - Governance verifier 批准 exact rollback candidate。
 
-如果 source window 已结束，不能只换一个新结束时间后仍称为 rollback；那是新的 release candidate，必须重新审批和发布。若 source 尚未开始，rollback 复制其原窗口后会像普通 future release 一样成为 active publication，并由 gate 返回 `activity_not_started`，不会暗中继续旧版本。
+如果 source window 已结束，不能只换一个新结束时间后仍称为 rollback；那是新的 release candidate，必须重新审批和发布。若 source 尚未开始，rollback 复制其原窗口后会像普通 future release 一样成为 active publication，并由 gate 返回 `scheduled`，不会暗中继续旧版本。
 
 ### 10.3 不撤销已经发生的事实
 
@@ -435,13 +437,15 @@ rollback 只改变 commit 之后**新解析**的 Activity publication。它不�
 
 对一次 RR current snapshot 和一次 `evaluated_at`：
 
-| Activity/时间条件 | 决定 | 稳定 reason |
-| --- | --- | --- |
-| `draft` | reject | `activity_not_published` |
-| `retired` | reject | `activity_retired` |
-| published 且 `now < start` | reject | `activity_not_started` |
-| published 且 `start <= now < end` | allow | `activity_window_open` |
-| published 且 `now >= end` | reject | `activity_ended` |
+| Activity/时间条件 | 闭集 domain status | `AllowsParticipation()` |
+| --- | --- | ---: |
+| `draft` | `not_published` | false |
+| `retired` | `retired` | false |
+| published 且 `now < start` | `scheduled` | false |
+| published 且 `start <= now < end` | `active` | true |
+| published 且 `now >= end` | `ended` | false |
+
+上表是第 30 节唯一精确决定契约，status 本身就是稳定的业务结果。本节没有 HTTP/API，因此不再冻结第二套 `activity_*` transport reason；未来 adapter 若需要展示文案或错误码，必须从这五个 status 显式映射，不能重新解释时间窗。
 
 边界必须精确：
 
@@ -623,17 +627,23 @@ Activity header
   + all exact Strategy bindings
 ```
 
-不得先读 header、事务外再读 publication，也不得在 binding 读取中看到另一个 active version。Repository 结束 snapshot 后再执行严格领域 Restore。
+不得先读 header、事务外再读 publication，也不得在 binding 读取中看到另一个 active version。Repository 在同一 RR 事务内读完所有行后立即严格 Restore，只有 Restore 成功才结束这个只读事务并返回完整 snapshot。
 
 ### 16.3 commit outcome unknown
 
-若 COMMIT 返回网络错误，而 caller context 没有明确取消，应用不能确定事务是否已经提交。错误必须归类为 commit outcome unknown；调用方按 candidate ActivityID/version 查询：
+若 COMMIT 返回网络错误，而 caller 与 operation context 在 Repository 返回后都仍存活，应用不能确定事务是否已经提交。错误必须归类为 `ErrCommitOutcomeUnknown`；publish、rollback、retire 仍分别返回 zero publication / zero Activity，不能把 candidate 当作成功结果。
 
-- exact publication 与 active pointer 都存在且匹配：确认已提交；
-- exact publication 不存在且 header 未切：可在人工/业务判断后重试；
-- 出现半状态：停止发布并告警，不能继续自动写。
+只有这个精确错误类别可以在 `ActivityOperationError` 内附带一份经校验、不可变且防御复制的 `ActivityCommitReceipt`，并由可信恢复流程通过 `ActivityCommitReceiptFromError` 显式提取。Receipt 不进入 `Error()`、`errors.Is` 或普通 unwrap chain；caller cancel、private timeout、conflict、retryable 与 ordinary storage failure 都不能取得 receipt。
 
-不能把所有 commit error 当 rollback 成功，也不能自动使用新 version 再发布一次。
+Receipt 保存 exact before/after root；publish/rollback 还保存完整 immutable publication，retire 的 after root 保存本次 server-owned `retiredAt` 与 retirement evidence。恢复流程使用新健康连接：publish/rollback 在同一个 RR current snapshot 读取 root + exact active publication 并构造 `ObserveCurrentActivity`；retire exact读取 root 并构造 `ObserveActivityRoot`。随后只调用纯函数 `ReconcileActivityCommit`：
+
+| 结果 | 可证明事实 | 处置边界 |
+| --- | --- | --- |
+| `committed` | exact after root 命中；publish/rollback 的完整 publication 也逐字段相等 | 采用既有提交事实，不追加版本 |
+| `not_committed` | exact before root 仍在，或同一 next state generation 已由另一合法 winner 占据 | 只能由上层另行决定是否发起一项新操作 |
+| `indeterminate` | observation 缺失、损坏、partial、identity/name 不符，或 root 已推进到更晚 generation | 停止写入并调查，不能猜测中间历史 |
+
+更晚 generation 不能证明本次未曾先提交；对账函数因此 fail closed 为 `indeterminate`。它不做 I/O、不重读 Clock/approval，也不产生 retry 建议。即使结果为 `not_committed`，也不能绕过上层授权、幂等和重新审批策略盲重放原 command。
 
 ## 17. 错误与决定必须正交
 
@@ -737,7 +747,7 @@ Activity header
 9. 两个并发 publisher 对同 expected state 恰好一个成功；
 10. publication/binding/header CAS 任一步失败整体 rollback；
 11. current RR snapshot 不混合 header/publication/binding；
-12. commit outcome unknown 不被当成确定 rollback；
+12. publish/rollback/retire 的 commit outcome unknown 保持 zero result，只能显式提取可信 receipt，并以 exact observation 对账为 `committed` / `not_committed` / `indeterminate`；普通失败和 context 结束不携带 receipt；
 13. approval verifier 接收 exact candidate；改动 window/ref/kind/source 后旧 evidence 不可复用；
 14. pre-cancel、dependency 边界 cancel、error+value、typed nil 与坏 Clock 返回 zero result；
 15. Migration 5 -> 11 前向升级、重复 no_change、dirty fail-closed，旧五表指纹不变；
