@@ -1,10 +1,10 @@
 # 非功能需求基线 v1
 
-**状态：** v1 目标基线；M0 工程探针与 M1 Strategy 缓存本地基线已实测；第 25～27 节资格/会员路由完成内核验证，第 28 节完成 routing graph 结构与隔离 MySQL 仓储验收，第 29 节完成未发布/未装配的 closed graph evaluator 与覆盖/race/fuzz 验证，业务 SLO 尚未实测
+**状态：** v1 目标基线；M0/M1 与第 25～30 节工程证据已形成；第 30 节 Strategy snapshot、Activity publication/CAS/rollback/gate、Lottery ACL 与 latest 11 已通过真实 MySQL/Compose 验收，源码另提供 commit unknown 对账，业务 SLO 尚未实测
 
-**更新日期：** 2026-08-30
+**更新日期：** 2026-08-31
 
-**来源章节：** [第 7 节：确定非功能需求](../course/part-01/lesson-07-non-functional-requirements.md)；第 23 节以[规则需求与所有权边界](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)补充未来决策正确性约束；第 24 节以[首次 Redis Strategy 缓存](../course/part-03/lesson-24-redis-strategy-cache.md)登记 M1 本地证据；第 25～26 节以[首个 Participation 资格切片](../course/part-04/lesson-25-user-eligibility.md)和[固定前置资格链](../course/part-04/lesson-26-responsibility-chain.md)登记资格决定证据；第 27 节以[具体会员路由](../course/part-04/lesson-27-responsibility-chain-limits.md)登记显式分支/default/path；第 28 节以[Strategy Routing Graph 持久化](../course/part-04/lesson-28-rule-tree-schema.md)登记拓扑资源上限、latest 5、仓储快照和隔离权限证据；第 29 节以[封闭 Strategy 路由图求值](../course/part-04/lesson-29-rule-decision-engine.md)登记 exact snapshot、worst-depth/step/time/cancel budget、zero-decision 与求值内核质量证据
+**来源章节：** [第 7 节：确定非功能需求](../course/part-01/lesson-07-non-functional-requirements.md)及第 23～29 节增量证据；第 30 节以[Activity Publication 绑定基线](activity-publication-binding-v1.md)登记并验收 exact Strategy snapshot、immutable publication、CAS、rollback、resolve gate、Lottery ACL、commit unknown 对账与 v11 边界。
 
 ## 1. 使用规则
 
@@ -21,20 +21,21 @@
 | 项目 | 当前事实 |
 | --- | --- |
 | Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～21 节新增并装配 Lottery 领域、两表、Repository、选择器、生产随机源与受限 ephemeral API；第 24 节在权威 Reader 外装配可选 Redis cache-aside，Redis 不参与启动或 readiness |
-| 业务数据库 | MySQL 8.4 连接池、账号隔离和前向 Migration 已通过功能联调；`000001` / `000002` 创建 Strategy/Award，`000003` / `000004` / `000005` 创建 routing graph/node/edge，源码 latest 5。Strategy 与 graph Repository 都用手写 SQL、写事务和只读 RR 快照。长期 runtime 仍只有旧两表 `SELECT` 且拒绝 graph 三表；legacy writer 只在旧两表拥有测试 `SELECT, INSERT`，graph repository 身份只在新三表拥有测试 `SELECT, INSERT` |
-| Lottery 领域 | Strategy/Award、Repository、WeightedSelector 与 CryptoSource 已覆盖不变量、快照、错误和边界；第 21 节形成 ephemeral HTTP 链，第 24 节缓存 Strategy 投影。第 27 节交付 concrete 会员 router；第 28 节交付 `(GraphID, Revision)` create-only schema v1 rooted DAG、128 nodes/256 edges/16 depth 上限、严格恢复、窄端口和未装配 graph MySQL adapter；第 29 节交付未装配的 closed typed evaluator，以一次 exact graph/一次 Clock/一次 fact 形成有界单路径 decision。仍没有 Activity/发布绑定、runtime/API 求值链、认证、资格门控、Draw/Result、幂等、库存、发奖或业务 SLO 实测 |
+| 业务数据库 | 源码 latest 11、十张业务表。一次性 MySQL 8.4.11 已从含 7 条非空 FK 行的真实 v5 前向迁移，旧五表结构/数据哈希不变，重复执行 no_change、dirty/restore 可恢复；新五表具备 6 个 RESTRICT FK、20 个 CHECK 与 binary collation，Marketing→Lottery FK 为 0。长期 Compose v5→v11 也保持 MySQL/Redis/Web/网络/卷 identity、旧表零行/checksum，新表为空；`growthos_app` 仅旧两表 `SELECT` 并真实 1142 拒绝其余八表 |
+| Lottery 领域 | Strategy/Award、Repository、WeightedSelector、CryptoSource、会员路由、exact graph/evaluator 与 create-only Strategy snapshot 已形成；真实 MySQL 已验证 snapshot exact RR、并发创建、事务回滚和隔离最小 writer。graph/snapshot service 与 adapter 均未装配，不存在 latest fallback |
+| Marketing Activity | draft/published/retired、immutable publication history、state-version CAS、追加式 rollback、retire、一次 Clock 的 `[start,end)` resolve gate、Lottery/Approval verifier ports与 commit receipt 三态对账已形成。真实 MySQL 已验证 publish/replace/rollback/retire、RR、CAS、half-write 回滚；没有真实 Governance provider、API/UI、runtime composition、权限或业务 SLO 实测 |
 | Participation 资格 | 第 25 节已验证权威注册事实快照、版本化含边界 cutoff、主体/未来时间/freshness 检查，以及 eligible/ineligible 与 not-found/stale/unavailable/invalid/cancelled 的语义分离；第 26 节再增加 source-owned `passed/blocked` 风险快照与具体准入 policy，并用固定 `new-user -> risk` 计划在任何 reader 前捕获一次服务端 logical as-of。只有 confirmed eligible 才继续；拒绝、技术失败和 caller cancellation 均短路，技术失败返回零 aggregate。当前没有生产事实 adapter、持久化、缓存、HTTP/React、Activity、真实 Principal、Lottery/composition 装配或资格性能实测 |
 | Strategy 缓存 | MySQL 始终是权威来源；Redis 只保存可重建读取投影，不保存 not-found、一次选择或最终结果。缓存 miss/错误/写失败 fail-open，staging/production 启用时强制身份验证 TLS；Compose ACL 允许无 key 的 `PING`，并只允许对版本化 key 前缀执行 `GETRANGE/SET/DEL`，48 MiB `allkeys-lru`、无持久化 |
-| 规则决策质量 | 第 25～26 节验证具体资格、固定顺序、shared as-of、短路和最小 trace；第 27 节验证 confirmed premium/standard 的显式分支/default/path，unknown 与技术失败不落默认边；第 28 节验证 graph 的唯一 root、全可达、无环、terminal、exact branch/default 与 128/256/16 资源边界。第 29 节再验证 exact identity、封闭 operator、确定 single path、ordered defensive-copy evidence、`Depth() <= maxSteps` 准入、actual step hard stop、positive child deadline、caller/internal/provider 优先级与所有失败 zero decision。授权拒绝、Activity/次数等完整资格、持久化审计及与 `no_reward` 的 runtime 编排仍待后续章节验证 |
+| 规则决策质量 | 第 25～29 节内核证据保持不变。第 30 节已验证 exact candidate、一次 Clock、`[start,end)`、CAS conflict、append-only rollback provenance、terminal snapshot 闭合集、half-write rollback 与所有失败 zero-result；源码为 COMMIT 应答未知提供 exact receipt/observation 的 committed/not_committed/indeterminate 三态。授权拒绝、完整资格、持久化审计与 runtime 编排仍待后续章节验证 |
 | 求值内核质量门 | 第 29 节最终候选上，Lottery domain/application atomic coverage 分别为 93.6%/88.3%、合并 92.1%；全仓普通与 `-race` 测试通过；独立 10 秒 evaluator fuzz 通过 2,899,250 execs，新发现 1 个 interesting input（总数 43）。这些数据只是内核回归证据，不是业务覆盖率、生产并发安全、穷举证明或 SLO |
 | React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API。第 22 节再用严格 Lottery adapter、运行时解码与请求状态 Hook 让 `/lottery` 真实消费 ephemeral API；其余用户、运营、MCP 与 Agent 工作台仍是显式 Mock 快照或浏览器本地交互；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
 | 前端质量门 | Vitest、TypeScript typecheck 与 Vite build 已纳入验证；第 15 节真实浏览器核对系统探针正常、数据库不可用和 API 离线状态；第 22 节继续核对桌面/移动布局、键盘与焦点交互、请求 pending/成功/失败/取消分支、权限前置缺口以及按路由拆分图表产物 |
 | 性能实测 | M0 `/health` 100 RPS×5min：30,000/30,000 成功、P99 4.1495ms；`/ready` 20 RPS×30s：600/600 成功、P99 6.841375ms。M1 在同一本地 Docker Desktop 上对 ephemeral selection 各跑 50 RPS×10s：warm-cache、cache-disabled、Redis-down 均 500/500 成功且零 error/unexpected/dropped；三组 P99 分别 5.202ms、9.747167ms、8.222959ms。均为单机短窗口开发基线，不是业务 SLO或生产容量 |
 | 可用性实测 | M0 两组与 M1 三组共五个短窗口内，错误、异常状态和丢弃均为 0；没有长稳、跨主机、灾备或生产可用性证据 |
 | 恢复演练 | 已演练 MySQL、API、Redis 单点停止与恢复；第 24 节进一步证明 Redis down 时 cold read 回源、MySQL down 时 warm hit 可用而 cold miss 失败、两者恢复后无需重启 API 可重新填充。未验证宿主机故障、Redis/MySQL HA 或数据灾难恢复 |
-| 安全与故障演练 | 已验证 MySQL 长期运行身份仅旧两表 `SELECT`，graph SELECT 真实 1142；第 28 节 disposable MySQL 8.4.11 以相互隔离身份验证 legacy writer 只写旧两表、graph writer 只写新三表，并核对零残留/长期 Docker 快照不变；第 29 节候选又重跑同一 MySQL 8.4.11 六组 Integration 并通过，只作为 schema/Repository 上游回归。长期 Compose 原地 `2:0 -> 5:0`、smoke 与隔离 v5 Lottery/cache acceptance 均通过，旧表指纹和长期资源 identity 不变。Redis ACL、唯一回环端口、internal cache 网络、非 root/只读/capability、受限 Host/framing/size 和 502/504 关联也已覆盖。这些都不等于 evaluator 已装配、认证、对象授权或生产渗透测试 |
+| 安全与故障演练 | 长期 runtime 仅旧两表 `SELECT`、对其余八表真实 1142；一次性 MySQL 隔离 writer 最小权限、长期 Compose v5→v11、status/smoke、独立 Lottery acceptance 与完整清理均已验证。长期服务/资源 identity 和旧事实保持不变。以上仍不等于认证、对象授权或生产渗透测试 |
 
-第 13～24 节证据依次证明 MySQL/Migration、浏览器探针、Compose M0、Lottery 聚合/Schema/Repository/selector、受限 HTTP/React 链和 Strategy cache M1；第 25～27 节只以 domain/application 单元、fuzz、并发、取消和架构测试验证资格链与 concrete 会员路由。第 28 节新增结构/仓储证据而非业务负载：一次性 MySQL 8.4.11 中六组 Integration 全通过，覆盖 latest 5、三表约束、两类隔离 writer、graph round-trip/RR/回滚/边界/EXPLAIN，任务资源零残留且长期 `growthos` Docker 快照不变。第 29 节在该 validated aggregate 之上实现内部 exact graph evaluator，以普通/race/fuzz/覆盖率/架构测试验证遍历与失败边界，并重跑第 28 节 MySQL 六组上游回归。它们都没有装配 API、增加 UI 或验证 Activity/权限；求值 `maxDuration` 是 cooperative safety budget，不是决策延迟或业务可用性 SLO。M1 的每组 500 请求、50 RPS、10 秒、最多 16 workers 也仍只是当前本机开发证据；没有正式 Draw 持久化、资格/库存争用、长稳、多主机或生产数据分布。
+第 13～29 节已有证据口径继续按各自 QA 保留。第 30 节真实证据覆盖源码 latest 11、一次性 MySQL 8.4.11、长期 Compose v5→v11、八表权限负证、独立 Lottery acceptance、清理和 `make verify`；它只证明工程与未装配内核边界，不能外推为 API/UI、真实审批、认证授权、正式 Draw 或业务 SLO。
 
 ### M0 工程探针实测
 
@@ -155,6 +156,7 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 | 第 27 节会员路由前置 | 封闭会员快照、一次 as-of、premium override、standard explicit default、一跳 path、unknown/技术失败不吞入 default 与 concrete router 语义 oracle | 已在 Lottery domain/application 单元、fuzz、race、并发和架构停止线验证；没有生产 fact adapter、持久化、HTTP/React、运行时装配、Activity、权限或业务 SLO |
 | 第 28 节路由图持久化前置 | Lottery-owned bounded immutable rooted DAG、schema v1、latest 5 三表、create-only revision、事务 Create、RR Find、严格恢复、精确测试身份和 disposable MySQL 清理边界 | 已在单元/race/fuzz 与一次性 MySQL 8.4.11 六组 Integration 验证；任务资源零残留、长期 Docker 快照不变。该节仅交付持久化输入边界；当前 evaluator 由第 29 节提供，仍无 Activity/发布、公开 API/UI、runtime composition、认证/RBAC 或业务 SLO |
 | 第 29 节路由图求值前置 | exact immutable graph、closed membership dispatch、one graph/Clock/fact、iterative exact-branch path、worst-depth + actual step hard stop、child deadline/cancellation priority、immutable evidence 和 zero-decision | 已在 domain/application 单元、64-worker、架构、全仓 race、atomic coverage 和 10 秒 fuzz 验证；第 28 节 MySQL 8.4.11 六组 Integration 上游回归重跑通过。没有 Activity/发布、公开 API/UI、runtime composition、生产 fact adapter、认证/RBAC、Strategy selection/Draw 或业务 SLO |
+| 第 30 节 Activity publication 前置 | exact Strategy snapshot、immutable publication、CAS、rollback provenance、retire、一次 Clock 的 `[start,end)` gate、Lottery terminal manifest ACL、latest 11 与八表零权限；源码另提供 commit unknown receipt 对账 | 已通过源码、真实 MySQL 8.4.11、长期 Compose v11、独立 Lottery acceptance、清理与全仓质量门验证；所有 service/Repository/ACL 未装配，API/UI、Governance provider、认证/RBAC、Draw 与业务 SLO 均未实现 |
 | M2 · 第 45 节 | 活动参与、库存、锁和幂等报告 | 待验证 |
 | M3 · 第 61 节 | 积分、优惠券、返利与权益闭环报告 | 待验证 |
 | M4 · 第 77 节 | Feed、事件接收与分析水位报告 | 待验证 |
@@ -169,6 +171,8 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 第 26 节资格链证据可追溯到[规则链基线](participation-prerequisite-chain-v1.md)、[课程](../course/part-04/lesson-26-responsibility-chain.md)、[API 零变化记录](../api/lessons/lesson-26.md)、[QA](../qa/lessons/lesson-26.md)、[设计手记](../design-thinking/lessons/lesson-26.md)、[面试问答](../interview/lessons/lesson-26.md)与 [ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)。该证据只覆盖 Participation domain/application 内核，不是在线资格门控、跨 authority 原子快照、公开 API 或浏览器 E2E 证据。
 
 第 27 节会员路由证据可追溯到[产品基线](membership-strategy-routing-v1.md)、[课程](../course/part-04/lesson-27-responsibility-chain-limits.md)、[API 零变化记录](../api/lessons/lesson-27.md)、[QA](../qa/lessons/lesson-27.md)、[设计手记](../design-thinking/lessons/lesson-27.md)、[面试问答](../interview/lessons/lesson-27.md)与 [ADR-0023](../decisions/ADR-0023-membership-strategy-routing-boundary.md)。第 28 节持久化证据可追溯到[Strategy Routing Graph 基线](lottery-strategy-routing-graph-v1.md)、[课程](../course/part-04/lesson-28-rule-tree-schema.md)、[API 零变化记录](../api/lessons/lesson-28.md)、[QA](../qa/lessons/lesson-28.md)、[设计手记](../design-thinking/lessons/lesson-28.md)、[面试问答](../interview/lessons/lesson-28.md)与 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)。第 29 节求值证据可追溯到[产品基线](lottery-strategy-routing-evaluation-v1.md)、[课程](../course/part-04/lesson-29-rule-decision-engine.md)、[API 零变化记录](../api/lessons/lesson-29.md)、[QA](../qa/lessons/lesson-29.md)、[设计手记](../design-thinking/lessons/lesson-29.md)、[面试问答](../interview/lessons/lesson-29.md)、[运维手册](../runbooks/strategy-routing-graph-evaluation.md)与 [ADR-0025](../decisions/ADR-0025-lottery-strategy-routing-graph-evaluation.md)。第 29 节是内部 evaluation 证据，不是发布/Activity/权限/runtime/浏览器 E2E 证据。
+
+第 30 节证据可追溯到[产品基线](activity-publication-binding-v1.md)、[课程](../course/part-04/lesson-30-strategy-vs-activity.md)、[API 零变化记录](../api/lessons/lesson-30.md)、[QA](../qa/lessons/lesson-30.md)、[设计手记](../design-thinking/lessons/lesson-30.md)、[面试问答](../interview/lessons/lesson-30.md)、[运维手册](../runbooks/activity-publication.md)与 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)。这些链接证明未装配发布内核与 v11 工程验收，不是业务运行或权限系统证据。
 
 ## 11. 变更触发条件
 

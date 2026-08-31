@@ -2,9 +2,9 @@
 
 **状态：** v1 分析基线
 
-**更新日期：** 2026-08-08
+**更新日期：** 2026-08-31
 
-**来源章节：** [第 5 节：事件风暴第一次领域分析](../course/part-01/lesson-05-first-event-storm.md)
+**来源章节：** [第 5 节：事件风暴第一次领域分析](../course/part-01/lesson-05-first-event-storm.md)；第 30 节以[Activity Publication 绑定基线](activity-publication-binding-v1.md)验收 Activity 生命周期、exact publication、回滚与 resolve 语义。
 
 ## 1. 这份地图解决什么问题
 
@@ -85,7 +85,21 @@ Feed 内容已曝光 → 用户已点击活动
 
 “点击发布按钮”是用户动作或命令；只有发布校验通过并且版本状态切换成功后，才产生“活动版本已发布”。
 
-### 4.2 失败和补偿
+### 4.2 第 30 节当前实现语义与事件停止线
+
+第 30 节已经通过源码与真实 MySQL 验收以下 Marketing 聚合内的确定状态转换，但尚未装配 Outbox、消息发布器、HTTP/UI 或审计流水，因此这里的“已创建/已发布/已回滚/已退役”是领域语义，不是已经对外可靠投递的集成事件：
+
+| 命令语义 | 聚合内确认条件 | 可形成的领域事实语义 | 当前未声称 |
+| --- | --- | --- | --- |
+| CreateDraft | Activity identity 合法且 Repository 创建成功 | Activity 草稿已创建 | 没有操作者会话、授权、HTTP 或审计事件 |
+| Publish | 当前状态/version 匹配；exact Lottery graph + terminal Strategy snapshot 闭合集通过；exact candidate 的审批证据通过；CAS 成功 | Activity publication version 已追加并成为 active | 没有真实 Governance provider、调度器或线上运行链 |
+| Rollback | 目标历史 publication 尚未结束；复制其 exact 内容并重新校验/审批；CAS 成功 | Activity 已通过一个新 publication version 回滚，且记录 `rollback_of` | 不原地改写旧版本，也不宣称已撤销历史 Draw/权益 |
+| Retire | exact current + 审批 + CAS 成功 | Activity 已退役且保留最后 active publication history | 不等于删除，不触发库存/权益补偿 |
+| Resolve | 一次 Clock 下状态与 `[start,end)` gate 通过 | 当前调用获得 exact active publication | 这是查询/门控结果，不是“活动已进入运行”事件 |
+
+并发冲突、审批失败、Lottery 依赖失败、exact ref 缺失、terminal manifest 不闭合或时间窗不满足，都不能产生成功事实。`state_version` CAS 只是防止丢失更新的确认条件；它不替代 Governance 审批、访问授权、Outbox 或跨系统幂等。
+
+### 4.3 失败和补偿
 
 ```text
 活动配置校验失败
@@ -198,6 +212,8 @@ Feed 内容已曝光
 - 是否采用事件溯源；
 - 事件版本兼容、Schema Registry 和跨团队发布流程；
 - 最终领域边界和服务拆分。
+
+第 30 节也没有改变以上停止线：Activity transition 已在模块化单体源码、一次性 MySQL 与长期 Compose v11 验收，但仍无 durable domain-event/outbox 表、broker topic、delivery retry 或 consumer contract。COMMIT 应答丢失时，application-owned receipt 只能经 exact observation 对账为 committed/not_committed/indeterminate；它不等于集成事件已发布。后续必须把“聚合事务已确认”和“集成事件已可靠发布”作为两个可观察阶段。
 
 这些问题需要第 6 节的限界上下文分析、第 7 节的非功能目标以及后续真实业务实现共同验证。
 

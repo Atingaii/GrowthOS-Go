@@ -2,15 +2,15 @@
 
 **状态：** V0 逻辑设计基线
 
-**更新日期：** 2026-08-30
+**更新日期：** 2026-08-31
 
-**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；Lottery 运行状态由[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)校准，规则演进边界由[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)校准，Participation 单规则与有序前置资格链依次由[第 25 节](../course/part-04/lesson-25-user-eligibility.md)和[第 26 节](../course/part-04/lesson-26-responsibility-chain.md)校准，Lottery 会员多出口路由边界由[第 27 节](../course/part-04/lesson-27-responsibility-chain-limits.md)校准
+**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；第 23～29 节持续校准规则/求值边界；第 30 节以[Activity Publication 绑定基线](activity-publication-binding-v1.md)与 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)验收 Strategy snapshot、Activity publication、CAS/rollback/gate、commit unknown 对账与跨上下文 ACL。
 
 ## 1. 文档目的
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。当前仓库已有文档工具、第 14 节 React 前端框架、第 11～16 节已验收的 Gin 进程、<code>GET /health</code>、<code>GET /ready</code>、类型化配置、结构化日志、请求关联、统一错误、MySQL 连接池、独立 Migration 命令、系统状态页同源联调和 Compose M0 开发栈，第 17～18 节的 Lottery Strategy/Award 领域对象与两张业务表，第 19 节 Create/FindByID 窄仓储与聚合事务/快照，第 20 节完整 <code>uint64</code> 边界的加权 Selector 与 <code>crypto/rand</code> adapter，第 21 节只读、默认关闭且仅 development/test 可启用的 ephemeral selection API，以及第 22 节真实消费该 API 的 React <code>/lottery</code> 页面和共享工作台壳层。第 23 节另以规则需求基线和 ADR 固定 Marketing、Participation、Lottery、Benefit（含内部库存子能力）与 Governance 的决定所有权、原始事实来源和失败语义；第 24 节再以可选 cache-aside、版本化 Strategy 投影和最小 Redis ACL 加速权威读取；第 25 节首次在 Participation domain/application 中实现基于权威注册事实的新用户资格决定；第 26 节再增加风险 screening 准入，并以一次受控逻辑时刻、固定“新用户 → 风险准入”顺序、懒读取、确定短路和最小 executed-step trace 形成专用前置资格链。外部用户目录与风险事实提供方仍拥有原始事实，Participation 只拥有本场景单规则决定与组合资格决定。第 27 节在 Lottery domain/application 中实现未装配的具体会员路由：外部会员 authority 只拥有 <code>standard/premium</code> 等级事实及其 provenance，Lottery 只拥有 premium override、standard baseline/default 到 Strategy ID 的 policy、Route 决定与一跳 path；unknown、unsupported、stale、future、依赖失败和取消都返回零 Route，不会命中 default。当前 Compose MySQL 账号仅有两表 <code>SELECT</code>；Redis 账号允许无 key 的 <code>PING</code>，并只允许对版本化 key 前缀执行 <code>GETRANGE/SET/DEL</code>。Lottery 页面不再使用浏览器随机决定 Award。第 26 节资格链和第 27 节会员 router 都没有生产事实 adapter、HTTP/React 或 composition-root 装配；会员路由也不加载 Strategy、不调用 Selector、不改变 Participation。正式 Draw/Result、Activity 绑定、持久化规则树、登录认证、RBAC/对象级授权、幂等、面向正式活动的完整资格/路由编排、库存、发奖、MQ、MCP Gateway 与 AI Agent 运行时仍未实现；除系统探针与 Lottery selection 外的工作台数据仍为明确 Mock/本地状态。
+V0 是后续实现的导航图，不是已完成能力清单。第 11～24 节形成可运行 Gin/React/MySQL/Redis/Compose 基线与受限 ephemeral Lottery 链；第 25～29 节形成未装配的 Participation 资格、Lottery 路由、exact graph persistence 与封闭 evaluator。第 30 节已经验收 Lottery create-only Strategy snapshot，以及 Marketing-owned Activity lifecycle、immutable publication、CAS、追加式 rollback、retire、一次 Clock 的 `[start,end)` resolve gate和 exact Lottery ACL；源码另提供 commit-outcome-unknown receipt 三态对账。真实 MySQL 8.4.11 与长期 Compose v5→v11 已证明十表、跨上下文零 FK、旧事实保持及最小权限。所有第 25～30 节服务、Repository 与 ACL 仍未装配生产事实 adapter、HTTP/React 或 composition root。
 
 ## 2. 图例与状态
 
@@ -194,7 +194,7 @@ flowchart LR
 
 ## 7. 第一版运行形态
 
-第 9～27 节的当前运行形态是一个模块化单体，而不是上图中每个方框一个服务；Lottery 领域、表、仓储、可选缓存、选择器和真实 React 消费者已经装配成一条受限的 ephemeral HTTP 纵向链，但没有形成正式 Draw。第 23 节校准规则所有权，第 24 节只在权威 StrategyReader 外增加可丢弃加速器；第 25～26 节 Participation 从一条新用户规则演进为两条具体规则的固定有序资格链，第 27 节 Lottery 再增加具体会员多出口 router，但这两个内核都未进入现有运行链：
+当前运行形态仍是模块化单体；真正装配的业务链只到旧两表 Strategy 的 ephemeral selection。第 25～30 节新增的资格、路由、graph/evaluator、Strategy snapshot 与 Activity publication 都只存在于内部源码边界，未进入现有 HTTP 链：
 
 ```mermaid
 flowchart LR
@@ -209,13 +209,14 @@ flowchart LR
     RANDOM[CryptoSource\n均匀 bounded random]
     CACHE[Strategy cache-aside\n版本化投影 + fail-open]
     REPOSITORY[MySQL Repository\nCreate / FindByID]
-    TABLES[(MySQL 8.4\nlottery_strategy\nlottery_strategy_award)]
+    TABLES[(MySQL 8.4\n源码 latest 11 / 十张业务表\n运行链只读旧两表)]
     REDIS[(Redis 7.4\n48 MiB allkeys-lru\n无持久化)]
     PARTICIPATION[Participation 前置资格链\nnew-user → risk-admission\ndomain/application 已实现，未装配]
     USERDIR[外部用户目录\n当前无 adapter]
     RISKSOURCE[外部风险事实提供方\n当前无 adapter]
     MEMBERSHIPSOURCE[外部会员事实提供方\n当前无 adapter]
     MEMBERSHIPROUTER[Lottery 会员 Strategy 路由\npremium override + standard default\ndomain/application 已实现，未装配]
+    ACTIVITY[Strategy snapshot + Activity publication\nCAS / rollback / resolve / Lottery ACL\n第 30 节已验收，未装配]
     FORMAL[未来正式 Participation / Draw 编排\n当前未实现]
 
     BROWSER --> WEB
@@ -228,7 +229,7 @@ flowchart LR
     CACHE -->|miss / 坏值 / Redis 故障时回源| REPOSITORY
     CACHE -->|GETRANGE / SET / DEL\n版本化 key 前缀| REDIS
     USECASE -->|选择配置内 Award| DOMAIN
-    MIGRATE -->|000001 / 000002\nclean latest 2| TABLES
+    MIGRATE -->|源码 000001..000011\n目标 clean latest 11| TABLES
     TABLES -->|Migration 完成后| GRANTS
     GRANTS -->|仅授予运行应用两表 SELECT\n再允许 API 启动| API
     REPOSITORY -->|当前运行链只读 RR 快照| TABLES
@@ -239,6 +240,7 @@ flowchart LR
     PARTICIPATION -. 未来确定资格决定 .-> FORMAL
     MEMBERSHIPSOURCE -. 未来受控 MembershipTierFactReader .-> MEMBERSHIPROUTER
     MEMBERSHIPROUTER -. 未来确定 Strategy target .-> FORMAL
+    ACTIVITY -. 未来 exact active publication gate .-> FORMAL
 ```
 
 宿主开发模式由 Vite 精确代理 <code>/health</code>、<code>/ready</code> 和 <code>/api</code> 路径边界；Compose 模式则由只发布 <code>127.0.0.1:8088</code> 的 Nginx 提供相同同源路径，API、MySQL 和 Redis 不发布宿主机端口。Compose 启动链是 <code>mysql → migrate → mysql-grants → api</code>；Redis 独立启动，API 仅通过 internal <code>cache</code> 网络访问它，Redis 不进入启动门或 <code>/ready</code>。系统状态页真实调用两个探针；Lottery React 页面也通过 <code>lotteryApi</code> 和同源 bodyless POST 贯通 Nginx→Go→Strategy cache/MySQL→CryptoSource，且不自动重试。缓存命中不读取 MySQL，miss/坏值/Redis 故障会有界回源；MySQL 仍是唯一事实源，缓存不保存一次选择结果。图中的五条虚线只表示三个未来事实 adapter 与两个正式编排方向，不是已存在调用，也不指向现有 demo 用例：当前 ephemeral route 仍无主体且完全绕过 Participation 与会员 router。Participation 当前最小 trace 只记录已执行规则的 rule/outcome/reason、policy/fact revision 与同一 evaluated-at；第 27 节 Lottery Route 则只记录实际 rule/branch/Strategy target 的一跳 path，并在 decision envelope 关联 policy/fact provenance 与 evaluated-at。二者均未持久化，也不是安全审计或 OpenTelemetry trace；会员 router 不加载 Strategy、不调用 Selector。隔离 acceptance 验证了 ACL、poison 修复、warm/cold 故障恢复与三组本地 M1 基线，但这些数据不是产品 SLO 或生产容量。Mock 节点不属于服务端事实源；四类工作台没有认证或 RBAC 强制，导航可见性不能被解释成授权，会员 tier 也不能解释成角色或权限。
@@ -247,8 +249,8 @@ flowchart LR
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 中文产品文档、课程/QA/API 台账、文档漂移检查、共享 React 工作台与明确业务 Mock；第 11～16 节 Gin、配置、错误、MySQL、Migration、系统探针同源联调和 Compose M0 已验收；第 17～22 节 Strategy/Award、两表 Schema/latest 2、Create/FindByID Repository、WeightedSelector/CryptoSource、两表 SELECT-only 运行身份、受限 ephemeral API 与真实 React 消费者已验收；第 23 节规则需求边界、第 24 节可重建 Strategy Redis 投影/ACL/故障恢复/M1 本地证据、第 25 节单条新用户资格、第 26 节未装配的 Participation 新用户→风险准入有序资格链，以及第 27 节未装配的 Lottery 会员多出口 Route 内核均已验收 | 已存在的能力按台账和 QA 核查 |
-| 第 28～77 节 | 第 28 节把真实 branch/default/target/path 建成最小持久化规则树并校验图合法性；第 29～30 节再推进已验证图的决策执行与 Activity；第 31～35 节在真实运营后台前建立公共访问控制；随后推进活动账户、订单、库存、消息一致性、权益、Feed 与增长反馈闭环 | 尚未实现，不能提前改写完成状态 |
+| 当前 | 第 1～30 节已经按台账验收；Strategy snapshot、Marketing Activity publication/CAS/rollback/gate、Lottery ACL 与 latest 11 已形成源码及真实 MySQL/Compose 证据，commit unknown receipt 对账已由源码提供；全部未装配 | 已存在能力按台账和 QA 核查 |
+| 第 31～77 节 | 第 31～35 节在真实运营后台前依次建立公共权限模型、真实会话、服务端 RBAC、前端权限裁剪与越权 E2E；随后推进运营后台、活动账户、订单、库存、消息一致性、权益、Feed 与增长反馈闭环 | 尚未实现，不能提前改写完成状态 |
 | 第 78～101 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 
 这里仅承诺 Redis 承载一个可重建的 Strategy 读取投影，不承诺用户资格、会员路由、抽奖结果或其他业务事实进入缓存，也不承诺 RocketMQ、ClickHouse、OpenSearch 或 Kubernetes 已经部署；Participation 有序资格链与 Lottery 会员 Route 内核的存在也不把 ephemeral route 升级为带认证、幂等、资格/路由门控、库存、发奖和结果查询的正式在线抽奖。会员 router 当前只校验非零 Strategy ID，不证明目标存在、已发布或有业务 version。表内 <code>updated_at</code> 仅是行元数据，不能被解释为聚合版本或精确缓存水位，因此当前只用短 TTL/jitter，尚无写后失效协议。
@@ -305,6 +307,6 @@ flowchart LR
 
 ## 12. 下一阶段输入
 
-第 11～16 节已经形成当前 Go 运行时、数据库基础设施、React 框架、首个系统探针联调切片和 Compose M0 开发环境；第 17～18 节建立 Lottery 聚合与两张业务表；第 19 节用 Create/FindByID 窄端口、原子写事务、只读 RR 快照和领域恢复闭合仓储边界；第 20 节以 bounded random port、<code>crypto/rand.Int</code> 和减法桶闭合最小加权选择机制；第 21 节通过共享 pool、只读 port、feature gate 和专用 DTO 形成 development/test ephemeral API；第 22 节再用 bodyless POST、运行时 decoder 和 React 请求状态机替换页面端随机 Mock；第 23 节把复合规则拆给事实所有者；第 24 节完成 Strategy 读取投影的首次 Redis cache-aside，并用 ACL、poison、依赖故障和 source-load 证据约束它；第 25 节在 Participation 内实现首个基于权威注册事实的新用户资格决定；第 26 节以第二条真实风险准入规则反推最小固定线性链，在同一 evaluated-at 下按“新用户 → 风险准入”懒读取并短路，只对确定结果返回最小有序 trace，但仍没有运行时装配。第 27 节再在 Lottery 内实现具体会员 Route：外部 authority 提供受支持 tier 快照，Lottery 用自己的 versioned policy 确定 premium override 或 standard baseline/default Strategy target，并保留一跳 path；unknown/unsupported/陈旧/future/依赖错误和取消全部失败关闭。它仍没有会员 adapter、HTTP/API、Strategy 加载、Selector 调用、权限或运行时装配，也没有改变 Participation。下一节第 28 节基于已经验证的 branch/default/target/path 建立最小持久化规则树、schema version 与发布前 cycle/depth/reachability/reference 校验；第 29～30 节再逐步引入已验证图的决策执行与 Activity，给权限判断提供真实的主体之外资源、动作和范围。第 31～35 节才依次建立跨用户端、运营端、MCP 与 Agent 的公共访问控制模型、真实会话、服务端强制、前端权限感知和越权端到端验收，第 36 节首个真实运营后台必须复用它。当前没有认证或授权能力，不能用隐藏菜单、会员 tier 或 Route 成功代替授权。
+第 11～29 节依次形成运行基线、ephemeral Lottery、规则所有权、资格/路由、exact graph persistence/evaluation。第 30 节把 Lottery Strategy 内容固化为 exact create-only snapshot，并让 Marketing 以 immutable publication history、CAS、rollback provenance、resolve gate 与 commit receipt 管理 Activity；跨上下文只保存 exact refs，由 Lottery ACL fail closed 复核，不建 FK/SQL join。source latest 11、一次性 MySQL 与长期 Compose v11 已验收，所有新服务仍未装配。下一节第 31 节开始公共访问控制模型与威胁边界，第 32～35 节再依次建立真实会话、服务端强制、前端权限感知和越权端到端验收。当前不能用隐藏菜单、会员 tier、Route 或 publication resolve 成功代替授权。
 
-继续遵守 V0 的真实状态表达：可见的临时选择不等于最终结果，行时间戳不等于聚合版本，Strategy 缓存不等于事实库或备份，未装配的资格链不等于在线资格门控，未装配的会员 Route 不等于在线路由或权限，内部 executed-step trace/one-hop path 不等于审计或分布式追踪，未来权限、中间件和服务不能提前伪装成交付物。第 21 节后端边界见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)；第 23 节规则边界见[需求基线](lottery-rule-requirements-v1.md)与 [ADR-0019](../decisions/ADR-0019-lottery-rule-ownership-and-evaluation-boundaries.md)；第 24 节缓存边界见 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)；第 25 节单规则边界见 [ADR-0021](../decisions/ADR-0021-participation-new-user-eligibility.md)；第 26 节有序资格链边界与证据见[规则链基线](participation-prerequisite-chain-v1.md)、[ADR-0022](../decisions/ADR-0022-participation-prerequisite-chain.md)、[课程](../course/part-04/lesson-26-responsibility-chain.md)与 [QA](../qa/lessons/lesson-26.md)；第 27 节会员路由边界与证据见[路由基线](membership-strategy-routing-v1.md)、[ADR-0023](../decisions/ADR-0023-membership-strategy-routing-boundary.md)、[课程](../course/part-04/lesson-27-responsibility-chain-limits.md)与 [QA](../qa/lessons/lesson-27.md)。
+继续遵守 V0 的真实状态表达：v11 工程验收不等于运行时装配或业务 SLO，Strategy cache 不等于发布快照，publication resolve 不等于 Draw/授权/审批，commit receipt 不等于幂等或事件已投递，内部 trace/path 不等于审计或分布式追踪。第 30 节证据入口见[产品基线](activity-publication-binding-v1.md)、[课程](../course/part-04/lesson-30-strategy-vs-activity.md)、[QA](../qa/lessons/lesson-30.md)和 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)。
