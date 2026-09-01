@@ -130,7 +130,40 @@ func TestActivityPublicationMigrationsRemainImmutable(t *testing.T) {
 	}
 }
 
-func TestEmbeddedLotteryMigrationInventoryEndsAtVersionEleven(t *testing.T) {
+func TestIdentityMigrationsRemainImmutable(t *testing.T) {
+	t.Parallel()
+
+	immutable := map[string]string{
+		"sql/000012_create_identity_workforce_account.up.sql":       "0dde0a2a01ba5671df2b11a025e19b16c20b61ba107b275a03bf5df2533e7771",
+		"sql/000013_create_identity_session.up.sql":                 "d568d6268c622cbed0e7fd4137e0d19c8b993fb20df72d0aed40711fd9d32adc",
+		"sql/000014_create_identity_authentication_throttle.up.sql": "f30d58b12151884f50b4d8d5949552c85c7740715a2c8e3680ccfa33d8dd86fc",
+	}
+
+	for name, wantChecksum := range immutable {
+		name := name
+		wantChecksum := wantChecksum
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			contents, err := fs.ReadFile(Files, name)
+			if err != nil {
+				t.Fatalf("read embedded Identity migration: %v", err)
+			}
+			checksum := sha256.Sum256(contents)
+			if got := hex.EncodeToString(checksum[:]); got != wantChecksum {
+				t.Fatalf(
+					"checksum = %s, want immutable checksum %s; add a new migration instead of rewriting history",
+					got,
+					wantChecksum,
+				)
+			}
+			if got := strings.Count(string(contents), ";"); got != 1 {
+				t.Fatalf("statement terminators = %d, want one DDL statement per migration", got)
+			}
+		})
+	}
+}
+
+func TestEmbeddedMigrationInventoryEndsAtVersionFourteen(t *testing.T) {
 	t.Parallel()
 
 	entries, err := fs.ReadDir(Files, "sql")
@@ -157,6 +190,9 @@ func TestEmbeddedLotteryMigrationInventoryEndsAtVersionEleven(t *testing.T) {
 		"000009_create_marketing_activity_publication.up.sql",
 		"000010_create_marketing_activity_publication_strategy.up.sql",
 		"000011_add_marketing_activity_active_publication_fk.up.sql",
+		"000012_create_identity_workforce_account.up.sql",
+		"000013_create_identity_session.up.sql",
+		"000014_create_identity_authentication_throttle.up.sql",
 	}
 	if strings.Join(names, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("embedded migrations = %q, want exact current inventory %q", names, want)

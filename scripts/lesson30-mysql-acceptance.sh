@@ -340,7 +340,7 @@ export GROWTHOS_TEST_MYSQL_MIGRATION_TLS_MODE='disabled'
 cd "$repository_root"
 printf 'Lesson 30 MySQL acceptance: image=%s version=%s container=%s\n' "$mysql_image" "$mysql_version" "$container_name"
 go test -v -count=1 -run '^TestActivityPublicationSchemaMySQLIntegration$' ./migrations
-go test -count=1 -run '^(TestInitialLotteryMigrationsRemainImmutable|TestRoutingGraphMigrationsRemainImmutable|TestStrategySnapshotMigrationsRemainImmutable|TestActivityPublicationMigrationsRemainImmutable|TestEmbeddedLotteryMigrationInventoryEndsAtVersionEleven)$' ./migrations
+go test -count=1 -run '^(TestInitialLotteryMigrationsRemainImmutable|TestRoutingGraphMigrationsRemainImmutable|TestStrategySnapshotMigrationsRemainImmutable|TestActivityPublicationMigrationsRemainImmutable|TestIdentityMigrationsRemainImmutable|TestEmbeddedMigrationInventoryEndsAtVersionFourteen)$' ./migrations
 
 docker container exec -i "$container_id" mysql \
     --defaults-extra-file=/run/lesson30-secrets/root-client.cnf <<SQL
@@ -372,8 +372,8 @@ final_status=$(docker container exec "$container_id" mysql \
     --defaults-extra-file=/run/lesson30-secrets/root-client.cnf \
     --batch --skip-column-names "$database_name" \
     --execute='SELECT CONCAT(version, CHAR(58), dirty) FROM schema_migrations')
-if [ "$final_status" != '11:0' ]; then
-    printf 'final migration status = %s, want 11:0\n' "$final_status" >&2
+if [ "$final_status" != '14:0' ]; then
+    printf 'final migration status = %s, want 14:0\n' "$final_status" >&2
     exit 1
 fi
 remaining_probes=$(docker container exec "$container_id" mysql \
@@ -386,4 +386,4 @@ if [ "$remaining_probes" != '0' ]; then
 fi
 
 printf 'Lesson 30 database postconditions: schema_migrations=%s temporary-check-probes=%s\n' "$final_status" "$remaining_probes"
-printf '%s\n' 'Lesson 30 MySQL acceptance passed: v5 seed+fingerprint -> v11, no_change, dirty fail-closed, schema, grants, snapshots, Activity lifecycle, CAS/RR/rollback/cleanup'
+printf '%s\n' 'Lesson 30 MySQL acceptance passed: v5 seed+fingerprint -> v14, no_change, dirty fail-closed, schema, grants, snapshots, Activity lifecycle, CAS/RR/rollback/cleanup'

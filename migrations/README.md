@@ -1,6 +1,6 @@
 # 数据库迁移目录
 
-这里存放 GrowthOS 的前向 MySQL Migration。第 13 节只建立执行机制；第 18 节开始加入真实业务结构；第 28 节把已出现的 Lottery 路由词汇落为三张 create-only 图结构表；第 30 节再追加不可变 Strategy snapshot 与 Marketing Activity 发布结构。
+这里存放 GrowthOS 的前向 MySQL Migration。第 13 节只建立执行机制；第 18 节开始加入真实业务结构；第 28 节把已出现的 Lottery 路由词汇落为三张 create-only 图结构表；第 30 节再追加不可变 Strategy snapshot 与 Marketing Activity 发布结构；第 32 节追加独立 Identity account、server-side session 与双维认证 throttle 三张权威表。
 
 规则：
 
@@ -15,5 +15,7 @@
 - `marketing_activity` 先以 nullable active version 创建 draft，publication 与 bindings 成功插入后才由 compare-and-swap 更新 active；因此 `000011` 可以在两个 Marketing 表都存在后安全增加反向复合外键，不需要关闭 `foreign_key_checks`。
 - Marketing publication 只保存 Lottery-owned graph/snapshot 的 exact identity，不建立跨 bounded-context 外键；完整 terminal-to-Strategy revision 闭合集由发布 verifier 和恢复路径验证。数据库只能保护 Marketing 自己的 publication/binding/active 引用，不能冒充跨上下文业务校验器。
 - 第 30 节仍不向长期运行身份增加 snapshot/Activity 权限，也不装配 HTTP、UI 或在线求值路径；Migration 可执行不等于高风险发布入口已经可用或已授权。
+- 第 32 节的 `identity_workforce_account` 保存本地 workforce verifier 与认证 epoch，`identity_session` 只保存高熵 bearer 的 SHA-256 digest，`identity_authentication_throttle` 保存 HMAC 后的 login/source key 与短时 admission reservation。三表均由独立 `growthos_identity` runtime identity 使用；现有 `growthos_app` 必须继续被拒绝，Redis 不成为 session 或 throttle 真相。
+- Identity session 的 `issue_operation_ref` 与完整 revoke union 支持 COMMIT outcome 诊断；它们不是客户端幂等键。throttle 的 `admission_epoch` 会在过期 reservation 回收时前进，旧 receipt 不得释放新批次。Migration 只保护单行 shape，五会话上限、双行固定锁序、指数 backoff、single-probe 恢复和当前时间有效性仍由 Repository/application 共同证明。
 
 迁移二进制会同时嵌入本说明和 `sql/` 子目录，因此发布产物不依赖宿主机上的相对路径。

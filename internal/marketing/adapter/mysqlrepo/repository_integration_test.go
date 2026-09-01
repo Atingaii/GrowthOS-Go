@@ -258,9 +258,9 @@ func ensureMarketingSchema(
 		_ = runner.Close()
 		t.Fatalf("apply Marketing schema: %v", err)
 	}
-	if result.Version != 11 {
+	if result.Version != 14 {
 		_ = runner.Close()
-		t.Fatalf("Marketing schema result = %+v, want version 11", result)
+		t.Fatalf("Marketing schema result = %+v, want version 14", result)
 	}
 	if err := runner.Close(); err != nil {
 		t.Fatalf("close Marketing migration runner: %v", err)

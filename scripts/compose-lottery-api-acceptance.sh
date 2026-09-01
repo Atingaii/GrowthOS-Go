@@ -927,10 +927,10 @@ migration_state=$(compose exec -T mysql sh -c '
         --batch --silent --skip-column-names \
         --execute="SELECT CONCAT(version, CHAR(58), dirty) FROM schema_migrations"
 ') || fail 'could not inspect migration state'
-if [ "$migration_state" != '11:0' ]; then
-    fail "migration state is $migration_state instead of clean version 11"
+if [ "$migration_state" != '14:0' ]; then
+    fail "migration state is $migration_state instead of clean version 14"
 fi
-ok 'schema migration state is clean version 11'
+ok 'schema migration state is clean version 14'
 
 # shellcheck disable=SC2016
 actual_app_grants=$(compose exec -T mysql sh -c '
@@ -1590,7 +1590,7 @@ migration_state_after=$(compose exec -T mysql sh -c '
         --batch --silent --skip-column-names \
         --execute="SELECT CONCAT(version, CHAR(58), dirty) FROM schema_migrations"
 ') || fail 'could not recheck migration state'
-if [ "$migration_state_after" != '11:0' ]; then
+if [ "$migration_state_after" != '14:0' ]; then
     fail 'migration state drifted during HTTP acceptance'
 fi
 # shellcheck disable=SC2016

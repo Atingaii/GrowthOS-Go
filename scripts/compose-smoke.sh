@@ -197,10 +197,10 @@ if ! migration_state=$(compose exec -T mysql sh -c '
 '); then
     fail 'could not inspect the migration version through the migration identity'
 fi
-if [ "$migration_state" != '11:0' ]; then
-    fail "migration state is $migration_state instead of clean version 11"
+if [ "$migration_state" != '14:0' ]; then
+    fail "migration state is $migration_state instead of clean version 14"
 fi
-ok 'schema migrations are clean at version 11'
+ok 'schema migrations are clean at version 14'
 
 # shellcheck disable=SC2016
 if ! name_constraint_state=$(compose exec -T mysql sh -c '

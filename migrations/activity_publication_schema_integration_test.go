@@ -36,16 +36,16 @@ func TestActivityPublicationSchemaMySQLIntegration(t *testing.T) {
 	before := captureLesson30OldSchemaFingerprint(t, ctx, connection)
 
 	first := applyLesson30Migrations(t, ctx, connection)
-	if first.State != dbmigration.ResultApplied || first.Version != 11 {
-		t.Fatalf("5->11 migration result = %+v, want applied at exact version 11", first)
+	if first.State != dbmigration.ResultApplied || first.Version != 14 {
+		t.Fatalf("5->14 migration result = %+v, want applied at exact version 14", first)
 	}
 	after := captureLesson30OldSchemaFingerprint(t, ctx, connection)
 	if after != before {
-		t.Fatalf("old five-table schema fingerprint changed across 5->11: before=%+v after=%+v", before, after)
+		t.Fatalf("old five-table schema fingerprint changed across 5->14: before=%+v after=%+v", before, after)
 	}
 	second := applyLesson30Migrations(t, ctx, connection)
-	if second.State != dbmigration.ResultNoChange || second.Version != 11 {
-		t.Fatalf("repeat migration result = %+v, want exact v11 no_change", second)
+	if second.State != dbmigration.ResultNoChange || second.Version != 14 {
+		t.Fatalf("repeat migration result = %+v, want exact v14 no_change", second)
 	}
 
 	database, err := mysqlstore.OpenMigration(ctx, mysqlstore.MigrationConfig{
@@ -371,9 +371,9 @@ func applyLesson30Migrations(
 		_ = runner.Close()
 		t.Fatalf("read Lesson 30 migration status: %v", err)
 	}
-	if status.State != dbmigration.StatusClean || status.Version != 11 || status.Latest != 11 {
+	if status.State != dbmigration.StatusClean || status.Version != 14 || status.Latest != 14 {
 		_ = runner.Close()
-		t.Fatalf("migration status = %+v, want clean exact v11", status)
+		t.Fatalf("migration status = %+v, want clean exact v14", status)
 	}
 	if err := runner.Close(); err != nil {
 		t.Fatalf("close Lesson 30 migration runner: %v", err)
@@ -408,9 +408,9 @@ func assertLesson30MigrationStatus(
 		_ = runner.Close()
 		t.Fatalf("read exact migration status: %v", err)
 	}
-	if status != (dbmigration.Status{State: dbmigration.StatusClean, Version: 11, Latest: 11}) {
+	if status != (dbmigration.Status{State: dbmigration.StatusClean, Version: 14, Latest: 14}) {
 		_ = runner.Close()
-		t.Fatalf("migration status = %+v, want clean/11/11", status)
+		t.Fatalf("migration status = %+v, want clean/14/14", status)
 	}
 	if err := runner.Close(); err != nil {
 		t.Fatalf("close migration status runner: %v", err)
@@ -424,7 +424,7 @@ func assertLesson30DirtyFailsClosed(
 	connection mysqlstore.ConnectionConfig,
 ) {
 	t.Helper()
-	if _, err := verification.ExecContext(ctx, "UPDATE schema_migrations SET dirty = 1 WHERE version = 11"); err != nil {
+	if _, err := verification.ExecContext(ctx, "UPDATE schema_migrations SET dirty = 1 WHERE version = 14"); err != nil {
 		t.Fatalf("install dirty migration probe: %v", err)
 	}
 	dirty := true
@@ -434,7 +434,7 @@ func assertLesson30DirtyFailsClosed(
 		}
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if _, err := verification.ExecContext(cleanupCtx, "UPDATE schema_migrations SET dirty = 0 WHERE version = 11"); err != nil {
+		if _, err := verification.ExecContext(cleanupCtx, "UPDATE schema_migrations SET dirty = 0 WHERE version = 14"); err != nil {
 			t.Errorf("remove dirty migration probe: %v", err)
 		}
 	}()
@@ -466,7 +466,7 @@ func assertLesson30DirtyFailsClosed(
 	if err := runner.Close(); err != nil {
 		t.Fatalf("close dirty migration runner: %v", err)
 	}
-	if _, err := verification.ExecContext(ctx, "UPDATE schema_migrations SET dirty = 0 WHERE version = 11"); err != nil {
+	if _, err := verification.ExecContext(ctx, "UPDATE schema_migrations SET dirty = 0 WHERE version = 14"); err != nil {
 		t.Fatalf("remove dirty migration probe: %v", err)
 	}
 	dirty = false
