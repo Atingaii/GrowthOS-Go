@@ -133,7 +133,9 @@ CSRF HMAC 使用独立 keyring，不复用 session token、password 或 rate-lim
 
 登录限速以 MySQL `identity_authentication_throttle` 为多实例一致真相，同时按受信来源和 HMAC 后的规范化 login key 建行；raw IP/login 不入表、不进入 metric label。限速发生在 Argon2 前，但 unknown 与 known account 使用相同 key 与公开响应。
 
-v1 使用 15 分钟 observation window：login dimension 前 5 次失败可进入密码验证，source dimension 前 30 次失败可进入密码验证；越过阈值后从 30 秒开始指数退避，按后续实际失败翻倍并封顶 15 分钟。blocked 请求不执行 Argon2，也不增加计数；窗口无新失败 15 分钟后重置。事务行锁/原子 upsert 保证多实例不会各自放宽预算。成功仅重置 login dimension，不清除 source dimension，避免用已知正确账号冲洗来源预算。该策略不是持久账户锁死：它有明确上限和自动恢复，且错误统一为 `429 authentication_throttled`。
+v1 使用 15 分钟 observation window：login dimension 前 5 次失败可进入密码验证，source dimension 前 30 次失败可进入密码验证；越过阈值后从 30 秒开始指数退避，按后续实际失败翻倍并封顶 15 分钟。blocked 请求不执行 Argon2，也不增加 failure count；窗口无新失败 15 分钟后重置。成功仅重置 login dimension，不清除 source dimension，避免用已知正确账号冲洗来源预算。该策略不是持久账户锁死：它有明确上限和自动恢复，且错误统一为 `429 authentication_throttled`。
+
+为关闭“多个实例同时在 Argon2 前读到相同 failure count”的 admission race，三表方案在每个 throttle row 内同时保存 `inflight_count`、单调 `admission_epoch` 与有界 `inflight_expires_at`。一次 admission 在同一事务内按 `(dimension, subject_digest)` 排序锁定 login/source 两行，检查 `failure_count + inflight_count` 后同时 reservation；绝不在 Argon2 期间持有事务或连接。不可伪造的 application receipt 携带两行 exact epoch，credential failure、success 或 neutral release 各自只 finalize 一次。失败减少 inflight 并增加 failure/backoff，成功减少两行 inflight 但只重置 login failure，取消/容量/前置依赖失败只释放 reservation。进程崩溃或 finalize outcome unknown 遗留的计数使用 `min(request deadline, admitted_at+3s)` 的最晚截止时间回收；回收时递增 epoch，使旧 receipt 不能扣减新 reservation。结果未知返回技术失败且不盲重试。这一聚合短租约是在不新增 attempt ledger 的前提下换取多实例 Argon 前硬预算；它可能在崩溃后短时保守拒绝，但不会把未知结果放宽为更多 hash。
 
 process-wide Argon2 semaphore 是第二层资源预算，不替代持久双维 throttle。Redis 仍不获得 session 或 limiter authority。来源必须来自当前受信 socket/proxy 边界；未建立 production proxy allowlist 前，只能宣称 loopback Compose 拓扑已验收。
 
@@ -146,7 +148,8 @@ process-wide Argon2 semaphore 是第二层资源预算，不替代持久双维 t
 - 登录 password 接受 1～128 Unicode code point 且 UTF-8 编码最多 512 bytes，不 trim、不截断；bootstrap enrollment 额外要求至少 12 code point；
 - JSON body 最多 2048 bytes，envelope 最多 256 bytes，login source canonical bytes 最多 128；
 - Identity handler 总预算默认 3s，Argon semaphore 等待默认 250ms；
-- persistent throttle 使用 15m window、login 5 次、source 30 次、30s 起始/15m 封顶指数退避；
+- persistent throttle 使用 15m window、login 5 次、source 30 次、30s 起始/15m 封顶指数退避，并以同表 reservation 在 Argon 前原子占用两维预算；
+- reservation deadline 最晚为 `admitted_at+3s` 且不得越过 request deadline；过期批次回收必须递增 non-zero admission epoch；
 - session touch window 为 60s，只有距离上次权威 touch 已满 60s 时才写 `last_seen_at/idle_expires_at`；
 - inactive throttle 行保留 24h；expired/revoked session 行保留 7d，由一次最多 500 行的 Identity maintenance operation 清理；
 - active CSRF key 与 optional previous key 的 ID 匹配 `[A-Za-z0-9_-]{1,16}`，每把 key 精确 32 bytes；previous key 最长验证 8h；
@@ -237,7 +240,8 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 7. COMMIT 未确认前不得下发 Cookie；
 8. unsafe Cookie 请求必须通过 CSRF 与 origin policy；
 9. session DTO 不包含 role、scope、permission 或 authorization Decision；
-10. 第 32 节完成不等于任何业务路由已经授权。
+10. 第 32 节完成不等于任何业务路由已经授权；
+11. login/source failure 与 inflight reservation 必须在同一 MySQL 真相中按固定锁序更新，旧 epoch receipt 不得释放新 admission。
 
 ## 验收
 
@@ -247,7 +251,7 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 - concurrency：并发登录始终最多五个，resolve/touch/revoke race 不复活 session，`go test -race` 通过；
 - commit fault injection：已提交、未提交、无法判定三条路径均不盲重放；任何 COMMIT error 都不下发 token；
 - CSRF：valid、wrong session/epoch/key、跨站 Origin、Fetch Metadata、缺失 header、key rotation 和 constant-time compare；
-- rate limit：MySQL login/source row、阈值/指数退避/自动恢复、多实例并发、无高基数敏感 label、unknown/known account 统一公开错误；
+- rate limit：MySQL login/source row、阈值/指数退避/自动恢复、Argon 前双行 reservation、崩溃后 lease 回收、旧 epoch receipt、多实例并发、无高基数敏感 label、unknown/known account 统一公开错误；
 - real MySQL：clean migration、second-up no change、schema/index/FK、round trip、expiry/revoke/epoch、并发事务；
 - grants：`growthos_identity` 只允许声明 DML，拒绝 DDL/业务表/`schema_migrations`；`growthos_app` 拒绝 Identity 表；
 - HTTP/Compose：真实 Cookie jar 完成 login/current/csrf/logout/replay，错误 envelope/no-store/request ID 正确；

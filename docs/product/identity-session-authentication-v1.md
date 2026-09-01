@@ -549,7 +549,22 @@ __Host-growthos_session
 
 在可信代理边界完成前，来源维度只能被描述为本地拓扑控制，不能宣传为生产抗分布式 credential stuffing。
 
-### 11.3 Argon2 并发预算
+### 11.3 失败计数与 Argon2 前 admission reservation
+
+“只在失败后增加计数”与“在 Argon2 前严格限制多实例并发”不能只靠一次无锁读取同时成立。若 20 个请求都读到 login failure count 为 4，它们会一起进入昂贵 hash，之后再各自记录失败，瞬时资源预算和“前 5 次”语义都已经被突破。v1 不为此新增第四张 attempt ledger，也不把数据库事务跨越 Argon2 持有；而是在同一 throttle 行内保存有界的短租约聚合状态：
+
+- `inflight_count` 表示该 dimension 已获准、尚未完成的认证计算数；
+- `admission_epoch` 在一批过期 reservation 被回收时单调递增，使旧 receipt 不能误减新一批计数；
+- `inflight_expires_at` 是当前批次 reservation 的最晚截止时间，只能被新的有效 admission 向后推进；
+- admission 在一个事务内按 `(dimension, subject_digest)` 规范顺序锁定 login/source 两行；只有 `failure_count + inflight_count` 均低于各自阈值才同时增加两个 `inflight_count`；
+- blocked 或 capacity-exhausted 请求不增加 failure count，也不执行 Argon2；
+- credential 失败以同一个不可由 HTTP 伪造的 admission receipt 原子完成两行：减少 inflight 并增加 failure count/计算 backoff；成功减少两行 inflight，只重置 login failure 状态；取消、hash capacity 或前置依赖失败执行 neutral release，不增加 failure count；
+- finalization outcome unknown 返回技术失败且不盲重试；残留 reservation 最迟在其 deadline 后由下一次 admission 回收，属于短时 fail-closed，而不是永久锁死；
+- application 对一个 receipt 最多 finalize 一次；Repository 以 exact epoch、positive inflight 与两行固定锁序失败关闭，旧 epoch receipt 只能得到 stale/no-op 结果，不能扣减新 reservation。
+
+reservation deadline 取 `min(request deadline, admitted_at + 3s)`，必须晚于 Argon semaphore 等待与一次固定 profile 验证的受控预算，且不得被客户端延长。该设计保留“只累计实际 credential failure”的产品语义，又不在 hash 期间占用数据库连接或行锁；代价是进程崩溃后会在最多一个短租约窗口内保守拒绝一部分请求。
+
+### 11.4 Argon2 并发预算
 
 固定 profile 每次至少消耗约 19 MiB memory，HTTP worker 数不能直接等于允许的 hash 并发数。实现必须提供：
 
@@ -897,7 +912,7 @@ ADR-0028 已把实现不得默默决定的项目收敛为：
 1. LoginName 精确 ASCII grammar、password/login/body/envelope byte/rune 上限；
 2. bootstrap enrollment 最小长度与不在 login transaction 自动 rehash 的边界；
 3. Argon2 profile、最大并发 2 和 250ms admission wait；
-4. 持久双维限速的 15m window、5/30 次阈值与 30s～15m 指数退避；
+4. 持久双维限速的 15m window、5/30 次阈值、30s～15m 指数退避，以及同表 3s 上限的 Argon 前 reservation；
 5. active + optional previous CSRF keyring、32-byte key、key-id grammar 与 8h 兼容上限；
 6. 缺少 Fetch Metadata 时仍必须满足 exact Origin/CSRF；header 存在时只接受 `same-origin`；
 7. current-session GET 以 60s window 刷新 idle，写失败返回 503 且不产生 Principal；
