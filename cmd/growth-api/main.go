@@ -85,27 +85,29 @@ func runWithDependencies(
 	cacheContractInvalid := (config.Lottery.StrategyCache.Enabled && cacheMissing) ||
 		(!config.Lottery.StrategyCache.Enabled && !cacheMissing)
 	if err != nil || nilDatabaseRuntime(components.database) ||
+		nilDatabaseRuntime(components.identityDatabase) ||
+		sameDatabaseRuntime(components.database, components.identityDatabase) ||
+		components.readiness == nil || components.readiness.Validate() != nil ||
+		nilIdentitySessionRuntime(components.identity) || components.identity.Validate() != nil ||
 		cacheContractInvalid || components.selection == nil || components.selection.Validate() != nil {
-		if !nilStrategyCacheRuntime(components.cache) {
-			_ = components.cache.Close()
-		}
-		if !nilDatabaseRuntime(components.database) {
-			// Defend the dependency boundary even when an injected or future
-			// opener violates the conventional nil-on-error contract.
-			_ = components.database.Close()
-		}
+		closePartialRuntime(components)
 		// Runtime errors can contain driver topology, SQL, entropy adapter, or
 		// composition details. Keep the process log to a stable phase.
 		logger.ErrorContext(ctx, "runtime startup failed", slog.String("component", "application"))
 		return 1
 	}
 	database := components.database
+	identityDatabase := components.identityDatabase
 	cache := components.cache
 	databaseClosed := false
+	identityDatabaseClosed := false
 	cacheClosed := false
 	defer func() {
 		if !cacheClosed && !nilStrategyCacheRuntime(cache) {
 			_ = cache.Close()
+		}
+		if !identityDatabaseClosed {
+			_ = identityDatabase.Close()
 		}
 		if !databaseClosed {
 			_ = database.Close()
@@ -120,9 +122,16 @@ func runWithDependencies(
 		Version:          version,
 		Clock:            httpapi.ClockFunc(time.Now),
 		Logger:           logger,
-		ReadinessChecker: database,
-		ReadinessTimeout: config.MySQL.PingTimeout,
+		ReadinessChecker: components.readiness,
+		ReadinessTimeout: dualMySQLReadinessTimeout(
+			config.MySQL.PingTimeout,
+			config.IdentityMySQL.PingTimeout,
+		),
 	})
+	if err := components.identity.RegisterRoutes(router, logger, config.Identity.HandlerTimeout); err != nil {
+		logger.ErrorContext(ctx, "identity HTTP adapter startup failed", slog.String("component", "identity"))
+		return 1
+	}
 	if config.Lottery.EphemeralSelectionEnabled {
 		if err := lotteryhttp.RegisterRoutes(router, components.selection, lotteryhttp.Options{
 			Logger:  logger,
@@ -146,6 +155,8 @@ func runWithDependencies(
 		cacheCloseErr = cache.Close()
 	}
 	cacheClosed = true
+	identityDatabaseCloseErr := identityDatabase.Close()
+	identityDatabaseClosed = true
 	databaseCloseErr := database.Close()
 	databaseClosed = true
 	if serverErr != nil {
@@ -154,14 +165,32 @@ func runWithDependencies(
 	if databaseCloseErr != nil {
 		logger.ErrorContext(ctx, "database shutdown failed", slog.String("component", "mysql"))
 	}
+	if identityDatabaseCloseErr != nil {
+		logger.ErrorContext(ctx, "identity database shutdown failed", slog.String("component", "identity_mysql"))
+	}
 	if cacheCloseErr != nil {
 		logger.ErrorContext(ctx, "cache shutdown failed", slog.String("component", "redis"))
 	}
-	if serverErr != nil || databaseCloseErr != nil || cacheCloseErr != nil {
+	if serverErr != nil || identityDatabaseCloseErr != nil || databaseCloseErr != nil || cacheCloseErr != nil {
 		return 1
 	}
 	logger.InfoContext(ctx, "service stopped")
 	return 0
+}
+
+func closePartialRuntime(components runtimeComponents) {
+	if !nilStrategyCacheRuntime(components.cache) {
+		_ = components.cache.Close()
+	}
+	if !nilDatabaseRuntime(components.identityDatabase) {
+		_ = components.identityDatabase.Close()
+	}
+	if !nilDatabaseRuntime(components.database) &&
+		!sameDatabaseRuntime(components.database, components.identityDatabase) {
+		// Defend the dependency boundary even when an injected or future opener
+		// returns owners alongside an error or aliases one owner unexpectedly.
+		_ = components.database.Close()
+	}
 }
 
 func httpServerConfig(config appconfig.HTTPConfig, logger *slog.Logger) httpserver.Config {

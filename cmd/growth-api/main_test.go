@@ -56,17 +56,30 @@ func TestRunLogsLifecycleWithValidatedConfiguration(t *testing.T) {
 		"GROWTHOS_LOG_FORMAT":   "json",
 	})
 	database := &stubDatabase{}
+	identityDatabase := &stubDatabase{}
+	identity := &stubIdentityRuntime{}
 
 	if exitCode := runWithDependencies(
 		ctx,
 		mapLookup(variables),
 		&output,
-		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
+		runtimeDependencies{OpenRuntime: func(
+			context.Context,
+			runtimeConfiguration,
+			strategycache.Observer,
+		) (runtimeComponents, error) {
+			return stubRuntimeWith(database, identityDatabase, identity), nil
+		}},
 	); exitCode != 0 {
 		t.Fatalf("run() exit code = %d, want 0", exitCode)
 	}
-	if database.closeCalls != 1 {
-		t.Fatalf("database close calls = %d, want exactly 1", database.closeCalls)
+	if database.closeCalls != 1 || identityDatabase.closeCalls != 1 || identity.registerCalls != 1 {
+		t.Fatalf(
+			"business/identity close calls and route calls = %d/%d/%d, want 1/1/1",
+			database.closeCalls,
+			identityDatabase.closeCalls,
+			identity.registerCalls,
+		)
 	}
 	if got := gin.Mode(); got != gin.ReleaseMode {
 		t.Fatalf("Gin mode = %q, want %q so stdout remains structured", got, gin.ReleaseMode)
@@ -216,24 +229,48 @@ func TestRunRedactsDatabaseStartupFailure(t *testing.T) {
 	}
 }
 
-func TestRunClosesUnexpectedDatabaseReturnedWithStartupError(t *testing.T) {
+func TestRunClosesUnexpectedDatabaseOwnersReturnedWithStartupError(t *testing.T) {
 	const secret = "startup-error-password=must-not-leak"
-	database := &stubDatabase{closeErr: errors.New("close-error-password=must-not-leak")}
+	var closeOrder []string
+	database := &stubDatabase{
+		closeErr:   errors.New("close-error-password=must-not-leak"),
+		closeName:  "business",
+		closeOrder: &closeOrder,
+	}
+	identityDatabase := &stubDatabase{
+		closeErr:   errors.New("identity-close-password=must-not-leak"),
+		closeName:  "identity",
+		closeOrder: &closeOrder,
+	}
 	var output bytes.Buffer
 
 	exitCode := runWithDependencies(
 		context.Background(),
 		mapLookup(runtimeVariables(nil)),
 		&output,
-		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, errors.New(secret))},
+		runtimeDependencies{OpenRuntime: func(
+			context.Context,
+			runtimeConfiguration,
+			strategycache.Observer,
+		) (runtimeComponents, error) {
+			return stubRuntimeWith(database, identityDatabase, &stubIdentityRuntime{}), errors.New(secret)
+		}},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
 	}
-	if database.closeCalls != 1 {
-		t.Fatalf("database close calls = %d, want exactly 1", database.closeCalls)
+	if database.closeCalls != 1 || identityDatabase.closeCalls != 1 {
+		t.Fatalf(
+			"database close calls business/identity = %d/%d, want exactly 1/1",
+			database.closeCalls,
+			identityDatabase.closeCalls,
+		)
 	}
-	if strings.Contains(output.String(), secret) || strings.Contains(output.String(), "close-error-password") {
+	if got, want := strings.Join(closeOrder, ","), "identity,business"; got != want {
+		t.Fatalf("startup cleanup order = %q, want %q", got, want)
+	}
+	if strings.Contains(output.String(), secret) || strings.Contains(output.String(), "close-error-password") ||
+		strings.Contains(output.String(), "identity-close-password") {
 		t.Fatalf("database startup log leaked an adapter error: %s", output.String())
 	}
 }
@@ -257,20 +294,27 @@ func TestRunRejectsTypedNilDatabase(t *testing.T) {
 
 func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
 	database := &stubDatabase{}
+	identityDatabase := &stubDatabase{}
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
 		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
-			return runtimeComponents{database: database}, nil
+			components := stubRuntimeWith(database, identityDatabase, &stubIdentityRuntime{})
+			components.selection = nil
+			return components, nil
 		}},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
 	}
-	if database.closeCalls != 1 {
-		t.Fatalf("database close calls = %d, want exactly 1 after partial composition", database.closeCalls)
+	if database.closeCalls != 1 || identityDatabase.closeCalls != 1 {
+		t.Fatalf(
+			"database close calls business/identity = %d/%d, want exactly 1/1 after partial composition",
+			database.closeCalls,
+			identityDatabase.closeCalls,
+		)
 	}
 	if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
 		t.Fatalf("missing selection service was not logged safely: %s", output.String())
@@ -279,26 +323,117 @@ func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
 
 func TestRunRejectsUnconfiguredSelectionServiceAndClosesDatabase(t *testing.T) {
 	database := &stubDatabase{}
+	identityDatabase := &stubDatabase{}
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
 		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
-			return runtimeComponents{
-				database:  database,
-				selection: &application.EphemeralSelectionService{},
-			}, nil
+			components := stubRuntimeWith(database, identityDatabase, &stubIdentityRuntime{})
+			components.selection = &application.EphemeralSelectionService{}
+			return components, nil
 		}},
 	)
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d, want 1", exitCode)
 	}
-	if database.closeCalls != 1 {
-		t.Fatalf("database close calls = %d, want exactly 1 after invalid composition", database.closeCalls)
+	if database.closeCalls != 1 || identityDatabase.closeCalls != 1 {
+		t.Fatalf(
+			"database close calls business/identity = %d/%d, want exactly 1/1 after invalid composition",
+			database.closeCalls,
+			identityDatabase.closeCalls,
+		)
 	}
 	if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
 		t.Fatalf("unconfigured selection service was not logged safely: %s", output.String())
+	}
+}
+
+func TestRunRejectsInvalidReadinessAndIdentityContracts(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(runtimeComponents, *stubDatabase, *stubDatabase, *stubIdentityRuntime) runtimeComponents
+	}{
+		{
+			name: "missing readiness",
+			mutate: func(
+				components runtimeComponents,
+				_, _ *stubDatabase,
+				_ *stubIdentityRuntime,
+			) runtimeComponents {
+				components.readiness = nil
+				return components
+			},
+		},
+		{
+			name: "invalid readiness",
+			mutate: func(
+				components runtimeComponents,
+				business, identityDatabase *stubDatabase,
+				_ *stubIdentityRuntime,
+			) runtimeComponents {
+				components.readiness = &dualMySQLReadiness{
+					business:        business,
+					identity:        identityDatabase,
+					businessTimeout: 0,
+					identityTimeout: time.Second,
+				}
+				return components
+			},
+		},
+		{
+			name: "invalid identity runtime",
+			mutate: func(
+				components runtimeComponents,
+				_, _ *stubDatabase,
+				identity *stubIdentityRuntime,
+			) runtimeComponents {
+				identity.validateErr = errors.New("identity-validation-secret")
+				return components
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			business := &stubDatabase{}
+			identityDatabase := &stubDatabase{}
+			identity := &stubIdentityRuntime{}
+			components := stubRuntimeWith(business, identityDatabase, identity)
+			components = test.mutate(components, business, identityDatabase, identity)
+			var output bytes.Buffer
+
+			exitCode := runWithDependencies(
+				context.Background(),
+				mapLookup(runtimeVariables(nil)),
+				&output,
+				runtimeDependencies{OpenRuntime: func(
+					context.Context,
+					runtimeConfiguration,
+					strategycache.Observer,
+				) (runtimeComponents, error) {
+					return components, nil
+				}},
+			)
+
+			if exitCode != 1 {
+				t.Fatalf("run() exit code = %d, want 1", exitCode)
+			}
+			if business.closeCalls != 1 || identityDatabase.closeCalls != 1 {
+				t.Fatalf(
+					"database close calls business/identity = %d/%d, want 1/1",
+					business.closeCalls,
+					identityDatabase.closeCalls,
+				)
+			}
+			if identity.registerCalls != 0 {
+				t.Fatalf("identity route registration calls = %d, want 0", identity.registerCalls)
+			}
+			if strings.Contains(output.String(), "identity-validation-secret") ||
+				!strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
+				t.Fatalf("runtime contract rejection was unsafe or missing: %s", output.String())
+			}
+		})
 	}
 }
 
@@ -342,6 +477,208 @@ func TestRunClosesDatabaseAfterHTTPServerAndRedactsCloseFailure(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"msg":"database shutdown failed"`) {
 		t.Fatalf("database shutdown failure was not logged: %s", output.String())
+	}
+}
+
+func TestRunClosesEveryOwnerInReverseOrderWhenIdentityRouteRegistrationFails(t *testing.T) {
+	const secret = "identity-route-secret=must-not-leak"
+	var closeOrder []string
+	business := &stubDatabase{closeName: "business", closeOrder: &closeOrder}
+	identityDatabase := &stubDatabase{closeName: "identity", closeOrder: &closeOrder}
+	cache := newStubCacheRuntime()
+	cache.closeName = "cache"
+	cache.closeOrder = &closeOrder
+	identity := &stubIdentityRuntime{registerErr: errors.New(secret)}
+	var output bytes.Buffer
+	variables := runtimeVariables(map[string]string{
+		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
+		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
+	})
+
+	exitCode := runWithDependencies(
+		context.Background(),
+		mapLookup(variables),
+		&output,
+		runtimeDependencies{OpenRuntime: func(
+			context.Context,
+			runtimeConfiguration,
+			strategycache.Observer,
+		) (runtimeComponents, error) {
+			components := stubRuntimeWith(business, identityDatabase, identity)
+			components.cache = cache
+			return components, nil
+		}},
+	)
+
+	if exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if identity.registerCalls != 1 {
+		t.Fatalf("identity route registration calls = %d, want 1", identity.registerCalls)
+	}
+	if got, want := strings.Join(closeOrder, ","), "cache,identity,business"; got != want {
+		t.Fatalf("close order = %q, want %q", got, want)
+	}
+	if cache.closeCalls != 1 || identityDatabase.closeCalls != 1 || business.closeCalls != 1 {
+		t.Fatalf(
+			"close calls cache/identity/business = %d/%d/%d, want 1/1/1",
+			cache.closeCalls,
+			identityDatabase.closeCalls,
+			business.closeCalls,
+		)
+	}
+	if strings.Contains(output.String(), secret) ||
+		!strings.Contains(output.String(), `"msg":"identity HTTP adapter startup failed"`) {
+		t.Fatalf("identity route startup log was unsafe or missing: %s", output.String())
+	}
+}
+
+func TestRunAttemptsEveryReverseOrderCloseAfterServing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var closeOrder []string
+	business := &stubDatabase{
+		closeErr:   errors.New("business-close-secret"),
+		closeName:  "business",
+		closeOrder: &closeOrder,
+	}
+	identityDatabase := &stubDatabase{
+		closeErr:   errors.New("identity-close-secret"),
+		closeName:  "identity",
+		closeOrder: &closeOrder,
+	}
+	cache := newStubCacheRuntime()
+	cache.closeErr = errors.New("cache-close-secret")
+	cache.closeName = "cache"
+	cache.closeOrder = &closeOrder
+	var output bytes.Buffer
+	variables := runtimeVariables(map[string]string{
+		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
+		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
+	})
+
+	exitCode := runWithDependencies(
+		ctx,
+		mapLookup(variables),
+		&output,
+		runtimeDependencies{OpenRuntime: func(
+			context.Context,
+			runtimeConfiguration,
+			strategycache.Observer,
+		) (runtimeComponents, error) {
+			components := stubRuntimeWith(business, identityDatabase, &stubIdentityRuntime{})
+			components.cache = cache
+			return components, nil
+		}},
+	)
+
+	if exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if got, want := strings.Join(closeOrder, ","), "cache,identity,business"; got != want {
+		t.Fatalf("close order = %q, want %q", got, want)
+	}
+	for _, secret := range []string{"cache-close-secret", "identity-close-secret", "business-close-secret"} {
+		if strings.Contains(output.String(), secret) {
+			t.Fatalf("shutdown log leaked %q: %s", secret, output.String())
+		}
+	}
+	for _, message := range []string{
+		`"msg":"cache shutdown failed"`,
+		`"msg":"identity database shutdown failed"`,
+		`"msg":"database shutdown failed"`,
+	} {
+		if !strings.Contains(output.String(), message) {
+			t.Fatalf("shutdown log is missing %s: %s", message, output.String())
+		}
+	}
+}
+
+func TestRunRejectsTypedNilIdentityOwnersAndCleansAcquiredPools(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		components        func(*stubDatabase, *stubDatabase) runtimeComponents
+		wantIdentityClose int
+	}{
+		{
+			name: "identity database",
+			components: func(business, _ *stubDatabase) runtimeComponents {
+				var identityDatabase *stubDatabase
+				return runtimeComponents{
+					database:         business,
+					identityDatabase: identityDatabase,
+					identity:         &stubIdentityRuntime{},
+					selection:        stubSelection(),
+				}
+			},
+		},
+		{
+			name: "identity runtime",
+			components: func(business, identityDatabase *stubDatabase) runtimeComponents {
+				var identity *stubIdentityRuntime
+				return stubRuntimeWith(business, identityDatabase, identity)
+			},
+			wantIdentityClose: 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			business := &stubDatabase{}
+			identityDatabase := &stubDatabase{}
+			var output bytes.Buffer
+			exitCode := runWithDependencies(
+				context.Background(),
+				mapLookup(runtimeVariables(nil)),
+				&output,
+				runtimeDependencies{OpenRuntime: func(
+					context.Context,
+					runtimeConfiguration,
+					strategycache.Observer,
+				) (runtimeComponents, error) {
+					return test.components(business, identityDatabase), nil
+				}},
+			)
+			if exitCode != 1 {
+				t.Fatalf("run() exit code = %d, want 1", exitCode)
+			}
+			if business.closeCalls != 1 || identityDatabase.closeCalls != test.wantIdentityClose {
+				t.Fatalf(
+					"close calls business/identity = %d/%d, want 1/%d",
+					business.closeCalls,
+					identityDatabase.closeCalls,
+					test.wantIdentityClose,
+				)
+			}
+			if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
+				t.Fatalf("typed-nil rejection was not logged safely: %s", output.String())
+			}
+		})
+	}
+}
+
+func TestRunRejectsAliasedDatabaseOwnersAndClosesOnce(t *testing.T) {
+	database := &stubDatabase{}
+	var output bytes.Buffer
+	exitCode := runWithDependencies(
+		context.Background(),
+		mapLookup(runtimeVariables(nil)),
+		&output,
+		runtimeDependencies{OpenRuntime: func(
+			context.Context,
+			runtimeConfiguration,
+			strategycache.Observer,
+		) (runtimeComponents, error) {
+			return stubRuntimeWith(database, database, &stubIdentityRuntime{}), nil
+		}},
+	)
+
+	if exitCode != 1 {
+		t.Fatalf("run() exit code = %d, want 1", exitCode)
+	}
+	if database.closeCalls != 1 {
+		t.Fatalf("aliased database close calls = %d, want exactly 1", database.closeCalls)
+	}
+	if !strings.Contains(output.String(), `"msg":"runtime startup failed"`) {
+		t.Fatalf("aliased database rejection was not logged safely: %s", output.String())
 	}
 }
 
@@ -418,6 +755,29 @@ func TestMySQLRuntimeConfigMapsEveryValidatedSetting(t *testing.T) {
 	}
 }
 
+func TestRuntimeConfigPreservesBothMySQLAuthoritiesAndIdentityPolicy(t *testing.T) {
+	config, err := appconfig.Load(mapLookup(runtimeVariables(map[string]string{
+		"GROWTHOS_ENVIRONMENT":                 "test",
+		"GROWTHOS_MYSQL_USER":                  "growthos_business_test",
+		"GROWTHOS_IDENTITY_MYSQL_USER":         "growthos_identity_test",
+		"GROWTHOS_MYSQL_PING_TIMEOUT":          "2s",
+		"GROWTHOS_IDENTITY_MYSQL_PING_TIMEOUT": "3s",
+	})))
+	if err != nil {
+		t.Fatalf("load validated runtime config: %v", err)
+	}
+
+	got := runtimeConfig(config)
+	if got.Environment != config.Environment ||
+		got.MySQL != config.MySQL ||
+		got.IdentityMySQL != config.IdentityMySQL ||
+		got.Identity != config.Identity ||
+		got.Redis != config.Redis ||
+		got.StrategyCache != config.Lottery.StrategyCache {
+		t.Fatal("runtimeConfig() did not preserve every module authority and policy")
+	}
+}
+
 func TestRedisRuntimeConfigMapsEveryValidatedSetting(t *testing.T) {
 	input := appconfig.RedisConfig{
 		Address:               "cache.internal.example:6380",
@@ -478,6 +838,8 @@ type stubDatabase struct {
 	pingErr    error
 	closeErr   error
 	closeCalls int
+	closeName  string
+	closeOrder *[]string
 }
 
 func (database *stubDatabase) PingContext(context.Context) error {
@@ -486,7 +848,35 @@ func (database *stubDatabase) PingContext(context.Context) error {
 
 func (database *stubDatabase) Close() error {
 	database.closeCalls++
+	if database.closeOrder != nil {
+		*database.closeOrder = append(*database.closeOrder, database.closeName)
+	}
 	return database.closeErr
+}
+
+type stubIdentityRuntime struct {
+	validateErr   error
+	registerErr   error
+	registerCalls int
+}
+
+func (runtime *stubIdentityRuntime) Validate() error {
+	if runtime == nil {
+		return errIdentityHTTPRuntime
+	}
+	return runtime.validateErr
+}
+
+func (runtime *stubIdentityRuntime) RegisterRoutes(
+	*gin.Engine,
+	*slog.Logger,
+	time.Duration,
+) error {
+	if runtime == nil {
+		return errIdentityHTTPRuntime
+	}
+	runtime.registerCalls++
+	return runtime.registerErr
 }
 
 func stubRuntimeOpener(database databaseRuntime, err error) func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
@@ -496,11 +886,37 @@ func stubRuntimeOpener(database databaseRuntime, err error) func(context.Context
 }
 
 func stubRuntime(database databaseRuntime) runtimeComponents {
+	if nilDatabaseRuntime(database) {
+		return runtimeComponents{database: database}
+	}
+	identityDatabase := &stubDatabase{}
+	return stubRuntimeWith(database, identityDatabase, &stubIdentityRuntime{})
+}
+
+func stubRuntimeWith(
+	database databaseRuntime,
+	identityDatabase databaseRuntime,
+	identity identitySessionRuntime,
+) runtimeComponents {
+	readiness, err := newDualMySQLReadiness(database, identityDatabase, time.Second, time.Second)
+	if err != nil {
+		panic(err)
+	}
+	return runtimeComponents{
+		database:         database,
+		identityDatabase: identityDatabase,
+		readiness:        readiness,
+		identity:         identity,
+		selection:        stubSelection(),
+	}
+}
+
+func stubSelection() *application.EphemeralSelectionService {
 	selection, err := application.NewEphemeralSelectionService(stubStrategyReader{}, stubAwardSelector{})
 	if err != nil {
 		panic(err)
 	}
-	return runtimeComponents{database: database, selection: selection}
+	return selection
 }
 
 type stubStrategyReader struct{}

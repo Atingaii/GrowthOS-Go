@@ -8,19 +8,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atingaii/GrowthOS-Go/internal/lottery/application"
 	"github.com/Atingaii/GrowthOS-Go/internal/lottery/domain"
 	"github.com/Atingaii/GrowthOS-Go/internal/platform/appconfig"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 )
 
-func TestComposeRuntimeSharesOnePoolAcrossReadinessRepositoryAndOwnership(t *testing.T) {
+func TestComposeRuntimeKeepsDistinctModulePoolsAcrossRepositoryReadinessAndOwnership(t *testing.T) {
 	sqlDatabase, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("create SQL mock: %v", err)
 	}
 	database := sqlx.NewDb(sqlDatabase, "mysql")
+	identitySQLDatabase, identityMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create Identity SQL mock: %v", err)
+	}
+	identityDatabase := sqlx.NewDb(identitySQLDatabase, "mysql")
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT strategy_id, name FROM lottery_strategy WHERE strategy_id = ?",
@@ -34,14 +38,26 @@ func TestComposeRuntimeSharesOnePoolAcrossReadinessRepositoryAndOwnership(t *tes
 			AddRow(uint64(7), "Only award", uint64(1), "reward"),
 	)
 	mock.ExpectCommit()
+	identityMock.ExpectClose()
 	mock.ExpectClose()
 
-	components, err := composeRuntime(context.Background(), database, nil, runtimeConfiguration{}, nil)
+	components, err := composeRuntime(
+		context.Background(),
+		database,
+		identityDatabase,
+		nil,
+		testRuntimeConfiguration(),
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("compose runtime: %v", err)
 	}
 	if components.database != database {
 		t.Fatal("runtime readiness/ownership handle is not the pool supplied to Repository composition")
+	}
+	if components.identityDatabase != identityDatabase || components.readiness == nil ||
+		nilIdentitySessionRuntime(components.identity) {
+		t.Fatal("runtime lost the distinct Identity pool, readiness, or session boundary")
 	}
 	selection, err := components.selection.Select(context.Background(), domain.StrategyID(42))
 	if err != nil {
@@ -50,11 +66,17 @@ func TestComposeRuntimeSharesOnePoolAcrossReadinessRepositoryAndOwnership(t *tes
 	if selection.Strategy.ID() != 42 || selection.Award.ID() != 7 {
 		t.Fatalf("selection = Strategy %d Award %d, want 42/7", selection.Strategy.ID(), selection.Award.ID())
 	}
+	if err := components.identityDatabase.Close(); err != nil {
+		t.Fatalf("close composed Identity pool: %v", err)
+	}
 	if err := components.database.Close(); err != nil {
 		t.Fatalf("close composed pool: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("runtime did not use and close exactly the supplied pool: %v", err)
+	}
+	if err := identityMock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("runtime did not close exactly the supplied Identity pool: %v", err)
 	}
 }
 
@@ -64,6 +86,11 @@ func TestComposeRuntimeDecoratesRepositoryOnlyWhenCacheIsEnabled(t *testing.T) {
 		t.Fatalf("create SQL mock: %v", err)
 	}
 	database := sqlx.NewDb(sqlDatabase, "mysql")
+	identitySQLDatabase, identityMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create Identity SQL mock: %v", err)
+	}
+	identityDatabase := sqlx.NewDb(identitySQLDatabase, "mysql")
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT strategy_id, name FROM lottery_strategy WHERE strategy_id = ?",
@@ -77,20 +104,22 @@ func TestComposeRuntimeDecoratesRepositoryOnlyWhenCacheIsEnabled(t *testing.T) {
 			AddRow(uint64(7), "Only award", uint64(1), "reward"),
 	)
 	mock.ExpectCommit()
+	identityMock.ExpectClose()
 	mock.ExpectClose()
 
 	cache := newStubCacheRuntime()
-	config := runtimeConfiguration{
-		Environment: appconfig.EnvironmentTest,
-		StrategyCache: appconfig.StrategyCacheConfig{
-			Enabled:       true,
-			TTL:           5 * time.Minute,
-			LookupTimeout: 75 * time.Millisecond,
-			WriteTimeout:  75 * time.Millisecond,
-			FillTimeout:   2 * time.Second,
-		},
+	config := testRuntimeConfiguration()
+	config.Environment = appconfig.EnvironmentTest
+	config.StrategyCache = appconfig.StrategyCacheConfig{
+		Enabled:       true,
+		TTL:           5 * time.Minute,
+		LookupTimeout: 75 * time.Millisecond,
+		WriteTimeout:  75 * time.Millisecond,
+		FillTimeout:   2 * time.Second,
 	}
-	components, err := composeRuntime(context.Background(), database, cache, config, nil)
+	components, err := composeRuntime(
+		context.Background(), database, identityDatabase, cache, config, nil,
+	)
 	if err != nil {
 		t.Fatalf("compose cached runtime: %v", err)
 	}
@@ -116,11 +145,17 @@ func TestComposeRuntimeDecoratesRepositoryOnlyWhenCacheIsEnabled(t *testing.T) {
 	if err := components.cache.Close(); err != nil {
 		t.Fatalf("close cache: %v", err)
 	}
+	if err := components.identityDatabase.Close(); err != nil {
+		t.Fatalf("close Identity database: %v", err)
+	}
 	if err := components.database.Close(); err != nil {
 		t.Fatalf("close database: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("cache did not prevent the second authoritative read: %v", err)
+	}
+	if err := identityMock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("Identity pool ownership was not preserved: %v", err)
 	}
 }
 
@@ -141,12 +176,16 @@ func TestComposeRuntimeRejectsCacheOwnershipMismatch(t *testing.T) {
 				t.Fatalf("create SQL mock: %v", err)
 			}
 			database := sqlx.NewDb(sqlDatabase, "mysql")
-			components, err := composeRuntime(context.Background(), database, test.cache, runtimeConfiguration{
-				Environment: appconfig.EnvironmentDevelopment,
-				StrategyCache: appconfig.StrategyCacheConfig{
-					Enabled: test.enabled,
-				},
-			}, nil)
+			identitySQLDatabase, _, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("create Identity SQL mock: %v", err)
+			}
+			identityDatabase := sqlx.NewDb(identitySQLDatabase, "mysql")
+			config := testRuntimeConfiguration()
+			config.StrategyCache.Enabled = test.enabled
+			components, err := composeRuntime(
+				context.Background(), database, identityDatabase, test.cache, config, nil,
+			)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("composeRuntime() error = %v, want %v", err, test.want)
 			}
@@ -154,17 +193,73 @@ func TestComposeRuntimeRejectsCacheOwnershipMismatch(t *testing.T) {
 				t.Fatalf("partial runtime = %#v, want zero", components)
 			}
 			_ = database.Close()
+			_ = identityDatabase.Close()
 		})
 	}
 }
 
-func TestComposeRuntimeRejectsNilPoolWithoutCreatingPartialRuntime(t *testing.T) {
-	components, err := composeRuntime(context.Background(), nil, nil, runtimeConfiguration{}, nil)
-	if !errors.Is(err, application.ErrRepositoryNotConfigured) {
-		t.Fatalf("composeRuntime(nil) error = %v, want repository not configured", err)
+func TestComposeRuntimeRejectsMissingOrAliasedPoolsWithoutCreatingPartialRuntime(t *testing.T) {
+	database := newIdentityCompositionDatabase(t)
+	for _, test := range []struct {
+		name     string
+		business *sqlx.DB
+		identity *sqlx.DB
+		want     error
+	}{
+		{name: "missing business", identity: database, want: errMySQLRuntimeRequired},
+		{name: "missing identity", business: database, want: errMySQLRuntimeRequired},
+		{name: "aliased", business: database, identity: database, want: errAliasedMySQLRuntime},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			components, err := composeRuntime(
+				context.Background(), test.business, test.identity, nil,
+				testRuntimeConfiguration(), nil,
+			)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("composeRuntime() error = %v, want %v", err, test.want)
+			}
+			if components != (runtimeComponents{}) {
+				t.Fatalf("partial runtime = %#v, want zero", components)
+			}
+		})
 	}
-	if components.database != nil || components.cache != nil || components.selection != nil {
+}
+
+func TestComposeRuntimeRejectsDistinctWrappersOverOneUnderlyingPool(t *testing.T) {
+	sqlDatabase, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create SQL mock: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDatabase.Close() })
+	business := sqlx.NewDb(sqlDatabase, "mysql")
+	identity := sqlx.NewDb(sqlDatabase, "mysql")
+
+	components, err := composeRuntime(
+		context.Background(),
+		business,
+		identity,
+		nil,
+		testRuntimeConfiguration(),
+		nil,
+	)
+	if !errors.Is(err, errAliasedMySQLRuntime) {
+		t.Fatalf("composeRuntime() error = %v, want %v", err, errAliasedMySQLRuntime)
+	}
+	if components != (runtimeComponents{}) {
 		t.Fatalf("partial runtime = %#v, want zero", components)
+	}
+}
+
+func testRuntimeConfiguration() runtimeConfiguration {
+	return runtimeConfiguration{
+		Environment: appconfig.EnvironmentDevelopment,
+		MySQL: appconfig.MySQLConfig{
+			PingTimeout: 2 * time.Second,
+		},
+		IdentityMySQL: appconfig.MySQLConfig{
+			PingTimeout: 2 * time.Second,
+		},
+		Identity: testIdentityConfig(appconfig.IdentityCookieModeDevelopment),
 	}
 }
 
@@ -176,6 +271,8 @@ type stubCacheRuntime struct {
 	deleteCalls int
 	closeCalls  int
 	closeErr    error
+	closeName   string
+	closeOrder  *[]string
 }
 
 func newStubCacheRuntime() *stubCacheRuntime {
@@ -220,5 +317,8 @@ func (cache *stubCacheRuntime) Close() error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	cache.closeCalls++
+	if cache.closeOrder != nil {
+		*cache.closeOrder = append(*cache.closeOrder, cache.closeName)
+	}
 	return cache.closeErr
 }

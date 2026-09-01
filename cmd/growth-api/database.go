@@ -20,6 +20,9 @@ func nilDatabaseRuntime(database databaseRuntime) bool {
 	if database == nil {
 		return true
 	}
+	if pool, ok := database.(*sqlx.DB); ok {
+		return pool == nil || pool.DB == nil
+	}
 	value := reflect.ValueOf(database)
 	switch value.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
@@ -27,6 +30,28 @@ func nilDatabaseRuntime(database databaseRuntime) bool {
 	default:
 		return false
 	}
+}
+
+func sameDatabaseRuntime(left, right databaseRuntime) bool {
+	if nilDatabaseRuntime(left) || nilDatabaseRuntime(right) {
+		return false
+	}
+	leftPool, leftIsPool := left.(*sqlx.DB)
+	rightPool, rightIsPool := right.(*sqlx.DB)
+	if leftIsPool && rightIsPool && leftPool.DB == rightPool.DB {
+		return true
+	}
+	leftValue := reflect.ValueOf(left)
+	rightValue := reflect.ValueOf(right)
+	if leftValue.Type() != rightValue.Type() {
+		return false
+	}
+	if leftValue.Kind() == reflect.Pointer {
+		return leftValue.Pointer() == rightValue.Pointer()
+	}
+	// A non-pointer value has no stable owner identity. Treating equal values as
+	// aliases could skip the Close call of an independently acquired resource.
+	return false
 }
 
 type databaseRuntime interface {
@@ -42,21 +67,28 @@ type strategyCacheRuntime interface {
 var (
 	errStrategyCacheRuntimeRequired   = errors.New("strategy cache runtime is required")
 	errUnexpectedStrategyCacheRuntime = errors.New("strategy cache runtime must be absent when disabled")
+	errMySQLRuntimeRequired           = errors.New("business and identity mysql pools are required")
+	errAliasedMySQLRuntime            = errors.New("business and identity mysql pools must be distinct")
 )
 
-// runtimeComponents is the fully composed product runtime. The concrete sqlx
-// pool is retained while constructing the Repository, then exposed only through
-// its readiness/ownership boundary. Repository and readiness therefore share
-// exactly one pool without a type assertion or a second connection opener.
+// runtimeComponents is the fully composed product runtime. Each module keeps
+// one authoritative sqlx pool behind the shared readiness/ownership boundary:
+// Lottery receives only the business pool and Identity receives only the
+// Identity pool. The two owners must never alias.
 type runtimeComponents struct {
-	database  databaseRuntime
-	cache     strategyCacheRuntime
-	selection *application.EphemeralSelectionService
+	database         databaseRuntime
+	identityDatabase databaseRuntime
+	cache            strategyCacheRuntime
+	readiness        *dualMySQLReadiness
+	identity         identitySessionRuntime
+	selection        *application.EphemeralSelectionService
 }
 
 type runtimeConfiguration struct {
 	Environment   appconfig.Environment
 	MySQL         appconfig.MySQLConfig
+	IdentityMySQL appconfig.MySQLConfig
+	Identity      appconfig.IdentityConfig
 	Redis         appconfig.RedisConfig
 	StrategyCache appconfig.StrategyCacheConfig
 }
@@ -79,11 +111,20 @@ func openRuntime(
 		return runtimeComponents{}, err
 	}
 	keepDatabase := false
+	identityDatabase, err := mysqlstore.Open(ctx, mysqlRuntimeConfig(config.IdentityMySQL))
+	if err != nil {
+		_ = database.Close()
+		return runtimeComponents{}, err
+	}
+	keepIdentityDatabase := false
 	var cache *redisstore.Client
 	keepCache := false
 	defer func() {
 		if cache != nil && !keepCache {
 			_ = cache.Close()
+		}
+		if !keepIdentityDatabase {
+			_ = identityDatabase.Close()
 		}
 		if !keepDatabase {
 			_ = database.Close()
@@ -97,12 +138,13 @@ func openRuntime(
 		}
 	}
 
-	components, err := composeRuntime(ctx, database, cache, config, observer)
+	components, err := composeRuntime(ctx, database, identityDatabase, cache, config, observer)
 	if err != nil {
 		return runtimeComponents{}, err
 	}
 
 	keepDatabase = true
+	keepIdentityDatabase = true
 	keepCache = cache != nil
 	return components, nil
 }
@@ -110,10 +152,17 @@ func openRuntime(
 func composeRuntime(
 	lifecycle context.Context,
 	database *sqlx.DB,
+	identityDatabase *sqlx.DB,
 	cache strategyCacheRuntime,
 	config runtimeConfiguration,
 	observer strategycache.Observer,
 ) (runtimeComponents, error) {
+	if database == nil || identityDatabase == nil || database.DB == nil || identityDatabase.DB == nil {
+		return runtimeComponents{}, errMySQLRuntimeRequired
+	}
+	if database == identityDatabase || database.DB == identityDatabase.DB {
+		return runtimeComponents{}, errAliasedMySQLRuntime
+	}
 	repository, err := mysqlrepo.New(database)
 	if err != nil {
 		return runtimeComponents{}, err
@@ -139,14 +188,36 @@ func composeRuntime(
 	if err != nil {
 		return runtimeComponents{}, err
 	}
+	identityRuntime, err := composeIdentityHTTP(identityDatabase, config.Identity)
+	if err != nil {
+		return runtimeComponents{}, err
+	}
+	readiness, err := newDualMySQLReadiness(
+		database,
+		identityDatabase,
+		config.MySQL.PingTimeout,
+		config.IdentityMySQL.PingTimeout,
+	)
+	if err != nil {
+		return runtimeComponents{}, err
+	}
 
-	return runtimeComponents{database: database, cache: cache, selection: selection}, nil
+	return runtimeComponents{
+		database:         database,
+		identityDatabase: identityDatabase,
+		cache:            cache,
+		readiness:        readiness,
+		identity:         identityRuntime,
+		selection:        selection,
+	}, nil
 }
 
 func runtimeConfig(config appconfig.Config) runtimeConfiguration {
 	return runtimeConfiguration{
 		Environment:   config.Environment,
 		MySQL:         config.MySQL,
+		IdentityMySQL: config.IdentityMySQL,
+		Identity:      config.Identity,
 		Redis:         config.Redis,
 		StrategyCache: config.Lottery.StrategyCache,
 	}
