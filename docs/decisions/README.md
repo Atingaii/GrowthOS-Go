@@ -32,6 +32,7 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0025](ADR-0025-lottery-strategy-routing-graph-evaluation.md) | 已接受 | 以 exact graph/fact/time snapshots、迭代单路径、step/time budget 与零部分结果建立 Lottery 专属封闭类型 graph evaluator |
 | [ADR-0026](ADR-0026-activity-publication-binding.md) | 已接受 | 以 create-only Strategy snapshot、Activity 不可变 publication、exact 配置闭合集、CAS 与追加回滚建立 Marketing 发布边界 |
 | [ADR-0027](ADR-0027-governance-access-control-model.md) | 已接受 | 由 Governance 拥有统一、不可变、默认拒绝的访问控制模型，以精确 Role/Permission/Resource/Action/Scope 和可审计 Decision 约束后续安全演进 |
+| [ADR-0028](ADR-0028-identity-session-authentication.md) | 已接受（实现待验收） | 由独立 Identity 上下文以 Argon2id、MySQL opaque session、受约束 Cookie/CSRF 与独立最小权限连接产生可信 human Principal |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。
 
