@@ -190,6 +190,7 @@ func TestPolicyConfigurationFailsClosedAndFormattingIsRedacted(t *testing.T) {
 		"", " http://127.0.0.1:8088", "https://127.0.0.1:8088",
 		"http://example.com", "http://127.0.0.1:8088/", "http://127.0.0.1:8088?x=1",
 		"http://user@127.0.0.1:8088", "http://127.0.0.1:not-a-port",
+		"http://127.0.0.1:80", "http://[0:0:0:0:0:0:0:1]:8088",
 	} {
 		if _, err := NewDevelopment(origin); !errors.Is(err, ErrInvalidConfiguration) {
 			t.Fatalf("NewDevelopment(%q) error = %v", origin, err)
@@ -198,6 +199,7 @@ func TestPolicyConfigurationFailsClosedAndFormattingIsRedacted(t *testing.T) {
 	for _, origin := range []string{
 		"", "http://growth.example.com", "https://growth.example.com/",
 		"https://user@growth.example.com", "https://growth.example.com#fragment",
+		"https://Growth.example.com", "https://growth.example.com:443",
 	} {
 		if _, err := NewProduction(origin); !errors.Is(err, ErrInvalidConfiguration) {
 			t.Fatalf("NewProduction(%q) error = %v", origin, err)

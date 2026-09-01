@@ -7,9 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"strconv"
-	"strings"
+
+	"github.com/Atingaii/GrowthOS-Go/internal/platform/weborigin"
 )
 
 const (
@@ -110,22 +110,6 @@ func UnsafeMethod(method string) bool {
 }
 
 func validOrigin(value string) bool {
-	if value == "" || strings.TrimSpace(value) != value {
-		return false
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
-		parsed.Host == "" || parsed.User != nil || parsed.Path != "" ||
-		parsed.RawPath != "" || parsed.RawQuery != "" || parsed.ForceQuery ||
-		parsed.Fragment != "" || parsed.Opaque != "" || parsed.Hostname() == "" ||
-		strings.Contains(parsed.Hostname(), "%") {
-		return false
-	}
-	if port := parsed.Port(); port != "" {
-		numeric, err := strconv.Atoi(port)
-		if err != nil || numeric < 1 || numeric > 65535 || strconv.Itoa(numeric) != port {
-			return false
-		}
-	}
-	return true
+	_, err := weborigin.ParseExact(value)
+	return err == nil
 }

@@ -12,6 +12,7 @@ import (
 
 func TestProductionImportsStayOutsideBusinessAndPersistenceBoundaries(t *testing.T) {
 	const modulePath = "github.com/Atingaii/GrowthOS-Go/"
+	const allowedOriginPackage = modulePath + "internal/platform/weborigin"
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -29,9 +30,10 @@ func TestProductionImportsStayOutsideBusinessAndPersistenceBoundaries(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.HasPrefix(importPath, modulePath+"internal/") ||
-				strings.Contains(importPath, "mysql") || strings.Contains(importPath, "gin") ||
-				strings.Contains(importPath, "redis") {
+			if importPath != allowedOriginPackage &&
+				(strings.HasPrefix(importPath, modulePath+"internal/") ||
+					strings.Contains(importPath, "mysql") || strings.Contains(importPath, "gin") ||
+					strings.Contains(importPath, "redis")) {
 				t.Errorf("forbidden request-guard dependency %q", importPath)
 			}
 		}

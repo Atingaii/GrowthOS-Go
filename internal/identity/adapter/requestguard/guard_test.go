@@ -110,6 +110,8 @@ func TestGuardConfigurationAndFormattingFailClosed(t *testing.T) {
 		"", " http://127.0.0.1:8088", "ftp://127.0.0.1:8088",
 		"http://127.0.0.1:8088/", "http://user@127.0.0.1:8088",
 		"http://127.0.0.1:08088", "http://127.0.0.1:not-a-port",
+		"http://127.0.0.1:80", "https://Growth.example",
+		"http://[0:0:0:0:0:0:0:1]:8088",
 	} {
 		if _, err := New(origin); !errors.Is(err, ErrInvalidConfiguration) {
 			t.Fatalf("New(%q) error = %v", origin, err)

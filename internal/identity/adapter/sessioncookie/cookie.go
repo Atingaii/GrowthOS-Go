@@ -6,11 +6,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/netip"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Atingaii/GrowthOS-Go/internal/platform/weborigin"
 )
 
 const (
@@ -241,30 +240,8 @@ func alternateCookieName(configured string) string {
 }
 
 func validPublicOrigin(value, scheme string, loopbackOnly bool) bool {
-	if value == "" || strings.TrimSpace(value) != value {
-		return false
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != scheme || parsed.Host == "" || parsed.User != nil ||
-		parsed.Path != "" || parsed.RawPath != "" || parsed.RawQuery != "" ||
-		parsed.ForceQuery || parsed.Fragment != "" || parsed.Opaque != "" {
-		return false
-	}
-	hostname := parsed.Hostname()
-	if hostname == "" || strings.Contains(hostname, "%") {
-		return false
-	}
-	if port := parsed.Port(); port != "" {
-		numeric, err := strconv.Atoi(port)
-		if err != nil || numeric < 1 || numeric > 65535 || strconv.Itoa(numeric) != port {
-			return false
-		}
-	}
-	if !loopbackOnly {
-		return true
-	}
-	address, err := netip.ParseAddr(hostname)
-	return err == nil && address.IsLoopback()
+	origin, err := weborigin.ParseExact(value)
+	return err == nil && origin.Scheme() == scheme && (!loopbackOnly || origin.IsLoopback())
 }
 
 func canonicalNonZero(value time.Time) bool {
