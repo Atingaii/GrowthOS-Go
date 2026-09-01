@@ -76,6 +76,25 @@ func TestLoadBuildsIndependentIdentityPoolOnSharedDeploymentEndpoint(t *testing.
 	}
 }
 
+func TestLoadRejectsAliasedBusinessAndIdentityRuntimeAccounts(t *testing.T) {
+	const privateUser = "SAME_PRIVATE_RUNTIME_USER"
+	config, err := Load(mapLookup(apiVariables(map[string]string{
+		mysqlUserVariable:         privateUser,
+		identityMySQLUserVariable: privateUser,
+	})))
+	if err == nil || config != (Config{}) {
+		t.Fatal("Load() accepted one MySQL identity for both authority boundaries")
+	}
+	for _, variable := range []string{mysqlUserVariable, identityMySQLUserVariable} {
+		if !strings.Contains(err.Error(), variable) {
+			t.Fatalf("Load() error = %q, want %s", err, variable)
+		}
+	}
+	if strings.Contains(err.Error(), privateUser) {
+		t.Fatalf("Load() disclosed the aliased account name: %q", err)
+	}
+}
+
 func TestLoadRejectsInvalidIdentityMySQLValuesWithoutEchoingThem(t *testing.T) {
 	tests := []struct {
 		variable string

@@ -382,7 +382,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		maximumMySQLReadTimeout,
 		&problems,
 	)
-	loadMySQLUser(lookup, mysqlUserVariable, &config.MySQL.User, &problems)
+	mysqlUserValid := loadMySQLUser(lookup, mysqlUserVariable, &config.MySQL.User, &problems)
 	loadRequiredPassword(lookup, mysqlPasswordVariable, mysqlPasswordFileVariable, &config.MySQL.Password, &problems)
 	mysqlPingTimeoutValid := loadDuration(lookup, mysqlPingTimeoutVariable, maximumMySQLPingTimeout, &config.MySQL.PingTimeout, &problems)
 	maxOpenValid := loadInteger(lookup, mysqlMaxOpenConnsVariable, 1, maximumMySQLConnections, &config.MySQL.MaxOpenConnections, &problems)
@@ -397,7 +397,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			config.MySQL.PingTimeout > config.HTTP.WriteTimeout-readinessResponseBudget) {
 		problems = append(problems, fmt.Errorf("%s plus a %s response budget must be no greater than %s", mysqlPingTimeoutVariable, readinessResponseBudget, httpWriteTimeoutVariable))
 	}
-	loadIdentityMySQL(
+	identityMySQLUserValid := loadIdentityMySQL(
 		lookup,
 		config.MySQL.MySQLConnectionConfig,
 		config.HTTP.WriteTimeout,
@@ -405,6 +405,13 @@ func Load(lookup LookupFunc) (Config, error) {
 		&config.IdentityMySQL,
 		&problems,
 	)
+	if mysqlUserValid && identityMySQLUserValid && config.MySQL.User == config.IdentityMySQL.User {
+		problems = append(problems, fmt.Errorf(
+			"%s and %s must identify different runtime accounts",
+			mysqlUserVariable,
+			identityMySQLUserVariable,
+		))
+	}
 	loadIdentity(
 		lookup,
 		config.Environment,
@@ -597,20 +604,21 @@ func loadOptionalString(lookup LookupFunc, variable string, destination *string,
 	}
 }
 
-func loadMySQLUser(lookup LookupFunc, variable string, destination *string, problems *[]error) {
+func loadMySQLUser(lookup LookupFunc, variable string, destination *string, problems *[]error) bool {
 	value, present := lookup(variable)
 	if !present {
-		return
+		return validMySQLUser(*destination)
 	}
 	if strings.TrimSpace(value) == "" {
 		*problems = append(*problems, fmt.Errorf("%s must not be empty", variable))
-		return
+		return false
 	}
 	if !validMySQLUser(value) {
 		*problems = append(*problems, fmt.Errorf("%s must contain 1 to 32 printable Unicode characters, no control characters, and no leading or trailing whitespace", variable))
-		return
+		return false
 	}
 	*destination = value
+	return true
 }
 
 func loadRequiredPassword(

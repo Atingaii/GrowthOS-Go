@@ -45,7 +45,7 @@ func loadIdentityMySQL(
 	httpWriteTimeoutValid bool,
 	destination *MySQLConfig,
 	problems *[]error,
-) {
+) bool {
 	// Identity shares the deployment endpoint, schema, TLS policy and bounded
 	// connect/write timeouts, but has its own runtime account, read budget and
 	// connection pool. A separate MySQLConfig lets composition create a distinct
@@ -54,7 +54,7 @@ func loadIdentityMySQL(
 	destination.MySQLConnectionConfig = shared
 	destination.ReadTimeout = readTimeout
 
-	loadMySQLUser(lookup, identityMySQLUserVariable, &destination.User, problems)
+	userValid := loadMySQLUser(lookup, identityMySQLUserVariable, &destination.User, problems)
 	loadRequiredPassword(
 		lookup,
 		identityMySQLPasswordVariable,
@@ -124,4 +124,5 @@ func loadIdentityMySQL(
 			httpWriteTimeoutVariable,
 		))
 	}
+	return userValid
 }
