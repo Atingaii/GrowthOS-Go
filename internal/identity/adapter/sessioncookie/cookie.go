@@ -168,35 +168,69 @@ func (policy *Policy) Clear() (*http.Cookie, error) {
 // Read accepts exactly one configured cookie and rejects the alternate
 // environment name, duplicates, noncanonical Base64URL, and wrong lengths.
 func (policy *Policy) Read(request *http.Request) ([]byte, error) {
+	rawToken, present, err := policy.ReadOptional(request)
+	if err != nil {
+		return nil, err
+	}
+	if !present {
+		return nil, ErrCookieMissing
+	}
+	return rawToken, nil
+}
+
+// ReadOptional distinguishes an absent session credential from a malformed
+// one. This lets login requests keep unrelated browser cookies without
+// weakening duplicate, alternate-mode, or malformed session-cookie rejection.
+func (policy *Policy) ReadOptional(request *http.Request) ([]byte, bool, error) {
 	if policy.Validate() != nil || request == nil {
-		return nil, ErrCookieInvalid
+		return nil, false, ErrCookieInvalid
+	}
+	if !hasRelatedCookieHeader(request, policy.name, alternateCookieName(policy.name)) {
+		return nil, false, nil
 	}
 	var selected *http.Cookie
 	for _, cookie := range request.Cookies() {
 		if cookie.Name == alternateCookieName(policy.name) {
-			return nil, ErrCookieInvalid
+			return nil, true, ErrCookieInvalid
 		}
 		if cookie.Name != policy.name {
 			continue
 		}
 		if selected != nil {
-			return nil, ErrCookieInvalid
+			return nil, true, ErrCookieInvalid
 		}
 		selected = cookie
 	}
 	if selected == nil {
-		return nil, ErrCookieMissing
+		// The raw header named this credential, but net/http could not restore
+		// it as one valid cookie-pair. Treat that as malformed, not absent.
+		return nil, true, ErrCookieInvalid
 	}
 	if len(selected.Value) != base64.RawURLEncoding.EncodedLen(SessionTokenBytes) {
-		return nil, ErrCookieInvalid
+		return nil, true, ErrCookieInvalid
 	}
 	rawToken, err := base64.RawURLEncoding.DecodeString(selected.Value)
 	if err != nil || len(rawToken) != SessionTokenBytes || allZero(rawToken) ||
 		base64.RawURLEncoding.EncodeToString(rawToken) != selected.Value {
 		clear(rawToken)
-		return nil, ErrCookieInvalid
+		return nil, true, ErrCookieInvalid
 	}
-	return rawToken, nil
+	return rawToken, true, nil
+}
+
+func hasRelatedCookieHeader(request *http.Request, names ...string) bool {
+	for _, line := range request.Header.Values("Cookie") {
+		for _, part := range strings.Split(line, ";") {
+			name, _, _ := strings.Cut(strings.TrimSpace(part), "=")
+			name = strings.TrimSpace(name)
+			for _, expected := range names {
+				if name == expected {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func alternateCookieName(configured string) string {

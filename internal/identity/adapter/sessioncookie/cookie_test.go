@@ -136,6 +136,38 @@ func TestReadRejectsMissingDuplicateAlternateAndMalformed(t *testing.T) {
 	}
 }
 
+func TestReadOptionalDistinguishesUnrelatedCookiesFromBrokenSessionCookies(t *testing.T) {
+	policy := mustDevelopmentPolicy(t)
+	valid := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x75}, SessionTokenBytes))
+
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8088/api/v1/session", nil)
+	request.Header.Add("Cookie", "analytics=opaque; locale=zh-CN")
+	rawToken, present, err := policy.ReadOptional(request)
+	if err != nil || present || rawToken != nil {
+		t.Fatalf("unrelated cookies = token:%x present:%v error:%v", rawToken, present, err)
+	}
+
+	for _, cookieLine := range []string{
+		DevelopmentCookieName,
+		DevelopmentCookieName + "=short",
+		DevelopmentCookieName + "=" + valid + "; " + DevelopmentCookieName + "=" + valid,
+		ProductionCookieName + "=" + valid,
+	} {
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8088/api/v1/session", nil)
+		request.Header.Add("Cookie", "analytics=opaque; "+cookieLine)
+		if rawToken, present, err := policy.ReadOptional(request); !present || !errors.Is(err, ErrCookieInvalid) || rawToken != nil {
+			t.Fatalf("broken session cookie %q = token:%x present:%v error:%v", cookieLine, rawToken, present, err)
+		}
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8088/api/v1/session", nil)
+	request.Header.Add("Cookie", "analytics=opaque; "+DevelopmentCookieName+"="+valid)
+	rawToken, present, err = policy.ReadOptional(request)
+	if err != nil || !present || !bytes.Equal(rawToken, bytes.Repeat([]byte{0x75}, SessionTokenBytes)) {
+		t.Fatalf("valid optional session = token:%x present:%v error:%v", rawToken, present, err)
+	}
+}
+
 func TestClearMatchesScopeAndExpiresImmediately(t *testing.T) {
 	for _, policy := range []*Policy{
 		mustDevelopmentPolicy(t), mustProductionPolicy(t),
