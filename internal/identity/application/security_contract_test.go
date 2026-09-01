@@ -72,11 +72,11 @@ func TestSensitiveApplicationValuesAreRedactedInEveryGenericSink(t *testing.T) {
 		"issue-secret-correlation",
 		applicationTestNow.Add(-time.Minute),
 	)
-	principal, err := principalFromAccount(account)
+	principalID, err := principalIDFromAccount(account)
 	if err != nil {
 		t.Fatal(err)
 	}
-	verified, err := newVerifiedSession(principal, session)
+	verified, err := newVerifiedSession(principalID, session)
 	if err != nil {
 		t.Fatal(err)
 	}

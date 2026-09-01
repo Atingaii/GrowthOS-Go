@@ -81,11 +81,11 @@ func (service *ResolveService) Resolve(
 	if !active {
 		return VerifiedSession{}, wrapOperationError(ErrUnauthenticated, ErrSessionInactive)
 	}
-	principal, err := principalFromAccount(account)
+	principalID, err := principalIDFromAccount(account)
 	if err != nil {
 		return VerifiedSession{}, wrapOperationError(ErrAuthenticationUnavailable, err)
 	}
-	verified, err := newVerifiedSession(principal, session)
+	verified, err := newVerifiedSession(principalID, session)
 	if err != nil {
 		return VerifiedSession{}, wrapOperationError(ErrAuthenticationUnavailable, err)
 	}

@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	governance "github.com/Atingaii/GrowthOS-Go/internal/governance/domain"
 	identity "github.com/Atingaii/GrowthOS-Go/internal/identity/domain"
 )
 
@@ -105,8 +104,7 @@ func TestLoginSuccessUsesStrictSequenceAndFreshSession(t *testing.T) {
 		t.Fatal("RawToken did not return a defensive copy")
 	}
 	verified := issued.VerifiedSession()
-	if verified.Principal().Kind() != governance.PrincipalKindHuman ||
-		verified.Principal().ID().String() != account.PrincipalID().String() ||
+	if verified.PrincipalID() != account.PrincipalID() ||
 		verified.SessionReference() != capturedAttempt.Session().Reference() {
 		t.Fatalf("server-derived identity mismatch: %#v", verified)
 	}

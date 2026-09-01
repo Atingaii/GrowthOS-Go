@@ -9,11 +9,10 @@ import (
 	"testing"
 	"time"
 
-	governance "github.com/Atingaii/GrowthOS-Go/internal/governance/domain"
 	identity "github.com/Atingaii/GrowthOS-Go/internal/identity/domain"
 )
 
-func TestResolveReturnsOnlyAuthoritativeHumanPrincipal(t *testing.T) {
+func TestResolveReturnsOnlyAuthoritativePrincipalID(t *testing.T) {
 	t.Parallel()
 
 	rawToken := make([]byte, SessionTokenBytes)
@@ -55,8 +54,7 @@ func TestResolveReturnsOnlyAuthoritativeHumanPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if verified.Validate() != nil || verified.Principal().Kind() != governance.PrincipalKindHuman ||
-		verified.Principal().ID().String() != account.PrincipalID().String() ||
+	if verified.Validate() != nil || verified.PrincipalID() != account.PrincipalID() ||
 		verified.SessionReference() != session.Reference() || calls != 1 {
 		t.Fatalf("verified output mismatch: %#v", verified)
 	}

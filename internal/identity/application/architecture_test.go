@@ -19,8 +19,7 @@ func TestProductionImportsStayInsideIdentityApplicationBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	allowedInternal := map[string]bool{
-		modulePath + "internal/identity/domain":   true,
-		modulePath + "internal/governance/domain": true,
+		modulePath + "internal/identity/domain": true,
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") ||

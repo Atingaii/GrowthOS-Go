@@ -6,7 +6,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	governance "github.com/Atingaii/GrowthOS-Go/internal/governance/domain"
 	identity "github.com/Atingaii/GrowthOS-Go/internal/identity/domain"
 )
 
@@ -29,9 +28,9 @@ const (
 )
 
 // VerifiedSession is a trusted application output. Its private fields ensure a
-// transport cannot assemble one from caller-controlled Principal/session data.
+// transport cannot assemble one from caller-controlled principal/session data.
 type VerifiedSession struct {
-	principal         governance.Principal
+	principalID       identity.PrincipalID
 	sessionReference  identity.SessionRef
 	authenticatedAt   time.Time
 	idleExpiresAt     time.Time
@@ -39,11 +38,11 @@ type VerifiedSession struct {
 }
 
 func newVerifiedSession(
-	principal governance.Principal,
+	principalID identity.PrincipalID,
 	session identity.Session,
 ) (VerifiedSession, error) {
 	verified := VerifiedSession{
-		principal:         principal,
+		principalID:       principalID,
 		sessionReference:  session.Reference(),
 		authenticatedAt:   session.IssuedAt(),
 		idleExpiresAt:     session.IdleExpiresAt(),
@@ -56,8 +55,7 @@ func newVerifiedSession(
 }
 
 func (verified VerifiedSession) Validate() error {
-	if verified.principal.Validate() != nil ||
-		verified.principal.Kind() != governance.PrincipalKindHuman ||
+	if verified.principalID.Validate() != nil ||
 		verified.sessionReference.Validate() != nil ||
 		verified.authenticatedAt.IsZero() ||
 		verified.idleExpiresAt.IsZero() ||
@@ -72,9 +70,10 @@ func (verified VerifiedSession) Validate() error {
 	return nil
 }
 
-func (verified VerifiedSession) Principal() governance.Principal {
-	return verified.principal
-}
+// PrincipalID is the authentication-layer subject identifier. Converting it
+// into a Governance Principal belongs to the later authorization integration
+// chapter, so real-session authentication does not import the policy kernel.
+func (verified VerifiedSession) PrincipalID() identity.PrincipalID { return verified.principalID }
 
 func (verified VerifiedSession) SessionReference() identity.SessionRef {
 	return verified.sessionReference
@@ -229,17 +228,13 @@ func allZero(value []byte) bool {
 	return combined == 0
 }
 
-func principalFromAccount(account identity.WorkforceAccount) (governance.Principal, error) {
+func principalIDFromAccount(account identity.WorkforceAccount) (identity.PrincipalID, error) {
 	if account.Validate() != nil || account.Status() != identity.AccountStatusEnabled {
-		return governance.Principal{}, ErrAuthenticationUnavailable
+		return "", ErrAuthenticationUnavailable
 	}
-	principalID, err := governance.NewPrincipalID(account.PrincipalID().String())
-	if err != nil {
-		return governance.Principal{}, ErrAuthenticationUnavailable
+	principalID := account.PrincipalID()
+	if principalID.Validate() != nil {
+		return "", ErrAuthenticationUnavailable
 	}
-	principal, err := governance.NewPrincipal(governance.PrincipalKindHuman, principalID)
-	if err != nil {
-		return governance.Principal{}, ErrAuthenticationUnavailable
-	}
-	return principal, nil
+	return principalID, nil
 }
