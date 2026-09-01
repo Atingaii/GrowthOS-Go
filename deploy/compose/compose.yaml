@@ -17,6 +17,7 @@ services:
       - mysql_root_password
       - mysql_app_password
       - mysql_migration_password
+      - mysql_identity_password
     volumes:
       - mysql_data:/var/lib/mysql
       - mysql_socket:/var/run/mysqld
@@ -81,6 +82,7 @@ services:
     command: []
     secrets:
       - mysql_root_password
+      - mysql_identity_password
     volumes:
       - ./mysql/grants/empty:/var/lib/mysql:ro
       - mysql_socket:/var/run/mysqld:ro
@@ -126,12 +128,16 @@ services:
       GROWTHOS_MYSQL_USER: growthos_app
       GROWTHOS_MYSQL_PASSWORD_FILE: /run/secrets/mysql_app_password
       GROWTHOS_MYSQL_PING_TIMEOUT: 2s
+      GROWTHOS_IDENTITY_MYSQL_USER: growthos_identity
+      GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE: /run/secrets/mysql_identity_password
+      GROWTHOS_IDENTITY_MYSQL_PING_TIMEOUT: 2s
       GROWTHOS_REDIS_ADDRESS: redis:6379
       GROWTHOS_REDIS_USERNAME: growthos_api
       GROWTHOS_REDIS_PASSWORD_FILE: /run/secrets/redis_password
       GROWTHOS_REDIS_TLS_MODE: disabled
     secrets:
       - mysql_app_password
+      - mysql_identity_password
       - redis_password
     depends_on:
       mysql-grants:
@@ -228,6 +234,8 @@ secrets:
     file: ./secrets/mysql_app_password
   mysql_migration_password:
     file: ./secrets/mysql_migration_password
+  mysql_identity_password:
+    file: ./secrets/mysql_identity_password
   redis_password:
     file: ./secrets/redis_password
 

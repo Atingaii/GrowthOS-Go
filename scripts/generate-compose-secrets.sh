@@ -4,7 +4,8 @@ set -eu
 repository_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 secret_directory=${1:-"$repository_root/deploy/compose/secrets"}
 compose_project=${GROWTHOS_COMPOSE_PROJECT:-growthos}
-secret_names="mysql_root_password mysql_app_password mysql_migration_password redis_password"
+secret_names="mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password redis_password"
+legacy_secret_names="mysql_root_password mysql_app_password mysql_migration_password redis_password"
 
 if ! command -v openssl >/dev/null 2>&1; then
     printf '%s\n' 'openssl is required to generate Compose development secrets' >&2
@@ -44,17 +45,54 @@ validate_secret() {
 }
 
 present_count=0
+expected_count=0
 for name in $secret_names; do
+    expected_count=$((expected_count + 1))
     if [ -e "$secret_directory/$name" ]; then
         present_count=$((present_count + 1))
     fi
 done
 
-if [ "$present_count" -eq 4 ]; then
+if [ "$present_count" -eq "$expected_count" ]; then
     for name in $secret_names; do
         validate_secret "$secret_directory/$name"
     done
     printf '%s\n' "Compose development secrets are valid in $secret_directory"
+    exit 0
+fi
+
+# Lesson 32 adds one new runtime identity without changing any pre-existing
+# account password. The only accepted partial state is the exact four-file
+# legacy set: validate it first, then atomically create only the new Identity
+# secret. Any other partial set remains a hard failure.
+legacy_set_complete=1
+for name in $legacy_secret_names; do
+    if [ ! -e "$secret_directory/$name" ]; then
+        legacy_set_complete=0
+    fi
+done
+if [ "$legacy_set_complete" -eq 1 ] && [ ! -e "$secret_directory/mysql_identity_password" ]; then
+    for name in $legacy_secret_names; do
+        validate_secret "$secret_directory/$name"
+    done
+
+    temporary_directory=$(mktemp -d "$secret_directory/.generate.XXXXXX")
+    # shellcheck disable=SC2329 # invoked indirectly by this branch's trap
+    cleanup() {
+        if [ -n "${temporary_directory:-}" ] && [ -d "$temporary_directory" ]; then
+            rm -rf "$temporary_directory"
+        fi
+    }
+    trap cleanup EXIT HUP INT TERM
+
+    openssl rand -hex 32 > "$temporary_directory/mysql_identity_password"
+    validate_secret "$temporary_directory/mysql_identity_password"
+    mv "$temporary_directory/mysql_identity_password" "$secret_directory/mysql_identity_password"
+    rmdir "$temporary_directory"
+    temporary_directory=
+    trap - EXIT HUP INT TERM
+
+    printf '%s\n' "Extended the validated legacy Compose secret set with the Identity secret in $secret_directory"
     exit 0
 fi
 

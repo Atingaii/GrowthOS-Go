@@ -374,7 +374,7 @@ cleanup_temporary_directories() {
         if ! verify_temporary_directory "$secret_directory" "$secret_directory_identity" secret; then
             temporary_cleanup_status=1
         else
-            for secret_name in mysql_root_password mysql_app_password mysql_migration_password redis_password; do
+            for secret_name in mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password redis_password; do
                 remove_regular_file "$secret_directory/$secret_name" || temporary_cleanup_status=1
             done
             if ! rmdir "$secret_directory"; then
@@ -797,10 +797,32 @@ if ! docker inspect "$resolved_container_id" | jq -e \
     --arg cache "${compose_project}_cache" '
         (.[0].NetworkSettings.Networks | keys | sort) == ([$edge, $data, $cache] | sort) and
         ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))] | sort) ==
-            (["/run/secrets/mysql_app_password", "/run/secrets/redis_password"] | sort)
+            (["/run/secrets/mysql_app_password", "/run/secrets/mysql_identity_password", "/run/secrets/redis_password"] | sort)
     ' >/dev/null; then
-    fail 'api network or Secret mounts differ from the MySQL plus cache contract'
+    fail 'api network or Secret mounts differ from the business/Identity MySQL plus cache contract'
 fi
+for mysql_secret_consumer in mysql migrate mysql-grants; do
+    resolve_container "$mysql_secret_consumer"
+    case "$mysql_secret_consumer" in
+        mysql)
+            expected_mysql_secret_mounts='["/run/secrets/mysql_app_password","/run/secrets/mysql_identity_password","/run/secrets/mysql_migration_password","/run/secrets/mysql_root_password"]'
+            ;;
+        migrate)
+            expected_mysql_secret_mounts='["/run/secrets/mysql_migration_password"]'
+            ;;
+        mysql-grants)
+            expected_mysql_secret_mounts='["/run/secrets/mysql_identity_password","/run/secrets/mysql_root_password"]'
+            ;;
+    esac
+    if ! docker inspect "$resolved_container_id" | jq -e \
+        --argjson expected "$expected_mysql_secret_mounts" '
+            ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))] | sort) ==
+                ($expected | sort)
+        ' >/dev/null; then
+        fail "$mysql_secret_consumer Secret mounts exceed or omit its exact MySQL ownership set"
+    fi
+done
+ok 'MySQL, migrator, grant reconciler, and API each receive only their declared MySQL Secrets'
 resolve_container redis
 if ! docker inspect "$resolved_container_id" | jq -e --arg cache "${compose_project}_cache" '
     (.[0].NetworkSettings.Networks | keys) == [$cache] and
@@ -958,6 +980,72 @@ if [ -n "$mandatory_roles" ]; then
 fi
 ok 'growthos_app has the exact direct grants and no mandatory-role expansion'
 
+# shellcheck disable=SC2016
+actual_identity_grants=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos \
+        --batch --silent --skip-column-names --execute="SHOW GRANTS FOR CURRENT_USER"
+' | LC_ALL=C sort) || fail 'could not inspect growthos_identity grants'
+expected_identity_grants=$(LC_ALL=C sort <<'EOF'
+GRANT SELECT, UPDATE (`updated_at`) ON `growthos`.`identity_workforce_account` TO `growthos_identity`@`%`
+GRANT SELECT, INSERT, UPDATE, DELETE ON `growthos`.`identity_session` TO `growthos_identity`@`%`
+GRANT SELECT, INSERT, UPDATE, DELETE ON `growthos`.`identity_authentication_throttle` TO `growthos_identity`@`%`
+GRANT USAGE ON *.* TO `growthos_identity`@`%`
+EOF
+)
+if [ "$actual_identity_grants" != "$expected_identity_grants" ]; then
+    fail 'growthos_identity grants differ from the exact three-table allowlist'
+fi
+# shellcheck disable=SC2016
+if ! compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos --silent \
+        --execute="
+            SELECT 1 FROM identity_workforce_account LIMIT 0;
+            SELECT 1 FROM identity_session LIMIT 0;
+            SELECT 1 FROM identity_authentication_throttle LIMIT 0
+        "
+' >/dev/null; then
+    fail 'growthos_identity cannot read its exact Identity table allowlist'
+fi
+for identity_denied_table in schema_migrations lottery_strategy lottery_strategy_award marketing_activity; do
+    # shellcheck disable=SC2016
+    if compose exec -T mysql sh -c '
+        export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+        mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos --silent \
+            --execute="SELECT 1 FROM $1 LIMIT 0"
+    ' sh "$identity_denied_table" >/dev/null 2>&1; then
+        fail "growthos_identity unexpectedly read $identity_denied_table"
+    fi
+done
+# MySQL requires an UPDATE privilege for locking reads. The account grant is
+# deliberately limited to updated_at, never the credential-bearing columns.
+# shellcheck disable=SC2016
+if ! compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos --silent \
+        --execute="START TRANSACTION; SELECT account_id FROM identity_workforce_account WHERE FALSE FOR UPDATE; ROLLBACK"
+' >/dev/null; then
+    fail 'growthos_identity cannot take the required workforce-account locking read'
+fi
+# shellcheck disable=SC2016
+if ! compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos --silent \
+        --execute="UPDATE identity_workforce_account SET updated_at = updated_at WHERE FALSE"
+' >/dev/null; then
+    fail 'growthos_identity cannot exercise its updated_at-only account grant'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos --silent \
+        --execute="UPDATE identity_workforce_account SET login_name = login_name WHERE FALSE"
+' >/dev/null 2>&1; then
+    fail 'growthos_identity unexpectedly has workforce-account login_name UPDATE permission'
+fi
+ok 'growthos_identity has exact session/throttle DML, account SELECT plus updated_at-only UPDATE, and no business/migration/credential-write access'
+
 for denied_unassembled_table in \
     lottery_strategy_routing_graph \
     lottery_strategy_routing_node \
@@ -966,7 +1054,10 @@ for denied_unassembled_table in \
     lottery_strategy_snapshot_award \
     marketing_activity \
     marketing_activity_publication \
-    marketing_activity_publication_strategy; do
+    marketing_activity_publication_strategy \
+    identity_workforce_account \
+    identity_session \
+    identity_authentication_throttle; do
     # shellcheck disable=SC2016
     if compose exec -T mysql sh -c '
         export MYSQL_PWD="$(cat /run/secrets/mysql_app_password)"
@@ -990,7 +1081,7 @@ if compose exec -T mysql sh -c '
 ' >/dev/null 2>&1; then
     fail 'growthos_app unexpectedly has routing-graph INSERT permission'
 fi
-ok 'growthos_app cannot read unassembled graph, snapshot, or Activity tables and cannot insert graph data'
+ok 'growthos_app cannot read unassembled graph, snapshot, Activity, or Identity tables and cannot insert graph data'
 
 # Fixture writes use the migration/fixture identity, never the product API
 # identity. All inserts are in one transaction, so an intermediate SQL failure
@@ -1602,6 +1693,15 @@ actual_app_grants_after=$(compose exec -T mysql sh -c '
 if [ "$actual_app_grants_after" != "$expected_app_grants" ]; then
     fail 'growthos_app grants drifted during HTTP acceptance'
 fi
+# shellcheck disable=SC2016
+actual_identity_grants_after=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity --database=growthos \
+        --batch --silent --skip-column-names --execute="SHOW GRANTS FOR CURRENT_USER"
+' | LC_ALL=C sort) || fail 'could not recheck growthos_identity grants'
+if [ "$actual_identity_grants_after" != "$expected_identity_grants" ]; then
+    fail 'growthos_identity grants drifted during HTTP acceptance'
+fi
 if ! docker inspect "$web_container_id" | jq -e --arg port "$web_port" '
     .[0].NetworkSettings.Ports == {
         "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": $port}]
@@ -1613,5 +1713,5 @@ published_container_ids_after=$(containers_publishing_loopback_port "$web_port")
 if [ "$published_container_ids_after" != "$web_container_id" ]; then
     fail 'the disposable web port lost its unique ownership during HTTP acceptance'
 fi
-ok 'post-traffic migration, grants, and loopback port checks remained exact'
+ok 'post-traffic migration, both runtime grant sets, and loopback port checks remained exact'
 ok "lesson-30 schema plus lesson-24 cache isolated Compose acceptance passed for $compose_project"
