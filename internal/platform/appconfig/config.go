@@ -141,12 +141,13 @@ const (
 
 // Config is the validated configuration for the growth-api process.
 type Config struct {
-	Environment Environment
-	HTTP        HTTPConfig
-	Lottery     LotteryConfig
-	Log         LogConfig
-	MySQL       MySQLConfig
-	Redis       RedisConfig
+	Environment   Environment
+	HTTP          HTTPConfig
+	Lottery       LotteryConfig
+	Log           LogConfig
+	MySQL         MySQLConfig
+	IdentityMySQL MySQLConfig
+	Redis         RedisConfig
 }
 
 // MigrationConfig is the validated configuration for the migration process.
@@ -182,8 +183,9 @@ type LogConfig struct {
 	Format LogFormat
 }
 
-// MySQLConnectionConfig contains the non-secret connection settings shared by
-// the API and migration processes.
+// MySQLConnectionConfig contains the non-secret deployment settings shared by
+// business, Identity, and migration connections. Each runtime still owns a
+// distinct credential and pool.
 type MySQLConnectionConfig struct {
 	Address        string
 	Database       string
@@ -194,7 +196,8 @@ type MySQLConnectionConfig struct {
 	WriteTimeout   time.Duration
 }
 
-// MySQLConfig controls the API's least-privilege database account and pool.
+// MySQLConfig controls one API-owned least-privilege database account and
+// pool. Config keeps business and Identity values in separate instances.
 type MySQLConfig struct {
 	MySQLConnectionConfig
 	User                  string
@@ -255,8 +258,9 @@ func (MigrationMySQLConfig) MarshalJSON() ([]byte, error) {
 type LookupFunc func(key string) (value string, found bool)
 
 // Default returns the public, non-secret defaults for the growth-api process.
-// The required MySQL password and optional Redis password intentionally have no
-// defaults, so callers must still use Load before starting the process.
+// The required business and Identity MySQL passwords and optional Redis
+// password intentionally have no defaults, so callers must still use Load
+// before starting the process.
 func Default() Config {
 	return Config{
 		Environment: EnvironmentDevelopment,
@@ -286,7 +290,8 @@ func Default() Config {
 			ConnectionMaxLifetime: defaultMySQLConnMaxLifetime,
 			ConnectionMaxIdleTime: defaultMySQLConnMaxIdleTime,
 		},
-		Redis: defaultRedisConfig(),
+		IdentityMySQL: defaultIdentityMySQLConfig(),
+		Redis:         defaultRedisConfig(),
 	}
 }
 
@@ -390,6 +395,14 @@ func Load(lookup LookupFunc) (Config, error) {
 			config.MySQL.PingTimeout > config.HTTP.WriteTimeout-readinessResponseBudget) {
 		problems = append(problems, fmt.Errorf("%s plus a %s response budget must be no greater than %s", mysqlPingTimeoutVariable, readinessResponseBudget, httpWriteTimeoutVariable))
 	}
+	loadIdentityMySQL(
+		lookup,
+		config.MySQL.MySQLConnectionConfig,
+		config.HTTP.WriteTimeout,
+		httpWriteTimeoutValid,
+		&config.IdentityMySQL,
+		&problems,
+	)
 	if httpWriteTimeoutValid && lotterySelectionTimeoutValid &&
 		(config.HTTP.WriteTimeout <= selectionResponseBudget ||
 			config.Lottery.SelectionTimeout > config.HTTP.WriteTimeout-selectionResponseBudget) {

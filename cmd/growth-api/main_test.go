@@ -24,8 +24,9 @@ func TestRunRejectsInvalidConfigurationWithoutEchoingValue(t *testing.T) {
 	exitCode := run(
 		context.Background(),
 		mapLookup(map[string]string{
-			"GROWTHOS_LOG_LEVEL":      secretValue,
-			"GROWTHOS_MYSQL_PASSWORD": "unit-test-password",
+			"GROWTHOS_LOG_LEVEL":               secretValue,
+			"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
+			"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
 		}),
 		&output,
 	)
@@ -51,11 +52,12 @@ func TestRunLogsLifecycleWithValidatedConfiguration(t *testing.T) {
 	cancel()
 	var output bytes.Buffer
 	variables := map[string]string{
-		"GROWTHOS_ENVIRONMENT":    "test",
-		"GROWTHOS_HTTP_ADDRESS":   "127.0.0.1:9090",
-		"GROWTHOS_LOG_LEVEL":      "info",
-		"GROWTHOS_LOG_FORMAT":     "json",
-		"GROWTHOS_MYSQL_PASSWORD": "unit-test-password",
+		"GROWTHOS_ENVIRONMENT":             "test",
+		"GROWTHOS_HTTP_ADDRESS":            "127.0.0.1:9090",
+		"GROWTHOS_LOG_LEVEL":               "info",
+		"GROWTHOS_LOG_FORMAT":              "json",
+		"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
+		"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
 	}
 	database := &stubDatabase{}
 
@@ -96,9 +98,10 @@ func TestRunHonorsErrorLogLevel(t *testing.T) {
 	cancel()
 	var output bytes.Buffer
 	variables := map[string]string{
-		"GROWTHOS_LOG_LEVEL":      "error",
-		"GROWTHOS_LOG_FORMAT":     "json",
-		"GROWTHOS_MYSQL_PASSWORD": "unit-test-password",
+		"GROWTHOS_LOG_LEVEL":               "error",
+		"GROWTHOS_LOG_FORMAT":              "json",
+		"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
+		"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
 	}
 
 	if exitCode := runWithDependencies(
@@ -123,6 +126,7 @@ func TestRunOwnsAndClosesEnabledCacheRuntime(t *testing.T) {
 	variables := map[string]string{
 		"GROWTHOS_ENVIRONMENT":                    "test",
 		"GROWTHOS_MYSQL_PASSWORD":                 "unit-test-password",
+		"GROWTHOS_IDENTITY_MYSQL_PASSWORD":        "unit-test-identity-password",
 		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
 		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
 	}
@@ -153,6 +157,7 @@ func TestRunRedactsEnabledCacheShutdownFailure(t *testing.T) {
 	variables := map[string]string{
 		"GROWTHOS_ENVIRONMENT":                    "test",
 		"GROWTHOS_MYSQL_PASSWORD":                 "unit-test-password",
+		"GROWTHOS_IDENTITY_MYSQL_PASSWORD":        "unit-test-identity-password",
 		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
 		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
 	}
@@ -200,7 +205,7 @@ func TestRunRejectsMissingDatabaseSecretBeforeOpening(t *testing.T) {
 func TestRunRedactsDatabaseStartupFailure(t *testing.T) {
 	const secret = "mysql://root:must-not-leak@private-host/growthos"
 	var output bytes.Buffer
-	variables := map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}
+	variables := runtimePasswordVariables()
 
 	exitCode := runWithDependencies(
 		context.Background(),
@@ -228,7 +233,7 @@ func TestRunClosesUnexpectedDatabaseReturnedWithStartupError(t *testing.T) {
 
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		mapLookup(runtimePasswordVariables()),
 		&output,
 		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, errors.New(secret))},
 	)
@@ -248,7 +253,7 @@ func TestRunRejectsTypedNilDatabase(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		mapLookup(runtimePasswordVariables()),
 		&output,
 		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	)
@@ -265,7 +270,7 @@ func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		mapLookup(runtimePasswordVariables()),
 		&output,
 		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			return runtimeComponents{database: database}, nil
@@ -287,7 +292,7 @@ func TestRunRejectsUnconfiguredSelectionServiceAndClosesDatabase(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		mapLookup(runtimePasswordVariables()),
 		&output,
 		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			return runtimeComponents{
@@ -311,7 +316,7 @@ func TestRunRejectsMissingRuntimeOpener(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		mapLookup(runtimePasswordVariables()),
 		&output,
 		runtimeDependencies{},
 	)
@@ -332,7 +337,7 @@ func TestRunClosesDatabaseAfterHTTPServerAndRedactsCloseFailure(t *testing.T) {
 
 	exitCode := runWithDependencies(
 		ctx,
-		mapLookup(map[string]string{"GROWTHOS_MYSQL_PASSWORD": "unit-test-password"}),
+		mapLookup(runtimePasswordVariables()),
 		&output,
 		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	)
@@ -528,6 +533,13 @@ func mapLookup(values map[string]string) func(string) (string, bool) {
 	return func(key string) (string, bool) {
 		value, found := values[key]
 		return value, found
+	}
+}
+
+func runtimePasswordVariables() map[string]string {
+	return map[string]string{
+		"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
+		"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
 	}
 }
 

@@ -54,6 +54,22 @@ func TestDefaultUsesOnlyPublicNonSecretValues(t *testing.T) {
 			ConnectionMaxLifetime: 3 * time.Minute,
 			ConnectionMaxIdleTime: time.Minute,
 		},
+		IdentityMySQL: MySQLConfig{
+			MySQLConnectionConfig: MySQLConnectionConfig{
+				Address:        "127.0.0.1:3306",
+				Database:       "growthos",
+				TLSMode:        MySQLTLSDisabled,
+				ConnectTimeout: 3 * time.Second,
+				ReadTimeout:    5 * time.Second,
+				WriteTimeout:   5 * time.Second,
+			},
+			User:                  "growthos_identity",
+			PingTimeout:           3 * time.Second,
+			MaxOpenConnections:    10,
+			MaxIdleConnections:    10,
+			ConnectionMaxLifetime: 3 * time.Minute,
+			ConnectionMaxIdleTime: time.Minute,
+		},
 		Redis: RedisConfig{
 			Address:               "127.0.0.1:6379",
 			Username:              "growthos_api",
@@ -73,6 +89,9 @@ func TestDefaultUsesOnlyPublicNonSecretValues(t *testing.T) {
 	if config.MySQL.Password != "" {
 		t.Fatal("Default() unexpectedly contains an API password")
 	}
+	if config.IdentityMySQL.Password != "" {
+		t.Fatal("Default() unexpectedly contains an Identity password")
+	}
 }
 
 func TestLoadRequiresAPIPassword(t *testing.T) {
@@ -90,49 +109,57 @@ func TestLoadRequiresAPIPassword(t *testing.T) {
 
 func TestLoadAppliesCompleteOverride(t *testing.T) {
 	variables := map[string]string{
-		environmentVariable:                 "production",
-		httpAddressVariable:                 "127.0.0.1:9090",
-		httpShutdownTimeoutVariable:         "10s",
-		httpReadHeaderTimeoutVariable:       "3s",
-		httpReadTimeoutVariable:             "20s",
-		httpWriteTimeoutVariable:            "45s",
-		httpIdleTimeoutVariable:             "2m",
-		lotterySelectionTimeoutVariable:     "11s",
-		logLevelVariable:                    "warn",
-		logFormatVariable:                   "text",
-		mysqlAddressVariable:                "db.internal.example:4406",
-		mysqlDatabaseVariable:               "growthos_prod",
-		mysqlTLSModeVariable:                "verify_identity",
-		mysqlTLSCAFileVariable:              "/run/secrets/mysql-ca.pem",
-		mysqlConnectTimeoutVariable:         "7s",
-		mysqlReadTimeoutVariable:            "25s",
-		mysqlWriteTimeoutVariable:           "35s",
-		mysqlUserVariable:                   "api-user@private",
-		mysqlPasswordVariable:               " arbitrary API password \x00 ",
-		mysqlPingTimeoutVariable:            "8s",
-		mysqlMaxOpenConnsVariable:           "42",
-		mysqlMaxIdleConnsVariable:           "17",
-		mysqlConnMaxLifetimeVariable:        "12m",
-		mysqlConnMaxIdleTimeVariable:        "7m",
-		lotteryStrategyCacheEnabledVariable: "true",
-		lotteryStrategyCacheTTLVariable:     "4m",
-		lotteryStrategyCacheLookupVariable:  "100ms",
-		lotteryStrategyCacheWriteVariable:   "120ms",
-		lotteryStrategyCacheFillVariable:    "4s",
-		redisAddressVariable:                "redis.internal.example:6380",
-		redisUsernameVariable:               "growthos_api_prod",
-		redisPasswordVariable:               "redis unit-test password",
-		redisDatabaseVariable:               "0",
-		redisTLSModeVariable:                "verify_identity",
-		redisTLSCAFileVariable:              "/run/secrets/redis-ca.pem",
-		redisDialTimeoutVariable:            "300ms",
-		redisReadTimeoutVariable:            "125ms",
-		redisWriteTimeoutVariable:           "150ms",
-		redisPoolTimeoutVariable:            "175ms",
-		redisPoolSizeVariable:               "32",
-		redisMinIdleConnsVariable:           "4",
-		redisConnMaxLifetimeVariable:        "20m",
-		redisConnMaxIdleTimeVariable:        "8m",
+		environmentVariable:                  "production",
+		httpAddressVariable:                  "127.0.0.1:9090",
+		httpShutdownTimeoutVariable:          "10s",
+		httpReadHeaderTimeoutVariable:        "3s",
+		httpReadTimeoutVariable:              "20s",
+		httpWriteTimeoutVariable:             "45s",
+		httpIdleTimeoutVariable:              "2m",
+		lotterySelectionTimeoutVariable:      "11s",
+		logLevelVariable:                     "warn",
+		logFormatVariable:                    "text",
+		mysqlAddressVariable:                 "db.internal.example:4406",
+		mysqlDatabaseVariable:                "growthos_prod",
+		mysqlTLSModeVariable:                 "verify_identity",
+		mysqlTLSCAFileVariable:               "/run/secrets/mysql-ca.pem",
+		mysqlConnectTimeoutVariable:          "7s",
+		mysqlReadTimeoutVariable:             "25s",
+		mysqlWriteTimeoutVariable:            "35s",
+		mysqlUserVariable:                    "api-user@private",
+		mysqlPasswordVariable:                " arbitrary API password \x00 ",
+		mysqlPingTimeoutVariable:             "8s",
+		mysqlMaxOpenConnsVariable:            "42",
+		mysqlMaxIdleConnsVariable:            "17",
+		mysqlConnMaxLifetimeVariable:         "12m",
+		mysqlConnMaxIdleTimeVariable:         "7m",
+		identityMySQLUserVariable:            "identity-user@private",
+		identityMySQLPasswordVariable:        " arbitrary Identity password \x00 ",
+		identityMySQLReadTimeoutVariable:     "20s",
+		identityMySQLPingTimeoutVariable:     "7s",
+		identityMySQLMaxOpenConnsVariable:    "19",
+		identityMySQLMaxIdleConnsVariable:    "11",
+		identityMySQLConnMaxLifetimeVariable: "10m",
+		identityMySQLConnMaxIdleTimeVariable: "6m",
+		lotteryStrategyCacheEnabledVariable:  "true",
+		lotteryStrategyCacheTTLVariable:      "4m",
+		lotteryStrategyCacheLookupVariable:   "100ms",
+		lotteryStrategyCacheWriteVariable:    "120ms",
+		lotteryStrategyCacheFillVariable:     "4s",
+		redisAddressVariable:                 "redis.internal.example:6380",
+		redisUsernameVariable:                "growthos_api_prod",
+		redisPasswordVariable:                "redis unit-test password",
+		redisDatabaseVariable:                "0",
+		redisTLSModeVariable:                 "verify_identity",
+		redisTLSCAFileVariable:               "/run/secrets/redis-ca.pem",
+		redisDialTimeoutVariable:             "300ms",
+		redisReadTimeoutVariable:             "125ms",
+		redisWriteTimeoutVariable:            "150ms",
+		redisPoolTimeoutVariable:             "175ms",
+		redisPoolSizeVariable:                "32",
+		redisMinIdleConnsVariable:            "4",
+		redisConnMaxLifetimeVariable:         "20m",
+		redisConnMaxIdleTimeVariable:         "8m",
 	}
 
 	config, err := Load(mapLookup(variables))
@@ -180,6 +207,24 @@ func TestLoadAppliesCompleteOverride(t *testing.T) {
 			MaxIdleConnections:    17,
 			ConnectionMaxLifetime: 12 * time.Minute,
 			ConnectionMaxIdleTime: 7 * time.Minute,
+		},
+		IdentityMySQL: MySQLConfig{
+			MySQLConnectionConfig: MySQLConnectionConfig{
+				Address:        "db.internal.example:4406",
+				Database:       "growthos_prod",
+				TLSMode:        MySQLTLSVerifyIdentity,
+				TLSCAFile:      "/run/secrets/mysql-ca.pem",
+				ConnectTimeout: 7 * time.Second,
+				ReadTimeout:    20 * time.Second,
+				WriteTimeout:   35 * time.Second,
+			},
+			User:                  "identity-user@private",
+			Password:              " arbitrary Identity password \x00 ",
+			PingTimeout:           7 * time.Second,
+			MaxOpenConnections:    19,
+			MaxIdleConnections:    11,
+			ConnectionMaxLifetime: 10 * time.Minute,
+			ConnectionMaxIdleTime: 6 * time.Minute,
 		},
 		Redis: RedisConfig{
 			Address:               "redis.internal.example:6380",
@@ -279,6 +324,13 @@ func TestLoadRejectsPresentEmptyVariables(t *testing.T) {
 		mysqlMaxIdleConnsVariable,
 		mysqlConnMaxLifetimeVariable,
 		mysqlConnMaxIdleTimeVariable,
+		identityMySQLUserVariable,
+		identityMySQLReadTimeoutVariable,
+		identityMySQLPingTimeoutVariable,
+		identityMySQLMaxOpenConnsVariable,
+		identityMySQLMaxIdleConnsVariable,
+		identityMySQLConnMaxLifetimeVariable,
+		identityMySQLConnMaxIdleTimeVariable,
 		redisAddressVariable,
 		redisUsernameVariable,
 		redisDatabaseVariable,
@@ -632,9 +684,10 @@ func TestLoadRequiresReadinessBudgetBeforeHTTPWriteDeadline(t *testing.T) {
 	}
 
 	config, err := Load(mapLookup(apiVariables(map[string]string{
-		httpWriteTimeoutVariable:        "3s",
-		mysqlPingTimeoutVariable:        "2s",
-		lotterySelectionTimeoutVariable: "2s",
+		httpWriteTimeoutVariable:         "3s",
+		mysqlPingTimeoutVariable:         "2s",
+		identityMySQLPingTimeoutVariable: "2s",
+		lotterySelectionTimeoutVariable:  "2s",
 	})))
 	if err != nil {
 		t.Fatalf("Load() ordered timeout error = %v", err)
@@ -664,9 +717,10 @@ func TestLoadRequiresLotterySelectionBudgetBeforeHTTPWriteDeadline(t *testing.T)
 	}
 
 	config, err := Load(mapLookup(apiVariables(map[string]string{
-		httpWriteTimeoutVariable:        "3s",
-		lotterySelectionTimeoutVariable: "2s",
-		mysqlPingTimeoutVariable:        "2s",
+		httpWriteTimeoutVariable:         "3s",
+		lotterySelectionTimeoutVariable:  "2s",
+		mysqlPingTimeoutVariable:         "2s",
+		identityMySQLPingTimeoutVariable: "2s",
 	})))
 	if err != nil {
 		t.Fatalf("Load() ordered Lottery timeout error = %v", err)
@@ -767,7 +821,10 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 	if len(password) != maximumPasswordBytes {
 		t.Fatalf("test password length = %d, want %d", len(password), maximumPasswordBytes)
 	}
-	config, err := Load(mapLookup(map[string]string{mysqlPasswordVariable: password}))
+	config, err := Load(mapLookup(map[string]string{
+		mysqlPasswordVariable:         password,
+		identityMySQLPasswordVariable: "identity password",
+	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -775,7 +832,10 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 		t.Fatal("Load() did not preserve the API password exactly")
 	}
 
-	config, err = Load(mapLookup(map[string]string{mysqlPasswordVariable: "   "}))
+	config, err = Load(mapLookup(map[string]string{
+		mysqlPasswordVariable:         "   ",
+		identityMySQLPasswordVariable: "identity password",
+	}))
 	if err != nil {
 		t.Fatalf("Load() whitespace password error = %v", err)
 	}
@@ -786,17 +846,28 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 
 func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 	type loader struct {
-		name         string
-		fileVariable string
-		loadPassword func(LookupFunc) (string, error)
+		name                  string
+		fileVariable          string
+		companionPasswordName string
+		loadPassword          func(LookupFunc) (string, error)
 	}
 	loaders := []loader{
 		{
-			name:         "api",
-			fileVariable: mysqlPasswordFileVariable,
+			name:                  "api",
+			fileVariable:          mysqlPasswordFileVariable,
+			companionPasswordName: identityMySQLPasswordVariable,
 			loadPassword: func(lookup LookupFunc) (string, error) {
 				config, err := Load(lookup)
 				return config.MySQL.Password, err
+			},
+		},
+		{
+			name:                  "identity",
+			fileVariable:          identityMySQLPasswordFileVariable,
+			companionPasswordName: mysqlPasswordVariable,
+			loadPassword: func(lookup LookupFunc) (string, error) {
+				config, err := Load(lookup)
+				return config.IdentityMySQL.Password, err
 			},
 		},
 		{
@@ -827,7 +898,11 @@ func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 				if err := os.WriteFile(path, []byte(password.contents), 0o600); err != nil {
 					t.Fatalf("os.WriteFile() error = %v", err)
 				}
-				got, err := loader.loadPassword(mapLookup(map[string]string{loader.fileVariable: path}))
+				variables := map[string]string{loader.fileVariable: path}
+				if loader.companionPasswordName != "" {
+					variables[loader.companionPasswordName] = "companion password"
+				}
+				got, err := loader.loadPassword(mapLookup(variables))
 				if err != nil {
 					t.Fatalf("load password file error = %v", err)
 				}
@@ -1306,7 +1381,10 @@ func mapLookup(values map[string]string) LookupFunc {
 }
 
 func apiVariables(overrides map[string]string) map[string]string {
-	values := map[string]string{mysqlPasswordVariable: "test-api-password"}
+	values := map[string]string{
+		mysqlPasswordVariable:         "test-api-password",
+		identityMySQLPasswordVariable: "test-identity-password",
+	}
 	for key, value := range overrides {
 		values[key] = value
 	}
