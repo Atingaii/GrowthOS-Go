@@ -155,6 +155,40 @@ func TestLoadIdentityReadsExactSecretsFromFiles(t *testing.T) {
 	}
 }
 
+func TestLoadIdentityPreservesRawSecretEndingInLineEndingBytes(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		suffix []byte
+	}{
+		{name: "raw lf", suffix: []byte{'\n'}},
+		{name: "raw crlf", suffix: []byte{'\r', '\n'}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			key := bytes.Repeat([]byte{0xa5}, identitySecretBytes)
+			defer clear(key)
+			copy(key[len(key)-len(test.suffix):], test.suffix)
+			path := filepath.Join(t.TempDir(), "raw-key")
+			if err := os.WriteFile(path, key, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			variables := apiVariables(map[string]string{
+				identityThrottleHMACKeyFileVariable: path,
+			})
+			delete(variables, identityThrottleHMACKeyVariable)
+
+			config, err := Load(mapLookup(variables))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			loaded := config.Identity.ThrottleHMACKey.Bytes()
+			defer clear(loaded)
+			if !bytes.Equal(loaded, key) {
+				t.Fatal("Load() stripped bytes from an exact raw 32-byte secret")
+			}
+		})
+	}
+}
+
 func TestLoadIdentityRejectsInvalidSecretSourcesWithoutDisclosure(t *testing.T) {
 	testDirectory := t.TempDir()
 	missingPath := filepath.Join(testDirectory, "MISSING_PRIVATE_IDENTITY_KEY")

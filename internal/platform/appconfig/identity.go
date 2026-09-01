@@ -420,10 +420,18 @@ func readIdentitySecretFile(path string) (Secret32, bool) {
 	if len(contents) > maximumIdentitySecretFileBytes {
 		return Secret32{}, false
 	}
-	if len(contents) >= 2 && contents[len(contents)-2] == '\r' && contents[len(contents)-1] == '\n' {
-		contents = contents[:len(contents)-2]
-	} else if len(contents) >= 1 && contents[len(contents)-1] == '\n' {
+	// A raw 32-byte key may legitimately end in LF or CRLF bytes. Treat a line
+	// ending as transport decoration only when it makes the file 33 or 34 bytes;
+	// an exact 32-byte file is always preserved byte-for-byte.
+	switch {
+	case len(contents) == identitySecretBytes:
+	case len(contents) == identitySecretBytes+1 && contents[len(contents)-1] == '\n':
 		contents = contents[:len(contents)-1]
+	case len(contents) == identitySecretBytes+2 &&
+		contents[len(contents)-2] == '\r' && contents[len(contents)-1] == '\n':
+		contents = contents[:len(contents)-2]
+	default:
+		return Secret32{}, false
 	}
 	if len(contents) != identitySecretBytes || identityBytesAllZero(contents) {
 		return Secret32{}, false
