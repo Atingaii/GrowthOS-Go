@@ -17,6 +17,8 @@ compose_project=${GROWTHOS_COMPOSE_PROJECT:-growthos}
 compose_file=${GROWTHOS_COMPOSE_FILE:-"$repository_root/deploy/compose/compose.yaml"}
 web_port=${GROWTHOS_COMPOSE_WEB_PORT:-8088}
 base_url=${GROWTHOS_COMPOSE_BASE_URL:-"http://127.0.0.1:$web_port"}
+identity_public_origin="http://127.0.0.1:$web_port"
+identity_csrf_active_key_id=${GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID:-local-v1}
 connect_timeout=${GROWTHOS_COMPOSE_CONNECT_TIMEOUT:-3}
 max_time=${GROWTHOS_COMPOSE_MAX_TIME:-10}
 
@@ -50,12 +52,20 @@ case "$compose_project" in
 esac
 
 case "$web_port" in
-    ''|*[!0-9]*)
-        fail 'GROWTHOS_COMPOSE_WEB_PORT must be an integer from 1 through 65535'
+    ''|*[!0-9]*|0|0*)
+        fail 'GROWTHOS_COMPOSE_WEB_PORT must be a canonical integer from 1 through 65535'
         ;;
 esac
-if [ "$web_port" -lt 1 ] || [ "$web_port" -gt 65535 ]; then
-    fail 'GROWTHOS_COMPOSE_WEB_PORT must be an integer from 1 through 65535'
+if [ "${#web_port}" -gt 5 ] || [ "$web_port" -gt 65535 ] || [ "$web_port" -eq 80 ]; then
+    fail 'GROWTHOS_COMPOSE_WEB_PORT must be a canonical non-default HTTP port from 1 through 65535'
+fi
+case "$identity_csrf_active_key_id" in
+    ''|*[!A-Za-z0-9_-]*)
+        fail 'GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID must use only letters, digits, underscore, or hyphen'
+        ;;
+esac
+if [ "${#identity_csrf_active_key_id}" -gt 16 ]; then
+    fail 'GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID must contain at most 16 characters'
 fi
 
 case "$base_url" in
@@ -161,17 +171,17 @@ assert_completed_successfully mysql-grants
 
 resolve_container migrate
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/migrate:lesson-30' ]; then
-    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-30"
+if [ "$inspected_value" != 'growthos/migrate:lesson-32' ]; then
+    fail "migrate image is $inspected_value instead of growthos/migrate:lesson-32"
 fi
-ok 'migrate image identifies the lesson-30 publication schema build'
+ok 'migrate image identifies the lesson-32 Identity schema build'
 
 resolve_container api
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/api:lesson-30' ]; then
-    fail "api image is $inspected_value instead of growthos/api:lesson-30"
+if [ "$inspected_value" != 'growthos/api:lesson-32' ]; then
+    fail "api image is $inspected_value instead of growthos/api:lesson-32"
 fi
-ok 'api image identifies the lesson-30 build with unassembled publication adapters'
+ok 'api image identifies the lesson-32 real session authentication build'
 
 resolve_container web
 inspect_value '{{.Config.Image}}' image
@@ -421,12 +431,27 @@ api_container_id=$resolved_container_id
 if ! docker inspect "$api_container_id" | jq -e \
     --arg edge "${compose_project}_edge" \
     --arg data "${compose_project}_data" \
-    --arg cache "${compose_project}_cache" '
+    --arg cache "${compose_project}_cache" \
+    --arg identity_public_origin "GROWTHOS_IDENTITY_PUBLIC_ORIGIN=$identity_public_origin" \
+    --arg identity_csrf_active_key_id "GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID=$identity_csrf_active_key_id" '
         (.[0].NetworkSettings.Networks | keys | sort) == ([$edge, $data, $cache] | sort) and
+        .[0].Config.User == "65532:65532" and
+        .[0].HostConfig.ReadonlyRootfs == true and
         ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))] | sort) ==
-            (["/run/secrets/mysql_app_password", "/run/secrets/mysql_identity_password", "/run/secrets/redis_password"] | sort)
+            (["/run/secrets/identity_csrf_active_key", "/run/secrets/identity_throttle_hmac_key",
+              "/run/secrets/mysql_app_password", "/run/secrets/mysql_identity_password",
+              "/run/secrets/redis_password"] | sort) and
+        all(.[0].Mounts[];
+            if (.Destination | startswith("/run/secrets/")) then .RW == false else true end) and
+        (.[0].Config.Env | index($identity_public_origin)) != null and
+        (.[0].Config.Env | index($identity_csrf_active_key_id)) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY_FILE=/run/secrets/identity_throttle_hmac_key")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_FILE=/run/secrets/identity_csrf_active_key")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_ARGON2_MAX_CONCURRENT=2")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_ARGON2_ACQUIRE_TIMEOUT=250ms")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT=3s")) != null
     ' >/dev/null; then
-    fail 'api network or Secret mounts differ from the business/Identity MySQL plus optional-cache ownership contract'
+    fail 'api network or Secret mounts differ from the business/Identity runtime plus optional-cache ownership contract'
 fi
 
 for mysql_secret_consumer in mysql migrate mysql-grants; do
@@ -451,6 +476,18 @@ for mysql_secret_consumer in mysql migrate mysql-grants; do
     fi
 done
 ok 'MySQL, migrator, grant reconciler, and API each receive only their declared MySQL Secrets'
+
+for identity_key_non_consumer in mysql migrate mysql-grants redis web; do
+    resolve_container "$identity_key_non_consumer"
+    if docker inspect "$resolved_container_id" | jq -e '
+        any(.[0].Mounts[]?;
+            .Destination == "/run/secrets/identity_throttle_hmac_key" or
+            .Destination == "/run/secrets/identity_csrf_active_key")
+    ' >/dev/null; then
+        fail "$identity_key_non_consumer unexpectedly receives an API-only Identity signing key"
+    fi
+done
+ok 'only the API receives the independent Identity throttle and active CSRF keys'
 
 resolve_container redis
 redis_container_id=$resolved_container_id
@@ -635,10 +672,10 @@ assert_json_response() {
 
 request /health 200 application/json
 assert_json_response /health
-if ! jq -e '.status == "ok" and .version == "lesson-30"' "$response_body" >/dev/null 2>&1; then
-    fail '/health did not identify the lesson-30 API build'
+if ! jq -e '.status == "ok" and .version == "lesson-32"' "$response_body" >/dev/null 2>&1; then
+    fail '/health did not identify the lesson-32 API build'
 fi
-ok '/health returned HTTP 200, JSON, and the lesson-30 build through the web proxy'
+ok '/health returned HTTP 200, JSON, and the lesson-32 build through the web proxy'
 
 request /ready 200 application/json
 assert_json_response /ready

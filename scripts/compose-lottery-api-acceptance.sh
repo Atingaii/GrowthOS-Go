@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-# Destructive-to-self acceptance for the current Lesson 30 schema build and
+# Destructive-to-self acceptance for the current Lesson 32 Identity schema and
 # the still-ephemeral Lesson 24 Lottery API/cache behavior. Every run gets
 # a new Compose project, Docker-assigned loopback port, secret set, and volumes.
 # The long-lived `growthos` project is only snapshotted to prove that its
@@ -374,7 +374,7 @@ cleanup_temporary_directories() {
         if ! verify_temporary_directory "$secret_directory" "$secret_directory_identity" secret; then
             temporary_cleanup_status=1
         else
-            for secret_name in mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password redis_password; do
+            for secret_name in mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password redis_password identity_throttle_hmac_key identity_csrf_active_key; do
                 remove_regular_file "$secret_directory/$secret_name" || temporary_cleanup_status=1
             done
             if ! rmdir "$secret_directory"; then
@@ -772,7 +772,7 @@ for completed_service in migrate mysql-grants; do
         fail "$completed_service did not complete successfully"
     fi
 done
-ok 'all Compose services reached their expected states on the lesson-30 schema and lesson-24 cache snapshot'
+ok 'all Compose services reached their expected states on the lesson-32 schema and lesson-24 cache snapshot'
 
 if ! docker network inspect \
     "${compose_project}_edge" \
@@ -796,10 +796,22 @@ if ! docker inspect "$resolved_container_id" | jq -e \
     --arg data "${compose_project}_data" \
     --arg cache "${compose_project}_cache" '
         (.[0].NetworkSettings.Networks | keys | sort) == ([$edge, $data, $cache] | sort) and
+        .[0].Config.User == "65532:65532" and
+        .[0].HostConfig.ReadonlyRootfs == true and
         ([.[0].Mounts[].Destination | select(startswith("/run/secrets/"))] | sort) ==
-            (["/run/secrets/mysql_app_password", "/run/secrets/mysql_identity_password", "/run/secrets/redis_password"] | sort)
+            (["/run/secrets/identity_csrf_active_key", "/run/secrets/identity_throttle_hmac_key",
+              "/run/secrets/mysql_app_password", "/run/secrets/mysql_identity_password",
+              "/run/secrets/redis_password"] | sort) and
+        all(.[0].Mounts[];
+            if (.Destination | startswith("/run/secrets/")) then .RW == false else true end) and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY_FILE=/run/secrets/identity_throttle_hmac_key")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_FILE=/run/secrets/identity_csrf_active_key")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_ARGON2_MAX_CONCURRENT=2")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_ARGON2_ACQUIRE_TIMEOUT=250ms")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT=3s")) != null and
+        any(.[0].Config.Env[]; startswith("GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID="))
     ' >/dev/null; then
-    fail 'api network or Secret mounts differ from the business/Identity MySQL plus cache contract'
+    fail 'api network or Secret mounts differ from the business/Identity runtime plus cache contract'
 fi
 for mysql_secret_consumer in mysql migrate mysql-grants; do
     resolve_container "$mysql_secret_consumer"
@@ -823,6 +835,17 @@ for mysql_secret_consumer in mysql migrate mysql-grants; do
     fi
 done
 ok 'MySQL, migrator, grant reconciler, and API each receive only their declared MySQL Secrets'
+for identity_key_non_consumer in mysql migrate mysql-grants redis web; do
+    resolve_container "$identity_key_non_consumer"
+    if docker inspect "$resolved_container_id" | jq -e '
+        any(.[0].Mounts[]?;
+            .Destination == "/run/secrets/identity_throttle_hmac_key" or
+            .Destination == "/run/secrets/identity_csrf_active_key")
+    ' >/dev/null; then
+        fail "$identity_key_non_consumer unexpectedly receives an API-only Identity signing key"
+    fi
+done
+ok 'only the API receives the independent Identity throttle and active CSRF keys'
 resolve_container redis
 if ! docker inspect "$resolved_container_id" | jq -e --arg cache "${compose_project}_cache" '
     (.[0].NetworkSettings.Networks | keys) == [$cache] and
@@ -1289,12 +1312,12 @@ assert_multi_strategy_selection() {
 }
 
 request GET /health 200 - - -
-if ! jq -e '.status == "ok" and .version == "lesson-30" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/health did not identify the lesson-30 build'
+if ! jq -e '.status == "ok" and .version == "lesson-32" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/health did not identify the lesson-32 build'
 fi
 request GET /ready 200 - - -
-if ! jq -e '.status == "ready" and .version == "lesson-30" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
-    fail '/ready did not identify the ready lesson-30 build'
+if ! jq -e '.status == "ready" and .version == "lesson-32" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
+    fail '/ready did not identify the ready lesson-32 build'
 fi
 ok 'health and readiness succeeded through the web proxy'
 
@@ -1714,4 +1737,4 @@ if [ "$published_container_ids_after" != "$web_container_id" ]; then
     fail 'the disposable web port lost its unique ownership during HTTP acceptance'
 fi
 ok 'post-traffic migration, both runtime grant sets, and loopback port checks remained exact'
-ok "lesson-30 schema plus lesson-24 cache isolated Compose acceptance passed for $compose_project"
+ok "lesson-32 schema plus lesson-24 cache isolated Compose acceptance passed for $compose_project"

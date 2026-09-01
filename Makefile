@@ -112,7 +112,10 @@ web-build:
 web-verify: web-test web-typecheck web-build
 
 compose-secrets:
-	GROWTHOS_COMPOSE_PROJECT="$(COMPOSE_PROJECT)" ./scripts/generate-compose-secrets.sh
+	GROWTHOS_COMPOSE_PROJECT="$(COMPOSE_PROJECT)" \
+	GROWTHOS_COMPOSE_WEB_PORT="$(GROWTHOS_COMPOSE_WEB_PORT)" \
+	GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID="$${GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID:-local-v1}" \
+	./scripts/generate-compose-secrets.sh
 
 compose-config: compose-secrets
 	$(COMPOSE) config --quiet
@@ -150,6 +153,7 @@ compose-smoke:
 	GROWTHOS_COMPOSE_PROJECT="$(COMPOSE_PROJECT)" \
 	GROWTHOS_COMPOSE_FILE="$(COMPOSE_FILE)" \
 	GROWTHOS_COMPOSE_WEB_PORT="$(GROWTHOS_COMPOSE_WEB_PORT)" \
+	GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID="$${GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID:-local-v1}" \
 	./scripts/compose-smoke.sh
 
 compose-lottery-api-acceptance:

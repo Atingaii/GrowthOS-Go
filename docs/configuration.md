@@ -1,6 +1,6 @@
 # GrowthOS-Go 配置参考
 
-**状态：** 第 32 节 Identity 独立 MySQL 配置与最小权限基础已实现；Repository/HTTP 装配仍在本节后续切片
+**状态：** 第 32 节 Identity 双池运行时、真实 session HTTP、精确权限与 Compose 安全注入已实现
 
 **更新日期：** 2026-09-01
 
@@ -24,7 +24,7 @@
 - 启动时一次加载，不支持热更新；
 - `configs/growth-api.env.example` 只列公开值，不自动加载，也不给密码写占位赋值。
 
-`appconfig.Default()` 和 `DefaultMigration()` 只表示公开默认值，不是可直接启动的完整配置；其中 business、Identity 与 Migration Password 有意为空。生产入口必须调用 `Load` 或 `LoadMigration`。`Load` 会同时验证两套 runtime credential/pool，但本切片不把 Identity Repository 或 HTTP route 偷跑进生产 composition。
+`appconfig.Default()` 和 `DefaultMigration()` 只表示公开默认值，不是可直接启动的完整配置；其中 business、Identity 与 Migration Password 有意为空。生产入口必须调用 `Load` 或 `LoadMigration`。`Load` 同时验证两套 runtime credential/pool 与浏览器安全边界；`growth-api` 随后分别打开 business/Identity pool，组合 Identity Repository 与 session routes，并把两套 MySQL 纳入同一个并发 readiness 边界。
 
 ## 2. Vite 开发与预览代理配置
 
@@ -48,14 +48,23 @@ Compose 文件位于 `deploy/compose/compose.yaml`。仓库级 Make 目标默认
 | 输入 | 默认值 | 约束 / 用途 |
 | --- | --- | --- |
 | Make 变量 `COMPOSE_PROJECT` | `growthos` | Compose 资源命名空间；smoke 只接受字母、数字、点、下划线和连字符 |
-| `GROWTHOS_COMPOSE_WEB_PORT` | `8088` | 1～65535；仅形成 `127.0.0.1:<port>` 的 Web 发布端口 |
+| `GROWTHOS_COMPOSE_WEB_PORT` | `8088` | 规范十进制 1～65535，不得前导零且不得为 HTTP 默认端口 80；同时形成 Web 发布端口与 exact public origin |
+| `GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID` | `local-v1` | `[A-Za-z0-9_-]{1,16}`；仅在明确轮换 active CSRF key 时同步改变，不含 key material |
 | `deploy/compose/secrets/mysql_root_password` | 首次由脚本随机生成 | 挂载给 MySQL 和 `mysql-grants`；前者用于官方入口初始化，后者只经 Unix socket 精确收敛应用权限 |
 | `deploy/compose/secrets/mysql_app_password` | 首次由脚本随机生成 | 挂载给 MySQL 与 API；API 通过 `GROWTHOS_MYSQL_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/mysql_migration_password` | 首次由脚本随机生成 | 挂载给 MySQL 与一次性 Migrator；MySQL health 也使用该身份，Migrator 通过 `GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/mysql_identity_password` | 首次由脚本随机生成 | 挂载给 MySQL、`mysql-grants` 与 API；API 通过 `GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE` 读取，授权作业用同一秘密证明账号凭据可用 |
 | `deploy/compose/secrets/redis_password` | 首次由脚本随机生成 | 只挂载给 Redis 与 API；Redis 用它建立 `growthos_api` ACL，API 通过 `GROWTHOS_REDIS_PASSWORD_FILE` 读取 |
+| `deploy/compose/secrets/identity_throttle_hmac_key` | 首次由脚本生成 32 个原始随机 bytes | 只挂载给 API；通过 `GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY_FILE` 为登录 throttle subject 做不可逆派生，不能与 CSRF key 复用 |
+| `deploy/compose/secrets/identity_csrf_active_key` | 首次由脚本生成另一份 32 个原始随机 bytes | 只挂载给 API；通过 `GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_FILE` 签名 session-bound CSRF token，与 active key id 一起轮换 |
 
-`make compose-up` 会先运行 Secret 生成器。五个文件完整时只校验并复用，全部不存在时一次生成。为让既有第 31 节 MySQL volume 原地升级，生成器只额外接受“旧四个 Secret 都存在且合法、仅缺 Identity Secret”的精确状态：它只生成 `mysql_identity_password`，旧四个字节保持不变；其他任意部分集合都失败。如果 `growthos_mysql_data` 已存在而整套 Secret 全失，脚本也拒绝生成新值，避免持久化数据库与凭据静默失配。本地目录权限为 `0700`，文件为 `0444`；后者兼容 Docker Desktop 文件挂载给非 root 容器，真正的容器可见范围仍由逐服务只读挂载限制。它们是被 Git 和 Docker build context 排除的本地开发文件，不是加密 Secret Manager，也不支持热轮换。
+`make compose-up` 会先运行 Secret 生成器。七个文件完整时只校验并复用，全部不存在时一次生成。为让真实开发 volume 线性升级，生成器只额外接受两个精确状态：旧四份凭据完整时新增 Identity 数据库密码和两份协议密钥；过渡期五份数据库/缓存凭据完整时只新增两份协议密钥。两种路径都会先校验且绝不改写旧值；其他任意 partial 集合都失败。如果 `growthos_mysql_data` 已存在而整套 Secret 全失，脚本也拒绝生成新值，避免持久化数据库与凭据静默失配。本地目录权限为 `0700`，文件为 `0444`；后者兼容 Docker Desktop 文件挂载给非 root 容器，真正的容器可见范围仍由逐服务只读挂载限制。它们是被 Git 和 Docker build context 排除的本地开发文件，不是加密 Secret Manager，也不支持热轮换。
+
+生成器以 `.generate.lock` 原子目录串行化整套检查与发布，避免两个首次启动互相覆盖。可处理的退出会自动清锁；若断电或 `SIGKILL` 遗留 stale lock，必须先证明没有生成进程，并确认它是本 Secret 目录内空的、非 symlink 目录，才可用精确 `rmdir` 移除。锁不是允许删除或重生七份 Secret 的理由。
+
+Compose 把 `GROWTHOS_IDENTITY_PUBLIC_ORIGIN` 绑定到同一 `GROWTHOS_COMPOSE_WEB_PORT`，默认即 `http://127.0.0.1:8088`；改变 Web 端口时不需要再维护第二个 origin。该值表达浏览器实际可见的 exact origin，不是 API 容器的 `http://api:8080`。API 是两份协议密钥的唯一消费者；MySQL、Migrator、授权作业、Redis 与 Web 均不挂载它们。现有 API `/health` 仍负责进程存活，缺少/损坏 key 会让配置加载在监听前失败，不能通过在 healthcheck 里打印或读取 key 来“补验收”。
+
+当前本地 Nginx 拓扑没有建立可信代理 CIDR 语义：Identity guard 只读取 API socket 的 `RemoteAddr`，明确忽略 `X-Forwarded-For`。因此经 Web 代理进入的浏览器登录会把 source throttle 聚合到 Web 容器 peer IP；它能防止客户端伪造来源头，却不是生产级逐客户端来源限流证据。正式代理信任、header 清洗和客户端地址恢复必须在独立后续小节设计与验收。
 
 Compose 另有 `growthos_mysql_socket` named volume，只传递 MySQL Unix socket，不承载数据库事实。启动顺序为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，API 不把 Redis healthy 作为启动或 readiness 前提。`mysql-grants` 不读取 `GROWTHOS_*` 环境变量，不加入任何网络，只以 UID 999 从只读 root/Identity Secret 和只读 socket 执行固定 allowlist。它会先用 `CREATE USER IF NOT EXISTS` 为旧 volume 补建 `growthos_identity`，再对两套 runtime account 先撤销所有旧 direct grants 后精确重授：`growthos_app` 只读两张 Lottery 表；`growthos_identity` 读取 workforce account、仅更新其 `updated_at` 列，并可对 session/throttle 执行 SELECT/INSERT/UPDATE/DELETE。列级 `UPDATE` 是 MySQL 8.4.11 执行 `SELECT ... FOR UPDATE` 所需的最小权限，不允许改写 login、credential、status 或 epoch。作业分别要求两份 `SHOW GRANTS` 与 allowlist 完全一致、Identity Secret 能通过固定 `SELECT 1` 验证，并断言 `@@GLOBAL.mandatory_roles` 为空；否则失败关闭且 API 不启动。它不修改已存在账号的密码，不是通用 DBA 管理入口，也不能执行调用方提供的 SQL。
 
@@ -167,7 +176,7 @@ readiness 的 1 秒为失败写入 503 envelope 的固定响应预算；selectio
 
 ## 8. Identity MySQL 独立运行身份与连接池配置
 
-Identity 与 business runtime 复用第 6 节的 endpoint、database、TLS、connect/write timeout，因为它们连接同一个受控 MySQL 部署；除此之外，账号、Secret、read/ping timeout 与 pool/lifetime 都独立加载。`Config.IdentityMySQL` 是独立连接所有权边界，后续 composition 必须据此打开第二个 pool，禁止把 `Config.MySQL` 的 `growthos_app` 连接传给 Identity Repository，也禁止反向复用 `growthos_identity` 查询 Lottery/Marketing。每账户最多 5 个 active session 是领域/事务不变量，不是把数据库 pool 设置为 5。
+Identity 与 business runtime 复用第 6 节的 endpoint、database、TLS、connect/write timeout，因为它们连接同一个受控 MySQL 部署；除此之外，账号、Secret、read/ping timeout 与 pool/lifetime 都独立加载。`Config.IdentityMySQL` 是独立连接所有权边界，production composition 据此打开、拥有并逆序关闭第二个 pool；它拒绝 pool 指针别名及两个 wrapper 共享同一个底层 `sql.DB`。`Config.MySQL` 的 `growthos_app` 不会传给 Identity Repository，也不会反向复用 `growthos_identity` 查询 Lottery/Marketing。每账户最多 5 个 active session 是领域/事务不变量，不是把数据库 pool 设置为 5。
 
 当前 Compose 最小权限精确为：
 
@@ -195,7 +204,31 @@ GROWTHOS_IDENTITY_MYSQL_PING_TIMEOUT + 1s
   <= GROWTHOS_HTTP_WRITE_TIMEOUT
 ```
 
-本切片已经形成配置、Secret、fresh/long-lived volume 账号创建、精确 grant reconcile 与 shell 验收基础，但尚未在 `cmd/growth-api` 装配 Identity Repository/HTTP 或把第二个 pool 纳入 `/ready`。文档中的“后续必须打开独立 pool”不能提前表述成已上线认证能力。
+`cmd/growth-api` 已把 Identity Repository、密码校验、双维 throttle、session 签发/解析/撤销、Cookie/CSRF/Origin guard 与三个 session HTTP endpoint 组合进生产进程；`/ready` 并发探测 business 与 Identity 两套凭据，并以两者 timeout 的较大值作为外层预算。readiness 只证明连接可用，不证明表级 grants；授权仍由 `mysql-grants` 的 allowlist 与真实 1142/1143 拒绝矩阵独立验收。
+
+### 8.1 Identity 浏览器安全与执行预算
+
+Cookie mode 不接受独立开关：development/test 从 numeric-loopback HTTP origin 派生开发 Cookie，staging/production 从 HTTPS origin 派生 `Secure` 的 `__Host-` Cookie。origin 必须是规范、无 credentials/path/query/fragment 的 exact origin；默认端口显式写法、大小写非规范 host 等模糊形式会失败关闭。
+
+| 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
+| --- | --- | --- | --- |
+| `GROWTHOS_IDENTITY_PUBLIC_ORIGIN` | **无，必填** | development/test 为 exact HTTP numeric-loopback origin；staging/production 为 exact HTTPS origin | Origin、Fetch Metadata、Cookie mode 的共同边界 |
+| `GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY` / `_FILE` | **无，二选一** | 恰好 32 个非全零 bytes；文件须是普通文件；与所有 CSRF key material 不同 | 私密派生登录名/source throttle subject |
+| `GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID` | **无，必填** | `[A-Za-z0-9_-]{1,16}` | 标记当前 CSRF 签名 key revision，不是秘密 |
+| `GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY` / `_FILE` | **无，二选一** | 恰好 32 个非全零 bytes；文件须是普通文件；不能复用 throttle key | session-bound CSRF token 签名 |
+| `GROWTHOS_IDENTITY_ARGON2_MAX_CONCURRENT` | `2` | 整数 1～4 | 每进程同时执行 Argon2id 的硬上限 |
+| `GROWTHOS_IDENTITY_ARGON2_ACQUIRE_TIMEOUT` | `250ms` | `1ms`～`1s` | 等待 Argon2 admission slot 的预算 |
+| `GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT` | `3s` | `> 0` 且 `<= 30s`，并满足两条预算关系 | session HTTP handler 总 deadline |
+
+```text
+GROWTHOS_IDENTITY_ARGON2_ACQUIRE_TIMEOUT + 1s
+  <= GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT
+
+GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT + 1s
+  <= GROWTHOS_HTTP_WRITE_TIMEOUT
+```
+
+Compose 固定 `2 / 250ms / 3s`，配合 HTTP write `10s` 留出明确余量。它没有配置 previous CSRF key；本地 active key 轮换后允许既有 CSRF token 失效。需要平滑轮换的正式环境必须把 previous key id、独立 key file 与绝对 accept-until 作为同一组受控变更，不能长期保留 previous key。
 
 ## 9. Migration 专属配置
 
@@ -262,6 +295,12 @@ GROWTHOS_IDENTITY_MYSQL_MAX_IDLE_CONNS=10
 GROWTHOS_IDENTITY_MYSQL_CONN_MAX_LIFETIME=3m
 GROWTHOS_IDENTITY_MYSQL_CONN_MAX_IDLE_TIME=1m
 
+GROWTHOS_IDENTITY_PUBLIC_ORIGIN=http://127.0.0.1:5173
+GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID=local-v1
+GROWTHOS_IDENTITY_ARGON2_MAX_CONCURRENT=2
+GROWTHOS_IDENTITY_ARGON2_ACQUIRE_TIMEOUT=250ms
+GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT=3s
+
 GROWTHOS_REDIS_ADDRESS=127.0.0.1:6379
 GROWTHOS_REDIS_USERNAME=growthos_api
 GROWTHOS_REDIS_DATABASE=0
@@ -281,7 +320,7 @@ GROWTHOS_MYSQL_MIGRATION_STATEMENT_TIMEOUT=30s
 GROWTHOS_MYSQL_MIGRATION_LOCK_TIMEOUT=40s
 ```
 
-直接密码和 `_FILE` 路径都不出现在通用赋值示例中；操作者必须分别为 business API、Identity runtime 和 Migration 按运行方式选择一种 MySQL 密码来源。缓存关闭时不需要 Redis 密码；缓存启用时也必须选择一个 Redis 密码来源。Compose 已在服务级环境中指向 `/run/secrets/...`，手工运行则应由受控进程环境或本机未跟踪文件注入。Secret 注入完成后分别运行：
+直接密码和 `_FILE` 路径都不出现在通用赋值示例中；操作者必须分别为 business API、Identity runtime 和 Migration 按运行方式选择一种 MySQL 密码来源，并为 Identity throttle/active CSRF 各选择一份互不相同的 32-byte Secret 来源。缓存关闭时不需要 Redis 密码；缓存启用时也必须选择一个 Redis 密码来源。Compose 已在服务级环境中指向 `/run/secrets/...`，手工运行则应由受控进程环境或本机未跟踪普通文件注入。Secret 注入完成后分别运行：
 
 ```bash
 make api-run
@@ -297,6 +336,7 @@ make db-migrate
 
 - Vite 代理目标不是无凭据、无非根路径、无 query/fragment 的 HTTP(S) origin，或 `PORT` 非法；
 - 必需密码的直接来源与文件来源同时存在或同时缺失，文件路径为空、不可读，或解析后的密码为空/超过 1024 bytes；缓存关闭时 Redis 密码可缺省，但若任一 Redis 密码来源被显式提供仍必须满足互斥与内容约束；
+- Identity public origin 缺失或不是当前环境允许的 canonical exact origin；throttle/active CSRF key 缺失、不是普通文件、不是 32 个非全零 bytes、来源冲突或发生 key reuse；active key id 非法；Argon2 admission/handler timeout 越界或破坏执行/HTTP 响应余量；
 - Lottery flag 不是精确小写布尔值、selection/cache timeout 或 TTL 越界、缓存三段预算超过 selection timeout、破坏 MySQL read/HTTP write 余量，或 staging/production 尝试启用 ephemeral route；
 - Redis 地址、ACL 用户、TLS/CA、pool、连接寿命或 timeout 非法；staging/production 启用缓存却未使用 `verify_identity`；
 - MySQL 地址缺少 host/port，数据库名或 business/Identity/Migration 用户名不合法；
@@ -324,33 +364,35 @@ GROWTHOS_WEB_API_PROXY_TARGET / PORT
 ```
 
 ```text
-                    os.LookupEnv
-                         │
-               internal/platform/appconfig
-                  ┌──────┴────────┐
-                  │               │
-                Load        LoadMigration
-                  │               │
-        growth-api Config   growth-migrate Config
-       ┌──────────┼──────────────┐          │
-       │          │              │          │
-    logging   httpserver  business MySQL    │
-                              │             │
-                      mysqlstore.Open  mysqlstore.OpenMigration
-                              │             │
-                           sqlx.DB      dbmigration.Runner
+                         os.LookupEnv
                               │
-                     mysqlrepo.Reader
+                    internal/platform/appconfig
+                       ┌──────┴────────┐
+                       │               │
+                     Load        LoadMigration
+                       │               │
+             growth-api Config   growth-migrate Config
+          ┌────────────┼────────────┐          │
+          │            │            │          │
+       logging   business MySQL  Identity MySQL│
+                       │            │          │
+               mysqlstore.Open  mysqlstore.Open│
+                       │            │          │
+                    sqlx.DB      sqlx.DB   mysqlstore.OpenMigration
+                       │            │          │
+            Lottery Repository  Identity Repository  dbmigration.Runner
+                       │            │
+          direct/cache Reader   login/resolve/revoke
+                       │            │
+                  Lottery HTTP   session HTTP
+                       └──────┬─────┘
                               │
-                    ┌─────────┴───────────┐
-                    │                     │
-             direct Reader      strategycache.Reader
-                                      │        │
-                         authoritative Reader  redisstore.Client
-                                               (owned by API)
+                    dual MySQL readiness
+                              │
+                         httpserver
 ```
 
-`Config.IdentityMySQL` 已由 `Load` 形成另一套脱敏 credential/pool 配置，但本切片停在 composition 之前，因此上图不画一条并不存在的 Identity `sqlx.DB`。后续装配必须从这份配置单独打开、拥有和关闭第二个 pool，并单独决定 readiness；不得把现有 business pool 改名后复用。
+两套 `sqlx.DB` 的创建顺序是 business → Identity → optional Redis，任何失败与正常停机都按 Redis → Identity → business 逆序释放。session route 注册失败也遵守同一所有权规则。双库 readiness 同时发起两个有界 `PingContext`，任一失败会取消 sibling 但仍等待其返回，不遗留未拥有的探针 goroutine。
 
 - `growth-api` 不读取 Migration Secret，也不执行 DDL；
 - `growth-migrate` 不读取 HTTP、business API 或 Identity runtime Secret/池参数；
