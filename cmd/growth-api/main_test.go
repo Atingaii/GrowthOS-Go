@@ -23,11 +23,9 @@ func TestRunRejectsInvalidConfigurationWithoutEchoingValue(t *testing.T) {
 	secretValue := "secret-invalid-level"
 	exitCode := run(
 		context.Background(),
-		mapLookup(map[string]string{
-			"GROWTHOS_LOG_LEVEL":               secretValue,
-			"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
-			"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
-		}),
+		mapLookup(runtimeVariables(map[string]string{
+			"GROWTHOS_LOG_LEVEL": secretValue,
+		})),
 		&output,
 	)
 
@@ -51,14 +49,12 @@ func TestRunLogsLifecycleWithValidatedConfiguration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var output bytes.Buffer
-	variables := map[string]string{
-		"GROWTHOS_ENVIRONMENT":             "test",
-		"GROWTHOS_HTTP_ADDRESS":            "127.0.0.1:9090",
-		"GROWTHOS_LOG_LEVEL":               "info",
-		"GROWTHOS_LOG_FORMAT":              "json",
-		"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
-		"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
-	}
+	variables := runtimeVariables(map[string]string{
+		"GROWTHOS_ENVIRONMENT":  "test",
+		"GROWTHOS_HTTP_ADDRESS": "127.0.0.1:9090",
+		"GROWTHOS_LOG_LEVEL":    "info",
+		"GROWTHOS_LOG_FORMAT":   "json",
+	})
 	database := &stubDatabase{}
 
 	if exitCode := runWithDependencies(
@@ -97,12 +93,10 @@ func TestRunHonorsErrorLogLevel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var output bytes.Buffer
-	variables := map[string]string{
-		"GROWTHOS_LOG_LEVEL":               "error",
-		"GROWTHOS_LOG_FORMAT":              "json",
-		"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
-		"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
-	}
+	variables := runtimeVariables(map[string]string{
+		"GROWTHOS_LOG_LEVEL":  "error",
+		"GROWTHOS_LOG_FORMAT": "json",
+	})
 
 	if exitCode := runWithDependencies(
 		ctx,
@@ -123,13 +117,11 @@ func TestRunOwnsAndClosesEnabledCacheRuntime(t *testing.T) {
 	cache := newStubCacheRuntime()
 	database := &stubDatabase{}
 	var output bytes.Buffer
-	variables := map[string]string{
+	variables := runtimeVariables(map[string]string{
 		"GROWTHOS_ENVIRONMENT":                    "test",
-		"GROWTHOS_MYSQL_PASSWORD":                 "unit-test-password",
-		"GROWTHOS_IDENTITY_MYSQL_PASSWORD":        "unit-test-identity-password",
 		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
 		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
-	}
+	})
 	dependencies := runtimeDependencies{
 		OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			components := stubRuntime(database)
@@ -154,13 +146,11 @@ func TestRunRedactsEnabledCacheShutdownFailure(t *testing.T) {
 	cache.closeErr = errors.New(secret)
 	database := &stubDatabase{}
 	var output bytes.Buffer
-	variables := map[string]string{
+	variables := runtimeVariables(map[string]string{
 		"GROWTHOS_ENVIRONMENT":                    "test",
-		"GROWTHOS_MYSQL_PASSWORD":                 "unit-test-password",
-		"GROWTHOS_IDENTITY_MYSQL_PASSWORD":        "unit-test-identity-password",
 		"GROWTHOS_LOTTERY_STRATEGY_CACHE_ENABLED": "true",
 		"GROWTHOS_REDIS_PASSWORD":                 "redis-unit-test-password",
-	}
+	})
 	dependencies := runtimeDependencies{
 		OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			components := stubRuntime(database)
@@ -205,7 +195,7 @@ func TestRunRejectsMissingDatabaseSecretBeforeOpening(t *testing.T) {
 func TestRunRedactsDatabaseStartupFailure(t *testing.T) {
 	const secret = "mysql://root:must-not-leak@private-host/growthos"
 	var output bytes.Buffer
-	variables := runtimePasswordVariables()
+	variables := runtimeVariables(nil)
 
 	exitCode := runWithDependencies(
 		context.Background(),
@@ -233,7 +223,7 @@ func TestRunClosesUnexpectedDatabaseReturnedWithStartupError(t *testing.T) {
 
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(runtimePasswordVariables()),
+		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, errors.New(secret))},
 	)
@@ -253,7 +243,7 @@ func TestRunRejectsTypedNilDatabase(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(runtimePasswordVariables()),
+		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	)
@@ -270,7 +260,7 @@ func TestRunRejectsMissingSelectionServiceAndClosesDatabase(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(runtimePasswordVariables()),
+		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			return runtimeComponents{database: database}, nil
@@ -292,7 +282,7 @@ func TestRunRejectsUnconfiguredSelectionServiceAndClosesDatabase(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(runtimePasswordVariables()),
+		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: func(context.Context, runtimeConfiguration, strategycache.Observer) (runtimeComponents, error) {
 			return runtimeComponents{
@@ -316,7 +306,7 @@ func TestRunRejectsMissingRuntimeOpener(t *testing.T) {
 	var output bytes.Buffer
 	exitCode := runWithDependencies(
 		context.Background(),
-		mapLookup(runtimePasswordVariables()),
+		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{},
 	)
@@ -337,7 +327,7 @@ func TestRunClosesDatabaseAfterHTTPServerAndRedactsCloseFailure(t *testing.T) {
 
 	exitCode := runWithDependencies(
 		ctx,
-		mapLookup(runtimePasswordVariables()),
+		mapLookup(runtimeVariables(nil)),
 		&output,
 		runtimeDependencies{OpenRuntime: stubRuntimeOpener(database, nil)},
 	)
@@ -536,11 +526,19 @@ func mapLookup(values map[string]string) func(string) (string, bool) {
 	}
 }
 
-func runtimePasswordVariables() map[string]string {
-	return map[string]string{
-		"GROWTHOS_MYSQL_PASSWORD":          "unit-test-password",
-		"GROWTHOS_IDENTITY_MYSQL_PASSWORD": "unit-test-identity-password",
+func runtimeVariables(overrides map[string]string) map[string]string {
+	values := map[string]string{
+		"GROWTHOS_MYSQL_PASSWORD":              "unit-test-password",
+		"GROWTHOS_IDENTITY_MYSQL_PASSWORD":     "unit-test-identity-password",
+		"GROWTHOS_IDENTITY_PUBLIC_ORIGIN":      "http://127.0.0.1:8080",
+		"GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY":  "abcdefghijklmnopqrstuvwxyz123456",
+		"GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID": "active",
+		"GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY":    "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456",
 	}
+	for key, value := range overrides {
+		values[key] = value
+	}
+	return values
 }
 
 func decodeJSONLog(t *testing.T, line string) map[string]any {

@@ -147,6 +147,7 @@ type Config struct {
 	Log           LogConfig
 	MySQL         MySQLConfig
 	IdentityMySQL MySQLConfig
+	Identity      IdentityConfig
 	Redis         RedisConfig
 }
 
@@ -291,6 +292,7 @@ func Default() Config {
 			ConnectionMaxIdleTime: defaultMySQLConnMaxIdleTime,
 		},
 		IdentityMySQL: defaultIdentityMySQLConfig(),
+		Identity:      defaultIdentityConfig(),
 		Redis:         defaultRedisConfig(),
 	}
 }
@@ -401,6 +403,16 @@ func Load(lookup LookupFunc) (Config, error) {
 		config.HTTP.WriteTimeout,
 		httpWriteTimeoutValid,
 		&config.IdentityMySQL,
+		&problems,
+	)
+	loadIdentity(
+		lookup,
+		config.Environment,
+		environmentValid,
+		config.HTTP.WriteTimeout,
+		httpWriteTimeoutValid,
+		time.Now().UTC().Truncate(time.Microsecond),
+		&config.Identity,
 		&problems,
 	)
 	if httpWriteTimeoutValid && lotterySelectionTimeoutValid &&

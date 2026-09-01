@@ -70,6 +70,14 @@ func TestDefaultUsesOnlyPublicNonSecretValues(t *testing.T) {
 			ConnectionMaxLifetime: 3 * time.Minute,
 			ConnectionMaxIdleTime: time.Minute,
 		},
+		Identity: IdentityConfig{
+			CookieMode: IdentityCookieModeDevelopment,
+			PasswordHash: IdentityPasswordHashConfig{
+				MaxConcurrent:  2,
+				AcquireTimeout: 250 * time.Millisecond,
+			},
+			HandlerTimeout: 3 * time.Second,
+		},
 		Redis: RedisConfig{
 			Address:               "127.0.0.1:6379",
 			Username:              "growthos_api",
@@ -141,6 +149,13 @@ func TestLoadAppliesCompleteOverride(t *testing.T) {
 		identityMySQLMaxIdleConnsVariable:    "11",
 		identityMySQLConnMaxLifetimeVariable: "10m",
 		identityMySQLConnMaxIdleTimeVariable: "6m",
+		identityPublicOriginVariable:         "https://growth.example.com",
+		identityThrottleHMACKeyVariable:      testIdentityThrottleKey,
+		identityCSRFActiveKeyIDVariable:      "active_2026",
+		identityCSRFActiveKeyVariable:        testIdentityCSRFActiveKey,
+		identityArgon2MaxConcurrentVariable:  "4",
+		identityArgon2AcquireTimeoutVariable: "700ms",
+		identityHTTPHandlerTimeoutVariable:   "9s",
 		lotteryStrategyCacheEnabledVariable:  "true",
 		lotteryStrategyCacheTTLVariable:      "4m",
 		lotteryStrategyCacheLookupVariable:   "100ms",
@@ -225,6 +240,20 @@ func TestLoadAppliesCompleteOverride(t *testing.T) {
 			MaxIdleConnections:    11,
 			ConnectionMaxLifetime: 10 * time.Minute,
 			ConnectionMaxIdleTime: 6 * time.Minute,
+		},
+		Identity: IdentityConfig{
+			PublicOrigin:    "https://growth.example.com",
+			CookieMode:      IdentityCookieModeProduction,
+			ThrottleHMACKey: mustSecret32(t, testIdentityThrottleKey),
+			CSRF: IdentityCSRFConfig{
+				ActiveKeyID: "active_2026",
+				ActiveKey:   mustSecret32(t, testIdentityCSRFActiveKey),
+			},
+			PasswordHash: IdentityPasswordHashConfig{
+				MaxConcurrent:  4,
+				AcquireTimeout: 700 * time.Millisecond,
+			},
+			HandlerTimeout: 9 * time.Second,
 		},
 		Redis: RedisConfig{
 			Address:               "redis.internal.example:6380",
@@ -684,10 +713,11 @@ func TestLoadRequiresReadinessBudgetBeforeHTTPWriteDeadline(t *testing.T) {
 	}
 
 	config, err := Load(mapLookup(apiVariables(map[string]string{
-		httpWriteTimeoutVariable:         "3s",
-		mysqlPingTimeoutVariable:         "2s",
-		identityMySQLPingTimeoutVariable: "2s",
-		lotterySelectionTimeoutVariable:  "2s",
+		httpWriteTimeoutVariable:           "3s",
+		mysqlPingTimeoutVariable:           "2s",
+		identityMySQLPingTimeoutVariable:   "2s",
+		lotterySelectionTimeoutVariable:    "2s",
+		identityHTTPHandlerTimeoutVariable: "2s",
 	})))
 	if err != nil {
 		t.Fatalf("Load() ordered timeout error = %v", err)
@@ -717,10 +747,11 @@ func TestLoadRequiresLotterySelectionBudgetBeforeHTTPWriteDeadline(t *testing.T)
 	}
 
 	config, err := Load(mapLookup(apiVariables(map[string]string{
-		httpWriteTimeoutVariable:         "3s",
-		lotterySelectionTimeoutVariable:  "2s",
-		mysqlPingTimeoutVariable:         "2s",
-		identityMySQLPingTimeoutVariable: "2s",
+		httpWriteTimeoutVariable:           "3s",
+		lotterySelectionTimeoutVariable:    "2s",
+		mysqlPingTimeoutVariable:           "2s",
+		identityMySQLPingTimeoutVariable:   "2s",
+		identityHTTPHandlerTimeoutVariable: "2s",
 	})))
 	if err != nil {
 		t.Fatalf("Load() ordered Lottery timeout error = %v", err)
@@ -821,10 +852,10 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 	if len(password) != maximumPasswordBytes {
 		t.Fatalf("test password length = %d, want %d", len(password), maximumPasswordBytes)
 	}
-	config, err := Load(mapLookup(map[string]string{
+	config, err := Load(mapLookup(apiVariables(map[string]string{
 		mysqlPasswordVariable:         password,
 		identityMySQLPasswordVariable: "identity password",
-	}))
+	})))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -832,10 +863,10 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 		t.Fatal("Load() did not preserve the API password exactly")
 	}
 
-	config, err = Load(mapLookup(map[string]string{
+	config, err = Load(mapLookup(apiVariables(map[string]string{
 		mysqlPasswordVariable:         "   ",
 		identityMySQLPasswordVariable: "identity password",
-	}))
+	})))
 	if err != nil {
 		t.Fatalf("Load() whitespace password error = %v", err)
 	}
@@ -847,6 +878,7 @@ func TestLoadAcceptsArbitraryBoundedPassword(t *testing.T) {
 func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 	type loader struct {
 		name                  string
+		directVariable        string
 		fileVariable          string
 		companionPasswordName string
 		loadPassword          func(LookupFunc) (string, error)
@@ -854,6 +886,7 @@ func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 	loaders := []loader{
 		{
 			name:                  "api",
+			directVariable:        mysqlPasswordVariable,
 			fileVariable:          mysqlPasswordFileVariable,
 			companionPasswordName: identityMySQLPasswordVariable,
 			loadPassword: func(lookup LookupFunc) (string, error) {
@@ -863,6 +896,7 @@ func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 		},
 		{
 			name:                  "identity",
+			directVariable:        identityMySQLPasswordVariable,
 			fileVariable:          identityMySQLPasswordFileVariable,
 			companionPasswordName: mysqlPasswordVariable,
 			loadPassword: func(lookup LookupFunc) (string, error) {
@@ -871,8 +905,9 @@ func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 			},
 		},
 		{
-			name:         "migration",
-			fileVariable: migrationPasswordFileVariable,
+			name:           "migration",
+			directVariable: migrationPasswordVariable,
+			fileVariable:   migrationPasswordFileVariable,
 			loadPassword: func(lookup LookupFunc) (string, error) {
 				config, err := LoadMigration(lookup)
 				return config.MySQL.Password, err
@@ -898,7 +933,8 @@ func TestPasswordFilesLoadForAPIAndMigration(t *testing.T) {
 				if err := os.WriteFile(path, []byte(password.contents), 0o600); err != nil {
 					t.Fatalf("os.WriteFile() error = %v", err)
 				}
-				variables := map[string]string{loader.fileVariable: path}
+				variables := apiVariables(map[string]string{loader.fileVariable: path})
+				delete(variables, loader.directVariable)
 				if loader.companionPasswordName != "" {
 					variables[loader.companionPasswordName] = "companion password"
 				}
@@ -1381,12 +1417,35 @@ func mapLookup(values map[string]string) LookupFunc {
 }
 
 func apiVariables(overrides map[string]string) map[string]string {
+	_, originOverridden := overrides[identityPublicOriginVariable]
 	values := map[string]string{
-		mysqlPasswordVariable:         "test-api-password",
-		identityMySQLPasswordVariable: "test-identity-password",
+		mysqlPasswordVariable:           "test-api-password",
+		identityMySQLPasswordVariable:   "test-identity-password",
+		identityPublicOriginVariable:    "http://127.0.0.1:8080",
+		identityThrottleHMACKeyVariable: testIdentityThrottleKey,
+		identityCSRFActiveKeyIDVariable: "active",
+		identityCSRFActiveKeyVariable:   testIdentityCSRFActiveKey,
 	}
 	for key, value := range overrides {
 		values[key] = value
 	}
+	if environment := Environment(values[environmentVariable]); !originOverridden && (environment == EnvironmentStaging || environment == EnvironmentProduction) {
+		values[identityPublicOriginVariable] = "https://growth.example.com"
+	}
 	return values
+}
+
+const (
+	testIdentityThrottleKey   = "abcdefghijklmnopqrstuvwxyz123456"
+	testIdentityCSRFActiveKey = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"
+)
+
+func mustSecret32(t *testing.T, value string) Secret32 {
+	t.Helper()
+	if len(value) != identitySecretBytes {
+		t.Fatalf("test secret length = %d, want %d", len(value), identitySecretBytes)
+	}
+	secret := Secret32{}
+	copy(secret[:], value)
+	return secret
 }
