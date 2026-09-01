@@ -375,7 +375,7 @@ func Load(lookup LookupFunc) (Config, error) {
 	)
 
 	loadLog(lookup, &config.Log, &problems)
-	tlsModeValid, mysqlReadTimeoutValid := loadMySQLConnection(
+	tlsModeValid, mysqlReadTimeoutValid, _ := loadMySQLConnection(
 		lookup,
 		&config.MySQL.MySQLConnectionConfig,
 		mysqlReadTimeoutVariable,
@@ -458,7 +458,7 @@ func LoadMigration(lookup LookupFunc) (MigrationConfig, error) {
 
 	environmentValid := loadEnvironment(lookup, &config.Environment, &problems)
 	loadLog(lookup, &config.Log, &problems)
-	tlsModeValid, migrationReadTimeoutValid := loadMySQLConnection(
+	tlsModeValid, migrationReadTimeoutValid, _ := loadMySQLConnection(
 		lookup,
 		&config.MySQL.MySQLConnectionConfig,
 		migrationReadTimeoutVariable,
@@ -543,7 +543,7 @@ func loadMySQLConnection(
 	readTimeoutVariable string,
 	maximumReadTimeout time.Duration,
 	problems *[]error,
-) (bool, bool) {
+) (bool, bool, bool) {
 	if value, found := suppliedValue(lookup, mysqlAddressVariable, problems); found {
 		if validMySQLAddress(value) {
 			destination.Address = value
@@ -577,8 +577,8 @@ func loadMySQLConnection(
 	loadOptionalString(lookup, mysqlTLSCAFileVariable, &destination.TLSCAFile, problems)
 	loadDuration(lookup, mysqlConnectTimeoutVariable, maximumMySQLConnectTimeout, &destination.ConnectTimeout, problems)
 	readTimeoutValid := loadDuration(lookup, readTimeoutVariable, maximumReadTimeout, &destination.ReadTimeout, problems)
-	loadDuration(lookup, mysqlWriteTimeoutVariable, maximumMySQLWriteTimeout, &destination.WriteTimeout, problems)
-	return tlsModeValid, readTimeoutValid
+	writeTimeoutValid := loadDuration(lookup, mysqlWriteTimeoutVariable, maximumMySQLWriteTimeout, &destination.WriteTimeout, problems)
+	return tlsModeValid, readTimeoutValid, writeTimeoutValid
 }
 
 func validateDeploymentTLS(
