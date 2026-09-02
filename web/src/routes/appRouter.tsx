@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, type RouteObject } from "react-router";
 
 import { UserLayout } from "../layouts/UserLayout";
 import { AdminLayout } from "../layouts/AdminLayout";
@@ -23,7 +23,9 @@ import { GenericMcpPage } from "../pages/mcp/GenericMcpPage";
 import { AgentWorkspacePage } from "../pages/agent/workspace/AgentWorkspacePage";
 import { GenericAgentPage } from "../pages/agent/GenericAgentPage";
 
-import { Error403Page, Error404Page, Error500Page, LoginPage } from "../pages/system/SystemPages";
+import { LoginPage } from "../pages/auth/LoginPage";
+import { CurrentSessionPage } from "../pages/auth/CurrentSessionPage";
+import { Error403Page, Error404Page, Error500Page } from "../pages/system/SystemPages";
 import { SystemStatusPage } from "../pages/system/status/SystemStatusPage";
 
 import {
@@ -58,7 +60,7 @@ const loadAdminDashboardPage = async () => {
   return { Component: AdminDashboardPage };
 };
 
-export const router = createBrowserRouter([
+export const appRoutes: RouteObject[] = [
   {
     path: "/",
     Component: UserLayout,
@@ -265,10 +267,15 @@ export const router = createBrowserRouter([
   {
     path: "/",
     Component: AuthLayout,
-    children: [{ path: "login", Component: LoginPage }],
+    children: [
+      { path: "login", Component: LoginPage },
+      { path: "session", Component: CurrentSessionPage },
+    ],
   },
   { path: "/system/status", Component: SystemStatusPage },
   { path: "/403", Component: Error403Page },
   { path: "/500", Component: Error500Page },
   { path: "*", Component: Error404Page },
-]);
+];
+
+export const router = createBrowserRouter(appRoutes);
