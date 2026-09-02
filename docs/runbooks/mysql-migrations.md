@@ -2,19 +2,21 @@
 
 **适用范围：** GrowthOS-Go 第 13 节及之后的 MySQL 前向 Migration
 
-**当前边界：** 产品源码 Migration latest 为 11；旧 `000001`～`000005` 保留，`000006`～`000010` 新增 Strategy snapshot 两表与 Marketing Activity publication 三表，`000011` 追加 Marketing 内部 active-publication 外键。一次性 MySQL 8.4.11 与长期 Compose v5→v11 已真实验收。
+**当前边界：** 产品源码 Migration latest 为 14；旧 `000001`～`000011` 字节历史保留，`000012`～`000014` 依次新增 workforce account、Session 与 authentication throttle 三张 Identity 表，当前共十三张业务/Identity 表。第 28 节 v5、第 30 节 disposable/长期 v5→v11 仍是各自时间切片的历史证据；第 32 节已运行部分 Compose、provision、maintenance 与浏览器证据，但独立 MySQL 最终 migration/Repository/grant 矩阵和全仓冻结门禁仍为 `PENDING`。
 
 ## 1. 目的
 
 本手册说明如何安全检查和执行 GrowthOS MySQL Migration，以及遇到 dirty、版本漂移、取消或连接问题时何时必须停止。它不是 MySQL 管理员权限说明，也不授权操作者绕过审批执行 `force`、`drop` 或任意 SQL。
 
-长期设计依据见 [ADR-0010](../decisions/ADR-0010-mysql-migration-boundaries.md)；第 21 节运行时最小权限依据见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)，第 28 节 graph 持久化边界见 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)，第 30 节 snapshot/Activity 边界见 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)，配置键和值域见[配置参考](../configuration.md)。
+长期设计依据见 [ADR-0010](../decisions/ADR-0010-mysql-migration-boundaries.md)；第 21 节运行时最小权限依据见 [ADR-0018](../decisions/ADR-0018-ephemeral-lottery-selection-api.md)，第 28 节 graph 持久化边界见 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)，第 30 节 snapshot/Activity 边界见 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)，第 32 节 Identity 边界见 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)，配置键和值域见[配置参考](../configuration.md)。
 
 ## 2. 角色与权限
 
 | 角色 | 账号 | 权限边界 |
 | --- | --- | --- |
 | API 进程 | `growthos_app`（可覆盖） | 当前运行链只允许旧两张 Lottery 业务表 `SELECT`；对 graph 三表、snapshot 两表、Marketing 三表共八张未装配表零权限，也无 INSERT、UPDATE、DELETE、DDL 或 `schema_migrations` 权限 |
+| Identity runtime / maintenance | `growthos_identity`（可覆盖） | workforce account `SELECT` 与 `UPDATE(updated_at)`；Session/throttle `SELECT, INSERT, UPDATE, DELETE`；拒绝 credential/status/epoch 写入、业务表、`schema_migrations`、DDL/GRANT。maintenance 只复用此既有 DELETE 能力，不新增权限 |
+| Identity provisioner | `growthos_identity_provisioner`（可覆盖） | 只可向 workforce account `INSERT`；不能 readback、UPDATE、DELETE、upsert，不能访问 Session/throttle、业务或 Migration 表 |
 | Migration 进程 | `growthos_migrator`（可覆盖） | 仅目标 schema 的审核 DDL、版本记录和必要 DML |
 | legacy Repository 集成测试 | 任务专用隔离 writer | 仅旧 Strategy/Award 两表 `SELECT, INSERT`；不等于 API 运行身份 |
 | graph Repository 集成测试 | 任务专用隔离 graph writer | 仅新 graph/node/edge 三表 `SELECT, INSERT`；不等于 API 运行身份，且 graph adapter 尚未装配 |
@@ -37,7 +39,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
 
 这不是复制即用的生产授权：生产 host、管理员身份、mandatory role 与撤权流程必须由环境安全设计决定。当前 HTTP 用例只读取旧 Strategy/Award；graph、Strategy snapshot 与 Marketing Activity publication 的 domain/application/Repository/ACL 全部未装配。所以长期 runtime 既不需要 INSERT，也不需要读取另外八表。隔离测试写身份只用于可丢弃 schema，不能据此扩宽产品进程。后续增加运行时写用例时，应从已审核用例重新计算最小权限，禁止直接授予应用或 Migrator 全局 `ALL PRIVILEGES`。
 
-Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛这个 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销应用旧授权，再精确授予旧两表 `SELECT`，最后比较排序后的 `SHOW GRANTS`。长期 v11 栈已由 smoke 对 graph/snapshot/Marketing 八表逐表验证 1142 拒绝，并确认 `@@GLOBAL.mandatory_roles` 为空；任一回归仍会阻止 API 启动。
+Compose 使用 Migration 后一次性 `mysql-grants` 作业收敛当前 allowlist：作业不加入网络，只通过只读 `growthos_mysql_socket` 连接，先撤销三个目标账号的旧 direct grants，再精确授予 business 两表只读、Identity runtime 三表能力和 provisioner 单表 INSERT，最后比较排序后的 `SHOW GRANTS`、执行 credential/capability probe，并确认 `@@GLOBAL.mandatory_roles` 为空。长期 v11 栈对 graph/snapshot/Marketing 八表的 1142 拒绝仍是第 30 节历史证据；第 32 节当前 smoke/operations 不能被反向写成当时已经存在 Identity 表或 provisioner。
 
 第 21 节权限变化的上下文与证据见[课程](../course/part-03/lesson-21-lottery-api.md)、[API](../api/lessons/lesson-21.md)、[QA](../qa/lessons/lesson-21.md)、[设计手记](../design-thinking/lessons/lesson-21.md)和[面试问答](../interview/lessons/lesson-21.md)。
 
@@ -106,8 +108,13 @@ migrations/sql/NNNNNN_description.up.sql
 | 9 | `000009_create_marketing_activity_publication.up.sql` | `CREATE TABLE marketing_activity_publication` | immutable numeric publication version、exact graph ref、`[starts_at, ends_at)` 与 rollback provenance |
 | 10 | `000010_create_marketing_activity_publication_strategy.up.sql` | `CREATE TABLE marketing_activity_publication_strategy` | publication 内 exact Strategy snapshot manifest；只建 Marketing 内部 FK，不跨 Lottery 建 FK |
 | 11 | `000011_add_marketing_activity_active_publication_fk.up.sql` | `ALTER TABLE marketing_activity` | 追加 Activity active publication 反向复合 FK；没有新增第六张表 |
+| 12 | `000012_create_identity_workforce_account.up.sql` | `CREATE TABLE identity_workforce_account` | binary canonical account/login/Principal、Argon2id envelope、enabled/disabled、credential version 与 authentication epoch |
+| 13 | `000013_create_identity_session.up.sql` | `CREATE TABLE identity_session` | digest-only opaque Session、issue/revoke operation refs、双 expiry/epoch/revocation、容量与有界 cleanup 索引、account `RESTRICT` FK |
+| 14 | `000014_create_identity_authentication_throttle.up.sql` | `CREATE TABLE identity_authentication_throttle` | login/source HMAC digest 聚合、failure/inflight/admission epoch、lease/backoff/window 与有界 cleanup 索引 |
 
 每个版本只有一条 MySQL DDL，因为 MySQL atomic DDL 的原子边界是一条语句，不是任意多语句文件。若某版本失败，之前版本可以已经完整存在，而版本表明确记录当前 dirty。第 30 节必须在旧五表之后按 `snapshot -> snapshot_award -> activity -> publication -> publication_strategy -> active FK` 前向执行。已共享文件只追加不回写，并由嵌入字节 hash 测试保护；任何改动都应新增更高版本。
+
+第 32 节再按 `workforce account -> session -> authentication throttle` 前向执行。三张表都使用 InnoDB、ASCII binary identifier 语义和数据库可表达的局部 CHECK/UNIQUE/FK；完整 password envelope、Session 生命周期、五会话上限与 throttle admission 仍由 Identity domain/application/Repository 校验。Migration 不写默认账号、明文 password、可复用 hash、raw Session/CSRF token 或 fixture。
 
 ## 5. 标准发布流程
 
@@ -128,7 +135,7 @@ make db-status
 | --- | --- |
 | `uninitialized` | 已有首个迁移，确认目标库为空或符合初始条件后继续 |
 | `pending` | 核对当前/最新版本与发布内容后继续 |
-| `clean` | 使用当前构建时仍必须确认 `version=latest=11`；重复 `up` 应为 `no_change` |
+| `clean` | 使用当前构建时仍必须确认 `version=latest=14`；重复 `up` 应为 `no_change` |
 
 任何命令失败、dirty、version mismatch、未知状态或日志环境不符都必须停止。
 
@@ -140,7 +147,7 @@ make db-migrate
 
 当前成功结果只能是：
 
-- `no_change`：已经 latest 11；
+- `no_change`：已经 latest 14；
 - `applied`：应用了一个或多个待执行版本。
 
 命令退出 0 之后再次检查：
@@ -149,11 +156,11 @@ make db-migrate
 make db-status
 ```
 
-应达到 `clean` 且 `version=latest=11`。如果数据库版本高于二进制 latest、dirty、或 latest 不是预期的 11，停止发布并核对构建与目标库。已经运行的 volume 不会因源码更新自动升级；只有实际 `status -> up -> status` 完成，才可记录该实例达到 v11。长期 `growthos` 已在保持 MySQL/Redis/Web/网络/卷 identity 的前提下从 v5 原地升级 v11，并通过 status、权限负证与 smoke；其他环境仍必须独立执行和记录同一流程。
+应达到 `clean` 且 `version=latest=14`。如果数据库版本高于二进制 latest、dirty、或 latest 不是预期的 14，停止发布并核对构建与目标库。已经运行的 volume 不会因源码更新自动升级；只有实际 `status -> up -> status` 完成，才可记录该实例达到 v14。第 30 节长期 `growthos` 在保持 MySQL/Redis/Web/网络/卷 identity 的前提下从 v5 原地升级 v11 并通过当时的 status、权限负证与 smoke，这是保留的历史时间切片，不自动证明今天的 volume 已到 v14；每个环境仍必须独立执行和记录 v11→v14 及新的 Identity grant 结果。
 
 ### 5.3 部署 API
 
-Migration 成功并核对后再收敛应用授权，授权通过后才部署 API。`growth-api` 自身不会运行 DDL 或授权，只会用 API 身份打开有界连接池并 Ping。Compose 由依赖链自动执行 `migrate → mysql-grants → api`；其他环境必须提供等价、可审计且失败关闭的发布步骤。应用回滚前必须确认旧版本与新 schema、权限 allowlist 都兼容；二进制回滚不会自动回滚数据库或恢复旧授权。
+Migration 成功并核对后再收敛三个目标账号的授权，授权通过后才部署 API 或运行 Identity operations。`growth-api` 自身不会运行 DDL 或授权，只会用 business/Identity 两个独立 runtime 身份打开有界连接池并 Ping；provisioner 与 maintenance 各自只打开一个短命连接。Compose 由依赖链自动执行 `migrate → mysql-grants → api`，operations wrapper 也先证明 `mysql-grants` 精确 `exited:0`；其他环境必须提供等价、可审计且失败关闭的发布步骤。应用回滚前必须确认旧版本与新 schema、权限 allowlist 都兼容；二进制回滚不会自动回滚数据库或恢复旧授权。
 
 ### 5.4 Schema 约束的责任边界
 
@@ -169,6 +176,8 @@ Migration 成功并核对后再收敛应用授权，授权通过后才部署 API
 第 28 节 graph 三表同样只承担数据库可靠表达的局部事实：node/edge 复合外键收紧同 revision scope，root/可达/环/深度仍由完整领域恢复验证。
 
 第 30 节 Strategy snapshot 两表同样 create-only；Marketing 三表只拥有 Activity/publication 生命周期。publication 与 Lottery graph/snapshot 不建跨 bounded-context FK，只保存 exact refs，由 Lottery ACL 与 resolve fail-closed 补上语义闭合。Marketing 内部 FK 保证 publication/manifest/active identity 的局部引用，领域仍负责 exact terminal 集、不可变版本、rollback source、时间窗和状态机。发布、回滚和退役的 `state_version` CAS 冲突不能被运维层改成覆盖写或盲目重试；历史 publication 禁止原地 UPDATE/DELETE。
+
+第 32 节 Identity 三表同样不是完整认证协议的替代品：数据库只表达 binary identifier、唯一 login/Principal、非零 digest/epoch、局部时间与 revocation/throttle shape，以及 Session→account 的 `RESTRICT` 引用。Argon2 PHC 严格解析、unknown/disabled dummy work、session-bound CSRF、Origin、每账户五会话事务、touch/revoke race、双维 admission lease 与公开错误仍由应用代码负责。`growthos_identity` 对 workforce account 的 `UPDATE(updated_at)` 是 MySQL 8.4.11 锁读所需列级能力，不授权它修改 login、credential、status 或 epoch；创建账号只能经 INSERT-only provisioner。
 
 ### 5.5 Repository 事务故障的操作边界
 
@@ -244,6 +253,16 @@ dirty 表示某个版本执行开始后没有完整成功。后续 Migration 必
 Migration 执行成功但连接/source 关闭失败时，命令仍非零退出。不要仅凭 `applied` 日志宣布发布成功；用新进程运行 `status` 并检查资源/网络状态后再决策。
 
 ## 8. 真实集成测试
+
+### 8.1 第 32 节当前实现与执行证据
+
+当前候选源码已经把 Migration latest 推进到 14，并将 Identity runtime、INSERT-only provisioner 与 maintenance 的 SQL 能力写入 Compose grant reconciliation/smoke。两个 disposable provision Compose 环境已经实际通过并精确清理；official maintenance fixture 在 v14 表上实测第一次删除 Session/throttle/total `2/1/3`、第二次 `0/0/0`，active Session fingerprint 不变且 fixture 零残留。development loopback 真实浏览器也已通过 Nginx → Go → MySQL 的 login、reload/current、logout，以及 MySQL outage 下 unknown/unavailable 与恢复重核；该证据没有直接读取 HttpOnly Cookie，也不替代原始 wire 或 schema/grant 全矩阵。
+
+长驻 provision 实跑曾因 `docker compose up --wait` 把已成功完成的 `mysql-grants` `exited:0` 当作等待失败而停止。提交 `af4245e` 已让 provision/maintenance wrapper 最长 180 秒轮询唯一 container 的 exact state：只接受 `exited:0`，等待 `created:0`/`running:0`/`restarting:0`，对非零退出、歧义、意外状态、inspect 失败和超时关闭。该事实只证明 prerequisite 判定已修复，不把一次成功升级成所有数据库场景均通过。
+
+第 32 节最终仍须在独立 disposable MySQL 8.4.11 上完成并冻结：v11→v14 与 clean/second-up/dirty stop、三表精确 schema/index/FK/CHECK、Repository account/session/throttle 并发与故障注入、三个数据库身份的正向/1142/1143 负向能力、mandatory role，以及退出后的精确清理。原始 Session HTTP wire、staging/production TLS 和全仓最终门禁也仍为 `PENDING`。
+
+### 8.2 第 28/30 节历史与通用隔离入口
 
 普通 `make test` 会在缺少显式 opt-in 时 skip 真实 MySQL 集成测试。第 28 节推荐使用自包含的一次性门禁：
 

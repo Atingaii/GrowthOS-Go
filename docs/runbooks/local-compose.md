@@ -27,7 +27,7 @@
 3. **不使用全局清理。** 禁止以 `docker system prune`、`docker volume prune`、`docker container prune`、通配符删除或 Docker Desktop 批量删除作为本节清理方式。
 4. **普通停止不删除 named volumes。** `make compose-down` 不带 `--volumes`，必须保留 `growthos_mysql_data` 与 `growthos_mysql_socket`；后者可重建但属于当前拓扑的明确资源。
 5. **不读取/打印 Secret 内容。** 不执行 `cat deploy/compose/secrets/*`，不把内容复制到命令行、聊天、QA、截图或日志。
-6. **不手工补齐部分 Secret 集合。** 完整集合是五份数据库/缓存凭据加两份独立 Identity 协议密钥；生成器只允许从精确旧四或过渡五状态自动升级，其他缺项必须恢复原文件或进行经过确认的数据/凭据重置。
+6. **不手工补齐部分 Secret 集合。** 完整集合是六份数据库/缓存凭据加两份独立 Identity 协议密钥；生成器只允许从精确旧四、过渡五或 Lesson 32 runtime 七件套自动升级，其他缺项必须恢复原文件或进行经过确认的数据/凭据重置。
 7. **已有 volume 时不随机重建密码。** MySQL 初始化脚本只在空数据目录执行；新 Secret 不会自动修改 volume 内账号。
 8. **故障演练只停止 GrowthOS service。** 不停止用户外部 MySQL/Redis 来模拟故障。
 9. **不把容器停止当作事务回滚。** Migration/DDL 中断需要先检查状态，不得靠删除容器或版本表恢复。
@@ -40,11 +40,13 @@
 | `web` | 唯一 published loopback 端口 | 无 | 浏览器入口连接失败；内部服务不自动停止 |
 | `api` | 不发布；仅 Web 经 edge 访问 | 无 | SPA 仍可访问；代理返回带 ID 的 502/504 |
 | `migrate` | 不发布 | 对 MySQL schema 可能有持久影响 | 正常为退出 0；失败会阻止 API 初始启动 |
-| `mysql-grants` | 不发布且 `network_mode: none` | 精确收敛 `growthos_app` 与 `growthos_identity` 授权；不修改业务行 | 正常为退出 0；失败会阻止 API 初始启动 |
+| `mysql-grants` | 不发布且 `network_mode: none` | 精确收敛 `growthos_app`、`growthos_identity`、`growthos_identity_provisioner` 授权；不修改业务行 | 正常为退出 0；失败会阻止 API/operations 继续 |
+| `identity-provision`（operations profile） | 不发布 | 成功时新增一条 workforce account | 固定 create 后退出；duplicate/结果未知失败关闭 |
+| `identity-maintenance`（operations profile） | 不发布 | 最多删除 Session 250 + throttle 250 条历史行 | 固定 run 后退出；零删除也成功，部分提交如实返回 |
 | `mysql` | 不发布 | `growthos_mysql_data` | API `/health` 可继续 200；业务或 Identity 任一 runtime pool 不可用时 `/ready` 应 503 |
 | `redis` | 不发布 | 无；`/data` tmpfs | 缓存读写有界失败并回源 MySQL；探针不应变化 |
 
-网络：`edge` 只连接 Web/API；`data` 只连接 API/Migrate/MySQL；`cache` 是 Docker internal 网络，只连接 API/Redis。业务与 Identity 虽然连接同一个 MySQL service/schema，却使用不同账号、Secret、DSN 与连接池；这不是两个数据库服务器。`mysql-grants` 不连接任何网络，只通过只读 `growthos_mysql_socket` 访问 MySQL。API 精确挂载业务 MySQL、Identity MySQL、Redis 和两份 Identity 协议密钥共五份 Secret；MySQL 初始化容器挂载四份数据库凭据，Migrate 只挂载迁移凭据，授权作业只挂载 root/Identity 凭据，其他 service 不得读取额外 Secret。不要为了临时调试把 service 永久加入不需要的网络或挂载不属于它的 Secret。
+网络：`edge` 只连接 Web/API；`data` 只连接 API/Migrate/MySQL；`cache` 是 Docker internal 网络，只连接 API/Redis。业务与 Identity 虽然连接同一个 MySQL service/schema，却使用不同账号、Secret、DSN 与连接池；这不是两个数据库服务器。`mysql-grants` 不连接任何网络，只通过只读 `growthos_mysql_socket` 访问 MySQL。API 精确挂载业务 MySQL、Identity MySQL、Redis 和两份 Identity 协议密钥共五份 Secret；MySQL 初始化容器挂载五份数据库凭据，Migrate 只挂载迁移凭据，授权作业只挂载 root/Identity runtime/provisioner 凭据。operations profile 中 provisioner 只静态挂载 provisioner 凭据，maintenance 只挂载 runtime Identity 凭据；其他 service 不得读取额外 Secret。不要为了临时调试把 service 永久加入不需要的网络或挂载不属于它的 Secret。
 
 ## 4. 主机前置检查
 
@@ -120,6 +122,7 @@ deploy/compose/secrets/mysql_root_password
 deploy/compose/secrets/mysql_app_password
 deploy/compose/secrets/mysql_migration_password
 deploy/compose/secrets/mysql_identity_password
+deploy/compose/secrets/mysql_identity_provisioner_password
 deploy/compose/secrets/redis_password
 deploy/compose/secrets/identity_throttle_hmac_key
 deploy/compose/secrets/identity_csrf_active_key
@@ -132,22 +135,23 @@ ls -ld deploy/compose/secrets
 ls -l deploy/compose/secrets
 ```
 
-预期目录权限 `0700`、七个 Secret 文件 `0444`。文件 `0444` 是 Docker Desktop file secret 对非 root container 的兼容要求；宿主机可达边界依赖上层目录 `0700`。不要为了看起来“更安全”直接改成 `0400`，那可能让容器内 root-owned bind mount 无法被非 root 进程读取。
+预期目录权限 `0700`、八个 Secret 文件 `0444`。文件 `0444` 是 Docker Desktop file secret 对非 root container 的兼容要求；宿主机可达边界依赖上层目录 `0700`。不要为了看起来“更安全”直接改成 `0400`，那可能让容器内 root-owned bind mount 无法被非 root 进程读取。
 
 ### 5.2 生成器的受控状态
 
 | 文件状态 | MySQL volume | 结果 | 正确处理 |
 | --- | --- | --- | --- |
-| 0/7 | 不存在 | 在私有临时目录生成并验证完整集合，再逐文件发布 | 正常首次启动；若发布中断形成其他 partial 集合，下次运行会拒绝继续 |
-| 4/7 且恰为旧四凭据 | 任意 | 保留并验证旧值，只新增 Identity 数据库密码和两份协议密钥 | 从第 31 节线性升级 |
-| 5/7 且恰为五份数据库/缓存凭据 | 任意 | 保留并验证旧值，只新增两份协议密钥 | 从第 32 节过渡实现线性升级 |
-| 7/7 | 任意 | 只验证格式/权限，不覆盖 | 正常复用 |
+| 0/8 | 不存在 | 在私有临时目录生成并验证完整集合，再逐文件发布 | 正常首次启动；若发布中断形成其他 partial 集合，下次运行会拒绝继续 |
+| 4/8 且恰为旧四凭据 | 任意 | 保留并验证旧值，新增 Identity runtime/provisioner 两份数据库密码和两份协议密钥 | 从第 31 节线性升级 |
+| 5/8 且恰为五份数据库/缓存凭据 | 任意 | 保留并验证旧值，新增 provisioner 密码和两份协议密钥 | 第 32 节早期过渡集合升级 |
+| 7/8 且恰为 Lesson 32 runtime 七件套 | 任意 | 保留并验证旧值，只新增 provisioner 密码 | provisioner one-shot 引入前的线性升级 |
+| 8/8 | 任意 | 只验证格式/权限与 Identity key/provisioner password 分离，不覆盖 | 正常复用 |
 | 其他 partial | 任意 | 失败 | 恢复缺失原文件；不要随机补齐 |
-| 0/7 | `${project}_mysql_data` 已存在 | 失败 | 恢复原集合，或执行经过授权的完整数据/凭据重置 |
+| 0/8 | `${project}_mysql_data` 已存在 | 失败 | 恢复原集合，或执行经过授权的完整数据/凭据重置 |
 
-生成器只接受可读普通文件：五份数据库/缓存凭据必须是 64 位小写十六进制，throttle HMAC 与 active CSRF 必须是两份不同用途、各 32 个原始非全零 bytes 的文件。失败输出可以记录变量/文件名和规则，但不能把文件内容粘贴到工单，也不能用 shell command substitution 读取二进制 key。
+生成器只接受可读普通文件：六份数据库/缓存凭据必须是 64 位小写十六进制，且 provisioner 密码必须与其余五份凭据不同；throttle HMAC 与 active CSRF 必须是两份不同用途、各 32 个原始非全零 bytes 的文件。失败输出可以记录变量/文件名和规则，但不能把文件内容粘贴到工单，也不能用 shell command substitution 读取二进制 key。
 
-`.generate.lock` 是生成器在同一 Secret 目录内创建的原子互斥目录。正常退出和可处理的 signal 会自动移除；若 `SIGKILL`、断电或文件系统故障留下它，先确认没有 `generate-compose-secrets.sh` 进程，再用 `ls -ld` 与 `find ... -maxdepth 1` 确认它是空的、非 symlink 的精确目录。只有证据齐全才执行 `rmdir deploy/compose/secrets/.generate.lock`，随后重新核对 4/5/7 文件矩阵。禁止递归删除整个 Secret 目录或借机生成新密码。
+`.generate.lock` 是生成器在同一 Secret 目录内创建的原子互斥目录。正常退出和可处理的 signal 会自动移除；若 `SIGKILL`、断电或文件系统故障留下它，先确认没有 `generate-compose-secrets.sh` 进程，再用 `ls -ld` 与 `find ... -maxdepth 1` 确认它是空的、非 symlink 的精确目录。只有证据齐全才执行 `rmdir deploy/compose/secrets/.generate.lock`，随后重新核对 4/5/7/8 文件矩阵。禁止递归删除整个 Secret 目录或借机生成新密码。
 
 ### 5.3 禁止绕过 volume guard
 
@@ -159,7 +163,7 @@ ls -l deploy/compose/secrets
 
 1. 通过受控管理员身份更新 MySQL 对应账号；
 2. 通过支持版本切换与回滚的 Secret 来源发布完整、匹配的新集合；
-3. 按服务重建/重启并验证两个账号权限；
+3. 按服务重建/重启并验证 business、Identity runtime 与 Identity provisioner 三个账号权限；
 4. 安全撤销旧凭据；
 5. 更新审计和恢复材料。
 
@@ -213,13 +217,13 @@ make compose-up
 ```text
 MySQL healthy (Migrator identity authenticated SELECT 1)
   -> Migration reaches clean latest 14 and exits 0
-  -> mysql-grants reconciles exact business + Identity allowlists and exits 0
+  -> mysql-grants reconciles exact business + Identity runtime/provisioner allowlists and exits 0
   -> API opens distinct business/Identity pools, mounts Session HTTP, and /health becomes healthy
 
 Redis starts independently; API does not wait for Redis health
 ```
 
-全新空 volume 的 MySQL init 脚本创建 `growthos_app`、`growthos_migrator`、`growthos_identity` 三个非 root 账号；root 由官方镜像入口管理。复用第 31 节以前的 volume 时 init 脚本不会重跑，`mysql-grants` 会以 `CREATE USER IF NOT EXISTS` 补建 Identity 账号、验证挂载凭据并精确收敛两个 runtime allowlist。它不会改业务行，也不能代替 Migration。
+全新空 volume 的 MySQL init 脚本创建 `growthos_app`、`growthos_migrator`、`growthos_identity`、`growthos_identity_provisioner` 四个非 root 账号；root 由官方镜像入口管理。复用旧 volume 时 init 脚本不会重跑，`mysql-grants` 会以 `CREATE USER IF NOT EXISTS` 补建两种 Identity 账号、验证挂载凭据并精确收敛 business、Identity runtime 与 provisioner 三个 allowlist。它不会改业务行，也不能代替 Migration。
 
 `web` 不等待 API，`redis` 不被 API 依赖。看到创建顺序不同不等于错误，判断依据是最终状态与契约。
 
@@ -246,12 +250,13 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml ps --a
 | `migrate` | exited, code 0 |
 | `mysql-grants` | exited, code 0 |
 
-不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。当前构建前者应执行到 latest 14；后者只经 Unix socket 撤销两个 runtime 身份的旧 direct grants，再建立以下精确 allowlist：
+不要因 `migrate` 或 `mysql-grants` 显示 exited 就认为它崩溃；两个 one-shot 成功退出正是设计状态。当前构建前者应执行到 latest 14；后者只经 Unix socket 撤销三个目标身份的旧 direct grants，再建立以下精确 allowlist：
 
 - `growthos_app`：只对 `lottery_strategy`、`lottery_strategy_award` 有 `SELECT`；
 - `growthos_identity`：对 `identity_workforce_account` 有 `SELECT` 与仅限 `updated_at` 的 `UPDATE`，对 `identity_session`、`identity_authentication_throttle` 有 `SELECT, INSERT, UPDATE, DELETE`。
+- `growthos_identity_provisioner`：只对 `identity_workforce_account` 有 `INSERT`，没有 readback、更新、删除、upsert 或其他表能力。
 
-smoke 还必须证明两个账号均没有 schema wildcard/mandatory role：业务账号拒绝其余十一张表，Identity 账号拒绝十张非 Identity 表、`schema_migrations` 和 workforce credential/status 列写入。Migration 与授权职责不可互换，且未实际运行时不能预写成功。
+smoke 还必须证明三个账号均没有 schema wildcard/mandatory role：业务账号拒绝其余十一张表，Identity runtime 拒绝十张非 Identity 表、`schema_migrations` 和 workforce credential/status 列写入，provisioner 拒绝 SELECT/UPDATE/DELETE、Session/throttle、业务表与 Migration 表。Migration 与授权职责不可互换，且未实际运行时不能预写成功。
 
 ### 7.2 手工只读检查
 
@@ -275,7 +280,7 @@ http://127.0.0.1:8088/system/status
 
 | 方法 | 必要输入 | 成功结果 | 边界 |
 | --- | --- | --- | --- |
-| `POST /api/v1/session` | exact Origin、受限 `application/json`、严格 `{login,password}` | `201`、HttpOnly development Cookie、最小 Principal/expiry/CSRF DTO | 每次创建新 token；不接受客户端 Principal/role/scope |
+| `POST /api/v1/session` | exact Origin、受限 `application/json`、严格 `{login_name,password}` | `201`、HttpOnly development Cookie、最小 Principal/expiry/CSRF DTO | 每次创建新 token；不接受客户端 Principal/role/scope |
 | `GET /api/v1/session` | 唯一有效 Session Cookie | `200`、最小 Session DTO 与 session-bound CSRF token | 不返回 role/permission；无效会话统一 401 |
 | `DELETE /api/v1/session` | 唯一有效 Cookie、exact Origin、唯一 `X-CSRF-Token` | 已确认 revoke 后 `204` 并清 Cookie | 缺失/错误 Origin 或 CSRF 低披露 403 |
 
@@ -288,6 +293,26 @@ curl --silent --show-error --include http://127.0.0.1:8088/api/v1/session
 预期匿名请求得到带 `Cache-Control: no-store` 和关联 request ID 的统一 `401 unauthenticated`，而不是 `route_not_found`。成功 login/current/logout/replay 必须先通过受控 provisioning 创建 workforce account，再使用私有 Cookie jar 执行；本手册和 `compose-smoke` 不提交默认账号、明文密码、可复用 hash，也不建议用手写 SQL 绕过 credential envelope。Session 成功只产生可信 human Principal；第 33 节以前不能把它写成现有业务路由已经执行 RBAC。
 
 本地 Nginx 会转发 `X-Forwarded-For`，但 Identity guard 当前有意忽略所有 forwarding header，只从 API 连接的 `RemoteAddr` 取 source。因此经 Web 进入的多个浏览器会共享 Web 容器 peer IP 的 source throttle；login-name throttle 仍独立生效。这个取舍防止客户端伪造来源头，适合本地受控拓扑，但不能作为生产逐客户端 IP 限流证据。生产可信代理 CIDR、header 覆盖/清洗和真实客户端地址恢复必须另开小节实现与验收。
+
+### 7.4 Identity operations-only one-shot
+
+账号 enrollment 与历史清理都不提供 HTTP API，也不会随 `make compose-up` 常驻。详细密码文件、Cookie jar、CSRF 和失败恢复步骤见 [Identity Session 运维手册](identity-session-operations.md)。标准入口为：
+
+```bash
+make compose-identity-provision \
+  IDENTITY_ACCOUNT_ID='<canonical-account-id>' \
+  IDENTITY_LOGIN_NAME='<canonical-login-name>' \
+  IDENTITY_PRINCIPAL_ID='<canonical-principal-id>' \
+  IDENTITY_PASSWORD_FILE='/absolute/caller-owned/private-file'
+
+make compose-identity-maintenance
+```
+
+provision password file 必须是调用者所有、非 symlink、单 hard-link、精确 `0600` 的绝对 regular file；不要把内容放进环境变量、参数、输出或仓库。wrapper 只创建一个私有短命快照给 UID 65532 container，结束时按精确路径清理；原始 caller 文件仍由调用者所有。provisioner 只做 create，一旦 duplicate 或 COMMIT outcome unknown 就停止，不能盲目重试或要求 INSERT-only 身份 readback。
+
+maintenance container 固定执行 `growth-identity-maintenance run`，只挂载 runtime Identity Secret，使用一个连接、一个 clock snapshot、一次 attempt 与 Session/throttle 各 250 行预算；调用者不能传 cutoff、batch、loop 或 retry。零删除也是成功，部分提交必须如实报告。
+
+两个 wrapper 都先启动 `mysql-grants`。真实运行曾证明 `docker compose up --wait` 可能把快速成功的 `exited:0` one-shot 误判成等待失败；提交 `af4245e` 改为最长 180 秒轮询 exact container state。唯一合法 container 的 `exited:0` 才继续；`created:0`、`running:0`、`restarting:0` 继续等待，非零退出、歧义 ID、意外状态、inspect 失败或超时均失败关闭。
 
 ## 8. 标准冒烟与完整验收
 
@@ -309,6 +334,8 @@ make compose-smoke
 - 十三张表存在：旧 Strategy/Award、graph 三表、Strategy snapshot 两表、Marketing Activity publication 三表与 Identity 三表；`000011` 是 ALTER，`000012`～`000014` 各新增一张 Identity 表；
 - `growthos_app` 的 `SHOW GRANTS` 精确等于 USAGE + 两张表 `SELECT`，`@@GLOBAL.mandatory_roles` 为空；该账号能读旧两表，拒绝 INSERT/UPDATE/DELETE、`schema_migrations` 以及其余十一张表；
 - `growthos_identity` 的 `SHOW GRANTS` 精确等于 USAGE + 三表 allowlist：workforce account `SELECT` 与 `UPDATE(updated_at)`、session/throttle 完整 DML；它拒绝业务表、`schema_migrations` 和 workforce credential/status 列写入；
+- `growthos_identity_provisioner` 的 `SHOW GRANTS` 精确等于 USAGE + workforce account `INSERT`；它拒绝 readback/upsert/更新/删除、Session/throttle、业务表与 `schema_migrations`；
+- `identity-provision` 与 `identity-maintenance` 只存在于 operations profile，均为 non-root/read-only/cap-drop/no-port one-shot，并分别只接收 provisioner Secret、runtime Identity Secret；
 - API 精确消费业务/Identity/Redis 三份连接 Secret 与两份 Identity 协议密钥；其他 service 的网络与 Secret mount 不越界；
 - Redis 默认用户关闭，`growthos_api` 可执行无 key 的 `PING`，并只可对缓存前缀执行 `GETRANGE/SET/DEL`；普通 `GET`、前缀外 `SET`、`KEYS`、`SCAN`、`FLUSHALL`、`CONFIG`、`ACL`、`PUBLISH`、`SUBSCRIBE` 均被拒绝；
 - Redis 精确启用 `48mb`、`allkeys-lru`、无 RDB/AOF 持久化；
@@ -329,7 +356,7 @@ make compose-smoke
 make compose-lottery-api-acceptance
 ```
 
-该脚本创建随机 Compose project、任务专用七份 Secret、MySQL data/socket volumes 和 acceptance image tags；Migrator 应用当前 latest 14，写入的仍只是两张 Lottery 旧表 fixture。`growthos_app` 收敛为两表 SELECT-only 并拒绝其余十一张表，`growthos_identity` 独立收敛到三张 Identity 表 allowlist；随机端口 overlay 刻意不把该业务回归冒充 Identity exact-origin 浏览器验收。本节在当前 v14 schema 上执行下列 Lottery/cache 场景：
+该脚本创建随机 Compose project、任务专用八份 Secret、MySQL data/socket volumes 和 acceptance image tags；Migrator 应用当前 latest 14，写入的 Lottery 部分仍只是两张旧表 fixture，并另以受控 operations fixture 验证 Identity。`growthos_app` 收敛为两表 SELECT-only 并拒绝其余十一张表，`growthos_identity` 独立收敛到三张 Identity 表 allowlist，`growthos_identity_provisioner` 只获 workforce account INSERT；随机端口 overlay 的业务/cache 断言不能单独冒充 Identity exact-origin 浏览器验收。本节在当前 v14 schema 上执行下列 Lottery/cache 场景：
 
 - `reward`、`no_reward` 与 MaxUint64 identity 的最小 decimal-string DTO；
 - invalid ID/demo header/query/body/idempotency、方法与尾斜杠错误；
@@ -469,7 +496,7 @@ make compose-status
 make compose-migrate
 ```
 
-当前源码 Migration latest 为 14：旧 `000001`～`000005` 保留，`000006`～`000010` 新增 snapshot/Marketing 五表，`000011` 追加 Marketing 内部 active-publication FK，`000012`～`000014` 依次新增 workforce account、session 与 authentication throttle 三张 Identity 表。`make compose-status` 应报告 `clean` 且 `version=latest=14`；从旧 volume 前向执行可为 `applied`，重复执行应为 `no_change`。该目标随后运行 `mysql-grants`，因此成功条件还包括两个 runtime 身份的授权被重新收敛。迁移前后都要记录真实 status；不能根据源码、镜像 tag 或历史 v5/v11 证据宣布现有 volume 已是 v14。
+当前源码 Migration latest 为 14：旧 `000001`～`000005` 保留，`000006`～`000010` 新增 snapshot/Marketing 五表，`000011` 追加 Marketing 内部 active-publication FK，`000012`～`000014` 依次新增 workforce account、session 与 authentication throttle 三张 Identity 表。`make compose-status` 应报告 `clean` 且 `version=latest=14`；从旧 volume 前向执行可为 `applied`，重复执行应为 `no_change`。该目标随后运行 `mysql-grants`，因此成功条件还包括 business/Identity runtime/provisioner 三个目标账号的授权被重新收敛。迁移前后都要记录真实 status；不能根据源码、镜像 tag 或历史 v5/v11 证据宣布现有 volume 已是 v14。
 
 如只需在已经完成 Migration 的当前栈重新核对/收敛授权，可执行：
 
@@ -477,7 +504,7 @@ make compose-migrate
 make compose-grants
 ```
 
-授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先对 `growthos_app`、`growthos_identity` 执行 `REVOKE ALL`，再建立第 7.1 节列出的两个精确 allowlist，分别比较 `SHOW GRANTS` 并要求 mandatory role 为空。它还用挂载的 Identity Secret 做固定 `SELECT 1`，证明新建或保留 volume 内的 `growthos_identity` 凭据与文件一致。当前 v14 的完整负证由 smoke 对业务账号其余十一表、Identity 账号非 Identity 表和受保护 workforce 列执行。不要为兼容额外角色而放宽脚本；隔离 Repository 测试身份不是给长期 runtime 恢复业务 INSERT、新表 SELECT 或 credential 写入的理由。
+授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先对 `growthos_app`、`growthos_identity`、`growthos_identity_provisioner` 执行 `REVOKE ALL`，再建立第 7.1 节列出的三个精确 allowlist，分别比较 `SHOW GRANTS` 并要求 mandatory role 为空。它还用挂载的两份 Identity Secret 做固定能力探针，证明新建或保留 volume 内的 runtime/provisioner 凭据与文件一致。当前 v14 的负证由 smoke 对业务账号其余十一表、Identity runtime 非 Identity 表和受保护 workforce 列、provisioner 的所有越界读写执行。不要为兼容额外角色而放宽脚本；隔离 Repository 测试身份不是给长期 runtime 恢复业务 INSERT、新表 SELECT 或 credential 写入的理由。
 
 遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status 和授权核对。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
 
@@ -582,7 +609,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml stop w
 
 ### 11.6 授权收敛失败
 
-不要通过给 `growthos_app` 或 `growthos_identity` 增加 schema wildcard 权限、让 API 使用 Migrator 密码、把 `mysql-grants` 加入 data 网络或删除 mandatory-role/Identity credential 检查来恢复。先查看 one-shot 日志和受控管理员侧的有效授权；确认是旧权限、角色策略、socket、root/Identity Secret、账号缺失还是目标表未创建。修复环境后单独执行 `make compose-grants`，再运行 smoke；只有两个 allowlist 都匹配且授权作业成功退出，API 初始启动门才算满足。
+不要通过给 `growthos_app`、`growthos_identity` 或 `growthos_identity_provisioner` 增加 schema wildcard 权限、让 API 使用 Migrator 密码、把 `mysql-grants` 加入 data 网络或删除 mandatory-role/Identity credential 检查来恢复。先查看 one-shot 日志和受控管理员侧的有效授权；确认是旧权限、角色策略、socket、root/Identity runtime/provisioner Secret、账号缺失还是目标表未创建。修复环境后单独执行 `make compose-grants`，再运行 smoke；只有三个 allowlist 都匹配且授权作业成功退出，API/operations 初始门才算满足。
 
 ### 11.7 演练收尾
 
@@ -593,21 +620,21 @@ make compose-up
 make compose-smoke
 ```
 
-确保四个常驻服务恢复、Migration/mysql-grants 均退出 0、latest 14、十三张表、两个 runtime allowlist、双 pool readiness 与唯一端口边界均成立，再决定是否执行 M0。不要让“已恢复”只基于首页一次 200；未实跑时也不要填写这些结果。
+确保四个常驻服务恢复、Migration/mysql-grants 均退出 0、latest 14、十三张表、两个 runtime allowlist 与 provisioner INSERT-only allowlist、双 pool readiness 与唯一端口边界均成立，再决定是否执行 M0。不要让“已恢复”只基于首页一次 200；未实跑时也不要填写这些结果。
 
 ## 12. 常见故障排查
 
 ### 12.1 `only part of the Compose secret set exists`
 
-原因：七文件集合不完整，且既不是受支持的旧四凭据集合，也不是受支持的过渡期五凭据集合。生成器只会从这两个精确、已验证的升级点补齐缺失 Identity secrets；其他 partial 状态可能来自中断、误删或不同批次混用，必须失败关闭。
+原因：八文件集合不完整，且不是受支持的旧四、过渡五或 Lesson 32 runtime 七件套之一。生成器只会从这三个精确、已验证的升级点补齐缺失 Identity secrets；其他 partial 状态可能来自中断、误删或不同批次混用，必须失败关闭。
 
 处理：
 
 1. 停止继续生成；
 2. 从受控备份恢复同一批缺失文件；
 3. 核对 `growthos_mysql_data` 是否已初始化；
-4. 核对五份十六进制数据库/缓存凭据与两份 32-byte 原始协议密钥的来源，不打印二进制 key；
-5. 恢复到完整七文件集合，或恢复到精确旧四/过渡五升级点后重新 `make compose-secrets`；
+4. 核对六份十六进制数据库/缓存凭据与两份 32-byte 原始协议密钥的来源，不打印二进制 key；
+5. 恢复到完整八文件集合，或恢复到精确旧四/过渡五/runtime 七件套升级点后重新 `make compose-secrets`；
 6. 无法恢复时，先决定是否允许丢弃整个 GrowthOS 数据，再走精确 reset。
 
 不要随机补一个文件，不要复制其他项目密码，不要关闭检查。
@@ -658,7 +685,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 make compose-status
 ```
 
-先确认 Migration 已 clean latest 14，再由受控管理员核查 root/Identity Secret、Unix socket、`SHOW GRANTS FOR 'growthos_app'@'%'`、`SHOW GRANTS FOR 'growthos_identity'@'%'` 与 `@@GLOBAL.mandatory_roles`。最终授权必须分别精确等于业务两表 `SELECT` allowlist 和 Identity 三表 allowlist，挂载的 Identity 凭据还必须认证成功；任意额外角色、业务/Identity 交叉读取或 credential/status 列写权限都应失败。不要授予 schema wildcard、恢复业务 INSERT/新表 SELECT、改用 Migrator 身份启动 API 或删掉校验。
+先确认 Migration 已 clean latest 14，再由受控管理员核查 root/Identity runtime/provisioner Secret、Unix socket、三个目标账号的 `SHOW GRANTS` 与 `@@GLOBAL.mandatory_roles`。最终授权必须分别精确等于业务两表 `SELECT`、Identity 三表 runtime、workforce account INSERT-only allowlist，挂载的两份 Identity 凭据还必须通过各自固定能力探针；任意额外角色、跨边界读取或 credential/status/epoch 列写权限都应失败。不要授予 schema wildcard、恢复业务 INSERT/新表 SELECT、改用 Migrator 身份启动 API 或删掉校验。
 
 ### 12.7 API 启动失败
 
@@ -714,7 +741,7 @@ make compose-down
 
 - `growthos_mysql_data`；
 - `growthos_mysql_socket`（仅运行期 socket 载体，可随下次启动复用；不是业务备份）；
-- `deploy/compose/secrets` 下七个本机 Secret；
+- `deploy/compose/secrets` 下八个本机 Secret；
 - 构建镜像和可复用 dependency cache。
 
 这些不是任务临时垃圾：volume 与 Secret 必须匹配，镜像/cache 可用于下次构建。不要为了“清理彻底”删除它们。
@@ -762,7 +789,7 @@ make compose-reset CONFIRM=reset-growthos-data
 
 该目标对当前 Compose project 执行 down + volumes + orphans，会永久删除 GrowthOS `mysql_data`，并删除可重建的 `mysql_socket` volume；数据库事实默认不可恢复。Secret 文件不会被该命令删除，下一次 up 会用原集合重新初始化账号。
 
-如果目标还包括生成全新身份，必须在确认 volume 已删除、无数据恢复需求后，再由操作者精确处理这七个 Secret 文件并重新运行生成器。这是独立破坏性决定，不能把删除 Secret 当作 `compose-reset` 的隐式步骤。
+如果目标还包括生成全新身份，必须在确认 volume 已删除、无数据恢复需求后，再由操作者精确处理这八个 Secret 文件并重新运行生成器。这是独立破坏性决定，不能把删除 Secret 当作 `compose-reset` 的隐式步骤。
 
 ### 13.4 永远不要执行的替代命令
 
@@ -784,9 +811,9 @@ rm -rf deploy/compose/secrets
 - Docker Engine、Compose、Go 版本和主机架构；
 - Compose project/file、Web loopback 端口；
 - 六个 service 最终状态：四个常驻 healthy，Migration 与 mysql-grants 两个 one-shot exit code 0；
-- 对当前源码验收：`schema_migrations` clean latest 14、十三张业务/Identity 表存在、业务与 Identity 两个 runtime allowlist 精确且 mandatory role 为空；若记录的是历史环境，则必须明确写 v5/五表或 v11/十表及其当时权限证据，不能混写为当前结果；
+- 对当前源码验收：`schema_migrations` clean latest 14、十三张业务/Identity 表存在、business/Identity runtime/provisioner 三个 allowlist 精确且 mandatory role 为空；若记录的是历史环境，则必须明确写 v5/五表或 v11/十表及其当时权限证据，不能混写为当前结果；
 - 双 MySQL pool `/ready`、匿名 Session 401，以及受控账号下 login/current/logout/replay 的 HTTP 证据；未执行 provisioning 时必须明确写成功 Session lifecycle 未验收；
-- 七份 Secret 的完整状态及其最小 service consumer，不记录任何值；
+- 八份 Secret 的完整状态及其最小 service consumer，不记录任何值；
 - smoke 输出；
 - 两段 healthload 单行 JSON、退出码；
 - 资源快照及其“瞬时非峰值”限制；
@@ -798,6 +825,12 @@ rm -rf deploy/compose/secrets
 - 确认用户已有容器、volume、数据库、镜像未被修改或删除。
 
 不得记录 Secret 值、DSN、完整数据库原始错误、个人数据、真实 token 或内部凭据路径。
+
+### 14.1 第 32 节当前执行证据与未完成项
+
+截至 2026-09-02，可复核的真实证据包括：两个 disposable provision Compose 环境均成功并精确清理；official maintenance fixture 第一次删除 `2/1/3`、第二次精确 `0/0/0`，active Session fingerprint 不变且 fixture 零残留；development loopback 真实浏览器经 Nginx → Go → MySQL 完成 login、reload/current、logout，并在 MySQL outage 时显示 unknown/unavailable、恢复后重新核查同一 Principal。专用 E2E 最终只清理 2 条 Session、2 条本轮 throttle 与 1 个 account，三类 residue 均为 0；私有测试 password file 和父目录按精确路径清理。
+
+浏览器证据没有直接读取 HttpOnly Cookie store，也不替代协议层 Set-Cookie/clear tuple、旧 bearer replay 或 storage/console 全矩阵。原始 Session HTTP 201→200→204→401 与负向 framing/header/429/503/log sentinel、独立 MySQL 最终 migration/Repository/grant 矩阵、staging/production TLS + `__Host-` Cookie、可信代理 client IP 和全仓冻结门禁仍为 `PENDING`。第 33～35 节的服务端 RBAC、capability 驱动 UI 与越权 E2E 也尚未实现。
 
 ## 15. 生产迁移提醒
 

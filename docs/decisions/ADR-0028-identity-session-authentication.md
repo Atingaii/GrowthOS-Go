@@ -1,6 +1,6 @@
 # ADR-0028：由 Identity 上下文拥有本地可替换的真实会话认证
 
-- 状态：已接受（仅接受架构决策；实现尚未完成，须通过第 32 节验收）
+- 状态：已接受（实现候选已落地；第 32 节最终冻结验收待完成）
 - 日期：2026-09-01
 - 关联章节：第 32 节“真实会话认证”
 - 前置决策：[ADR-0027：由 Governance 拥有统一、默认拒绝的访问控制模型](ADR-0027-governance-access-control-model.md)
@@ -58,13 +58,15 @@ Redis 不保存 session、epoch、credential、CSRF authority 或撤权事实，
 
 API 使用独立 MySQL runtime account `growthos_identity` 和独立 pool/DSN：
 
-- 只对三张 Identity 表授予完成已声明用例所需的精确 SELECT/INSERT/UPDATE/DELETE；
+- 对 `identity_workforce_account` 只授予 `SELECT` 与 `UPDATE(updated_at)`，对 `identity_session`、`identity_authentication_throttle` 授予 `SELECT, INSERT, UPDATE, DELETE`；
 - 不授予 DDL、GRANT、`schema_migrations`、Lottery/Marketing/Governance 表或其他 schema 权限；
 - `growthos_app` 反向不得读取 credential、token digest 或 session；
 - migrator 执行 DDL，grant reconciliation job 在 migration 后精确收敛 grants；
 - secret 只从互斥 env/file source 加载，错误和配置摘要必须脱敏。
 
 Identity pool 复用现有 UTC、TLS、bounded pool 和健康检查约束，但不与业务 pool 共享连接身份。连接池容量由数据库预算配置；“最多 5”指每个账户最多五个并发有效会话，不是把 pool 固定为五条连接。
+
+账号 enrollment 另由 `growthos_identity_provisioner` 执行，它对 workforce account 只有 `INSERT`，没有 readback、UPDATE、DELETE、upsert、Session/throttle、业务表或 Migration 权限。历史清理由固定 `growth-identity-maintenance run` one-shot 执行：它复用 runtime Identity credential，但不接收 caller cutoff、batch、循环或重试参数，也不获得新的数据库能力。三者不能因“都属于 Identity”而共享一个可随意读写 credential 的超级账号。
 
 ### 4. Argon2id credential envelope
 
@@ -161,7 +163,7 @@ process-wide Argon2 semaphore 是第二层资源预算，不替代持久双维 t
 
 Identity HTTP adapter 暴露版本化同源 API：
 
-- `POST /api/v1/session`：严格 JSON `{login,password}`，创建 session，`201` + Set-Cookie + 最小 session DTO；
+- `POST /api/v1/session`：严格 JSON `{login_name,password}`，创建 session，`201` + Set-Cookie + 最小 session DTO；
 - `GET /api/v1/session`：解析当前 Cookie，`200` 返回 Principal kind/id 与 expiry，不返回 role/scope/permission；
 - `DELETE /api/v1/session`：要求 session、CSRF 和 origin，撤销当前 session，`204` 并清 Cookie；
 
@@ -174,6 +176,20 @@ DTO 使用 exact-field decoder，拒绝 unknown/duplicate/trailing JSON、错误
 Identity 是认证路由的 required dependency。进程启动时必须验证 config、identity pool 和所有 constructor；`/ready` 同时探测业务 MySQL 与 Identity 最小权限连接。Identity MySQL 不可用时 readiness 为 false、登录/解析 fail closed 为 503，禁止退回 mock user、Header Principal、匿名 allow 或 Redis session。
 
 `/health` 仍只表示进程存活。Argon2 semaphore 饱和、单次 rate limit 和无效登录不令 readiness 失败。Redis 可丢弃 cache 的故障语义保持原样，不能影响 Identity 判断。
+
+## 当前实现校准与证据边界（2026-09-02）
+
+本节是对已接受决定的实现记录，不改变上述规范性结论：
+
+- Migration `000012`～`000014` 已分别实现 workforce account、Session 与 authentication throttle 三张表，当前源码 latest 为 14；Identity domain/application、Argon2id、MySQL Repository、Session HTTP、浏览器 transport、双 pool composition 与 readiness 已进入候选分支；
+- `growth-api`、`growth-identity-provision`、`growth-identity-maintenance` 分别使用 runtime、INSERT-only provisioner、固定 maintenance 边界；Compose operations profile、八份本地 Secret 和最小挂载已经落地；
+- Argon2id 在 Apple M2 Pro 的本地基线为 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单/双 profile 为 19/38 MiB；该结果只校准开发机参数，不证明 production p99、容器 memory limit 或抗 DoS 容量；
+- `FuzzWorkGateCapacityAndCancellation` 发现 available slot 与 1ms timer 同时 ready 时旧 `select` 可能随机误报 unavailable；这是资源准入时序/错误 503 缺陷，不是 credential 绕过。提交 `5af29e2` 先走 nonblocking available fast-path，只在满槽时启动 timer，并加入 `(capacity=2, occupied=1, cancel=false)` seed；修复后的 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过；
+- provision 已在两个 disposable Compose 环境真实通过并精确清理；official maintenance fixture 已实测 `2/1/3` 删除、第二轮 `0/0/0`、active Session fingerprint 不变与 fixture 零残留；
+- development loopback 的真实浏览器已通过 Nginx → Go → MySQL login、reload/current、logout，以及 MySQL outage 下 unknown/unavailable 呈现和恢复重核。该执行没有直接读取 HttpOnly Cookie store，不证明原始 Set-Cookie 属性、旧 bearer wire replay 或 staging/production TLS；
+- 长驻 provision 实跑发现 `docker compose up --wait` 会误判快速完成的 `mysql-grants` `exited:0`。提交 `af4245e` 已让 provision/maintenance wrapper 最长 180 秒显式轮询 exact one-shot state，只接受唯一合法 container 的 `exited:0`，对非零退出、歧义、意外状态和超时失败关闭；
+- 原始 Session HTTP wire 全矩阵、独立 MySQL 最终 migration/Repository/grant 矩阵、staging/production HTTPS + `__Host-` Cookie、可信代理 client IP 与最终全仓冻结门禁仍为 `PENDING`；
+- 第 33 节服务端 RBAC、第 34 节 capability UI 投影、第 35 节越权 E2E 仍未实现，不得由本节认证证据推导。
 
 ## 备选方案与否决理由
 

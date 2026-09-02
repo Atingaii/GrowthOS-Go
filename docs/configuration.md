@@ -1,12 +1,12 @@
 # GrowthOS-Go 配置参考
 
-**状态：** 第 32 节 Identity 双池运行时、真实 session HTTP、精确权限与 Compose 安全注入已实现
+**状态：** 第 32 节 Identity 双池运行时、Session HTTP、独立 provision/maintenance 配置与 Compose 安全注入已进入实现候选；最终冻结验收待完成
 
-**更新日期：** 2026-09-01
+**更新日期：** 2026-09-02
 
 **来源章节：** [第 12 节：配置、日志与错误体系](course/part-02/lesson-12-config-logging-errors.md)、[第 13 节：接入 MySQL 与 Migration](course/part-02/lesson-13-mysql-migrations.md)、[第 15 节：前后端第一次联调](course/part-02/lesson-15-first-fullstack-integration.md)、[第 16 节：Docker Compose 开发环境](course/part-02/lesson-16-docker-compose-development.md)、[第 18 节：第一次正式业务建表](course/part-03/lesson-18-lottery-schema.md)、[第 19 节：实现仓储层](course/part-03/lesson-19-lottery-repository.md)、[第 21 节：开放第一个 Lottery API](course/part-03/lesson-21-lottery-api.md)、[第 24 节：第一次 Redis 业务缓存](course/part-03/lesson-24-redis-strategy-cache.md)、[第 32 节产品基线](product/identity-session-authentication-v1.md)、[ADR-0028](decisions/ADR-0028-identity-session-authentication.md)
 
-本页记录 `growth-api`、`growth-migrate`、Vite 开发/预览进程、显式 MySQL 集成测试与 Compose 开发栈真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取产品进程环境和明确指向的密码文件；HTTP、Lottery、业务 MySQL、Identity MySQL、Redis、Migration 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码；Compose 再负责把本地文件秘密、容器网络地址、development ephemeral feature、可选 Strategy 投影缓存、`growthos_app` 两表只读权限与 `growthos_identity` 三表精确权限装配起来。
+本页记录 `growth-api`、`growth-migrate`、`growth-identity-provision`、`growth-identity-maintenance`、Vite 开发/预览进程、显式 MySQL 集成测试与 Compose 开发栈真正读取的配置边界。Go 侧只有 `internal/platform/appconfig` 读取各进程声明的环境和明确指向的密码文件；HTTP、Lottery、业务 MySQL、Identity MySQL、Redis、Migration、provision/maintenance 和业务包只接收已经校验的类型化值。前端代理配置由运行 Vite 的 Node.js 进程独立读取，不经过 Go `appconfig`，也不会暴露给浏览器代码；Compose 再负责把本地文件秘密、容器网络地址、development ephemeral feature、可选 Strategy 投影缓存、`growthos_app` 两表只读权限、`growthos_identity` 三表精确权限与 `growthos_identity_provisioner` 单表 INSERT-only 权限装配起来。
 
 ## 1. 加载规则
 
@@ -24,7 +24,7 @@
 - 启动时一次加载，不支持热更新；
 - `configs/growth-api.env.example` 只列公开值，不自动加载，也不给密码写占位赋值。
 
-`appconfig.Default()` 和 `DefaultMigration()` 只表示公开默认值，不是可直接启动的完整配置；其中 business、Identity 与 Migration Password 有意为空。生产入口必须调用 `Load` 或 `LoadMigration`。`Load` 同时验证两套 runtime credential/pool 与浏览器安全边界；`growth-api` 随后分别打开 business/Identity pool，组合 Identity Repository 与 session routes，并把两套 MySQL 纳入同一个并发 readiness 边界。
+`appconfig.Default()`、`DefaultMigration()`、`DefaultIdentityProvisioner()` 和 `DefaultIdentityMaintenance()` 都只表示公开默认值，不是可直接启动的完整配置；各自数据库 Password 有意为空。对应入口必须调用 `Load`、`LoadMigration`、`LoadIdentityProvisioner` 或 `LoadIdentityMaintenance`。`Load` 同时验证两套 runtime credential/pool 与浏览器安全边界；`growth-api` 随后分别打开 business/Identity pool，组合 Identity Repository 与 session routes，并把两套 MySQL 纳入同一个并发 readiness 边界。两个 one-shot loader 只读取共同部署连接参数和本进程声明的 credential/budget，不会因无关 HTTP、Lottery、Redis、Argon2、CSRF 或其他身份变量而改变所有权。
 
 ## 2. Vite 开发与预览代理配置
 
@@ -54,19 +54,20 @@ Compose 文件位于 `deploy/compose/compose.yaml`。仓库级 Make 目标默认
 | `deploy/compose/secrets/mysql_app_password` | 首次由脚本随机生成 | 挂载给 MySQL 与 API；API 通过 `GROWTHOS_MYSQL_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/mysql_migration_password` | 首次由脚本随机生成 | 挂载给 MySQL 与一次性 Migrator；MySQL health 也使用该身份，Migrator 通过 `GROWTHOS_MYSQL_MIGRATION_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/mysql_identity_password` | 首次由脚本随机生成 | 挂载给 MySQL、`mysql-grants` 与 API；API 通过 `GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE` 读取，授权作业用同一秘密证明账号凭据可用 |
+| `deploy/compose/secrets/mysql_identity_provisioner_password` | 首次由脚本随机生成 | 挂载给 MySQL、`mysql-grants` 与 operations-only provisioner；provisioner 通过 `GROWTHOS_IDENTITY_PROVISIONER_MYSQL_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/redis_password` | 首次由脚本随机生成 | 只挂载给 Redis 与 API；Redis 用它建立 `growthos_api` ACL，API 通过 `GROWTHOS_REDIS_PASSWORD_FILE` 读取 |
 | `deploy/compose/secrets/identity_throttle_hmac_key` | 首次由脚本生成 32 个原始随机 bytes | 只挂载给 API；通过 `GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY_FILE` 为登录 throttle subject 做不可逆派生，不能与 CSRF key 复用 |
 | `deploy/compose/secrets/identity_csrf_active_key` | 首次由脚本生成另一份 32 个原始随机 bytes | 只挂载给 API；通过 `GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_FILE` 签名 session-bound CSRF token，与 active key id 一起轮换 |
 
-`make compose-up` 会先运行 Secret 生成器。七个文件完整时只校验并复用，全部不存在时一次生成。为让真实开发 volume 线性升级，生成器只额外接受两个精确状态：旧四份凭据完整时新增 Identity 数据库密码和两份协议密钥；过渡期五份数据库/缓存凭据完整时只新增两份协议密钥。两种路径都会先校验且绝不改写旧值；其他任意 partial 集合都失败。如果 `growthos_mysql_data` 已存在而整套 Secret 全失，脚本也拒绝生成新值，避免持久化数据库与凭据静默失配。本地目录权限为 `0700`，文件为 `0444`；后者兼容 Docker Desktop 文件挂载给非 root 容器，真正的容器可见范围仍由逐服务只读挂载限制。它们是被 Git 和 Docker build context 排除的本地开发文件，不是加密 Secret Manager，也不支持热轮换。
+`make compose-up` 会先运行 Secret 生成器。八个文件完整时只校验并复用，全部不存在时一次生成。为让真实开发 volume 线性升级，生成器额外接受三个精确状态：旧四份凭据完整时新增 Identity runtime/provisioner 两份数据库密码和两份协议密钥；过渡期五份数据库/缓存凭据完整时新增 provisioner 密码和两份协议密钥；已有 Lesson 32 七件 runtime 集合时只新增 provisioner 密码。所有路径都会先校验且绝不改写旧值；其他任意 partial 集合都失败。如果 `growthos_mysql_data` 已存在而整套 Secret 全失，脚本也拒绝生成新值，避免持久化数据库与凭据静默失配。本地目录权限为 `0700`，文件为 `0444`；后者兼容 Docker Desktop 文件挂载给非 root 容器，真正的容器可见范围仍由逐服务只读挂载限制。它们是被 Git 和 Docker build context 排除的本地开发文件，不是加密 Secret Manager，也不支持热轮换。
 
-生成器以 `.generate.lock` 原子目录串行化整套检查与发布，避免两个首次启动互相覆盖。可处理的退出会自动清锁；若断电或 `SIGKILL` 遗留 stale lock，必须先证明没有生成进程，并确认它是本 Secret 目录内空的、非 symlink 目录，才可用精确 `rmdir` 移除。锁不是允许删除或重生七份 Secret 的理由。
+生成器以 `.generate.lock` 原子目录串行化整套检查与发布，避免两个首次启动互相覆盖。可处理的退出会自动清锁；若断电或 `SIGKILL` 遗留 stale lock，必须先证明没有生成进程，并确认它是本 Secret 目录内空的、非 symlink 目录，才可用精确 `rmdir` 移除。锁不是允许删除或重生八份 Secret 的理由。
 
 Compose 把 `GROWTHOS_IDENTITY_PUBLIC_ORIGIN` 绑定到同一 `GROWTHOS_COMPOSE_WEB_PORT`，默认即 `http://127.0.0.1:8088`；改变 Web 端口时不需要再维护第二个 origin。该值表达浏览器实际可见的 exact origin，不是 API 容器的 `http://api:8080`。API 是两份协议密钥的唯一消费者；MySQL、Migrator、授权作业、Redis 与 Web 均不挂载它们。现有 API `/health` 仍负责进程存活，缺少/损坏 key 会让配置加载在监听前失败，不能通过在 healthcheck 里打印或读取 key 来“补验收”。
 
 当前本地 Nginx 拓扑没有建立可信代理 CIDR 语义：Identity guard 只读取 API socket 的 `RemoteAddr`，明确忽略 `X-Forwarded-For`。因此经 Web 代理进入的浏览器登录会把 source throttle 聚合到 Web 容器 peer IP；它能防止客户端伪造来源头，却不是生产级逐客户端来源限流证据。正式代理信任、header 清洗和客户端地址恢复必须在独立后续小节设计与验收。
 
-Compose 另有 `growthos_mysql_socket` named volume，只传递 MySQL Unix socket，不承载数据库事实。启动顺序为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，API 不把 Redis healthy 作为启动或 readiness 前提。`mysql-grants` 不读取 `GROWTHOS_*` 环境变量，不加入任何网络，只以 UID 999 从只读 root/Identity Secret 和只读 socket 执行固定 allowlist。它会先用 `CREATE USER IF NOT EXISTS` 为旧 volume 补建 `growthos_identity`，再对两套 runtime account 先撤销所有旧 direct grants 后精确重授：`growthos_app` 只读两张 Lottery 表；`growthos_identity` 读取 workforce account、仅更新其 `updated_at` 列，并可对 session/throttle 执行 SELECT/INSERT/UPDATE/DELETE。列级 `UPDATE` 是 MySQL 8.4.11 执行 `SELECT ... FOR UPDATE` 所需的最小权限，不允许改写 login、credential、status 或 epoch。作业分别要求两份 `SHOW GRANTS` 与 allowlist 完全一致、Identity Secret 能通过固定 `SELECT 1` 验证，并断言 `@@GLOBAL.mandatory_roles` 为空；否则失败关闭且 API 不启动。它不修改已存在账号的密码，不是通用 DBA 管理入口，也不能执行调用方提供的 SQL。
+Compose 另有 `growthos_mysql_socket` named volume，只传递 MySQL Unix socket，不承载数据库事实。启动顺序为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，API 不把 Redis healthy 作为启动或 readiness 前提。`mysql-grants` 不读取 `GROWTHOS_*` 环境变量，不加入任何网络，只以 UID 999 从只读 root/Identity runtime/provisioner Secret 和只读 socket 执行固定 allowlist。它会先用 `CREATE USER IF NOT EXISTS` 为旧 volume 补建 `growthos_identity` 与 `growthos_identity_provisioner`，再撤销旧 direct grants 后精确重授：`growthos_app` 只读两张 Lottery 表；`growthos_identity` 读取 workforce account、仅更新其 `updated_at` 列，并可对 session/throttle 执行 SELECT/INSERT/UPDATE/DELETE；`growthos_identity_provisioner` 只可向 workforce account `INSERT`。列级 `UPDATE` 是 MySQL 8.4.11 执行 `SELECT ... FOR UPDATE` 所需的最小权限，不允许改写 login、credential、status 或 epoch。作业要求三份 `SHOW GRANTS` 与 allowlist 完全一致、两份 Identity Secret 各自能通过固定能力探针，并断言 `@@GLOBAL.mandatory_roles` 为空；否则失败关闭且 API/operations 不得继续。它不修改已存在账号的密码，不是通用 DBA 管理入口，也不能执行调用方提供的 SQL。
 
 Redis 只加入内部 `cache` 网络，API 是唯一业务消费者。Compose Redis ACL 先 `resetkeys`、`resetchannels`、`-@all`，再只允许 `PING`、`GETRANGE`、`SET`、`DEL`，并把 key 限制在 `growthos:development:lottery:strategy:projection:v1:*`；因此它不能扫描 key、订阅 channel、修改服务配置或访问前缀外数据。开发实例设置 `48mb` 与 `allkeys-lru`，关闭持久化，`/data` 是 tmpfs：它只是可丢弃加速器，不是事实库。
 
@@ -230,6 +231,32 @@ GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT + 1s
 
 Compose 固定 `2 / 250ms / 3s`，配合 HTTP write `10s` 留出明确余量。它没有配置 previous CSRF key；本地 active key 轮换后允许既有 CSRF token 失效。需要平滑轮换的正式环境必须把 previous key id、独立 key file 与绝对 accept-until 作为同一组受控变更，不能长期保留 previous key。
 
+### 8.2 Identity provisioner 独立配置
+
+`LoadIdentityProvisioner` 复用第 6 节 endpoint、database、TLS、connect/write timeout，但只读取 provisioner 自己的数据库身份与预算。它不读取 API 的 business/Identity runtime password、HTTP、Lottery、Redis、Migration、CSRF、throttle key 或 pool 参数。composition root 只打开一个最大 open/idle 均为 1 的短命连接；公开命令固定为 `growth-identity-provision create`，enrollment password 只能经调用方拥有的 `--password-file` 进入，不属于环境配置。
+
+| 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
+| --- | --- | --- | --- |
+| `GROWTHOS_IDENTITY_PROVISIONER_MYSQL_USER` | `growthos_identity_provisioner` | 1～32 个有效可打印 Unicode 字符；无控制字符与首尾空白 | workforce account INSERT-only 身份 |
+| `GROWTHOS_IDENTITY_PROVISIONER_MYSQL_PASSWORD` / `_FILE` | **无，二选一** | 非空，最多 1024 bytes；文件有界读取；两来源互斥且错误不回显 | provisioner 独立数据库 Secret |
+| `GROWTHOS_IDENTITY_PROVISIONER_MYSQL_READ_TIMEOUT` | `5s` | `> 0` 且 `<= 5m` | 单连接读取预算 |
+| `GROWTHOS_IDENTITY_PROVISIONER_MYSQL_PING_TIMEOUT` | `3s` | `> 0` 且 `<= 30s` | one-shot 首次 Ping 预算 |
+| `GROWTHOS_IDENTITY_PROVISIONER_OPERATION_TIMEOUT` | `3s` | `1s`～`30s`，并在 read/write 内各预留 1s | 唯一一次 create 的总操作预算 |
+
+Compose 的 `identity-provision` 只在 `operations` profile 出现，固定 UID 65532、read-only rootfs、`cap_drop: ALL`、`no-new-privileges`、无 published port，并只静态挂载 provisioner 数据库 Secret。host wrapper 在调用前把 caller-owned `0600`、单 hard-link、非 symlink regular password file 复制到私有临时快照，运行时额外挂载该快照，结束时按精确路径覆写并 unlink；这只降低普通残留风险，不能宣称在 SSD/CoW/快照介质上物理不可恢复。
+
+### 8.3 Identity maintenance 独立配置
+
+`LoadIdentityMaintenance` 同样复用共同 MySQL 连接策略，但有意复用 `GROWTHOS_IDENTITY_MYSQL_USER` 与其 password source，因为清理的 Session/throttle DELETE 已属于 runtime allowlist。它只额外读取下列三个专用预算，不读取 HTTP、Lottery、Redis、Argon2、CSRF/throttle key、provisioner/Migration credential 或任何 caller cutoff/batch/loop/retry 参数。composition root 固定单连接、单次 `run`、无自动重试。
+
+| 环境变量 | 默认值 | 允许值 / 校验 | 用途 |
+| --- | --- | --- | --- |
+| `GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_READ_TIMEOUT` | `5s` | `> 0` 且 `<= 5m` | maintenance 单连接读取预算 |
+| `GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_PING_TIMEOUT` | `3s` | `> 0` 且 `<= 30s` | one-shot 首次 Ping 预算 |
+| `GROWTHOS_IDENTITY_MAINTENANCE_OPERATION_TIMEOUT` | `3s` | `1s`～`30s`，并在 read/write 内各预留 1s | 一次固定两阶段清理的总预算 |
+
+`identity-maintenance` 也只在 `operations` profile 出现，使用固定 `growth-identity-maintenance run`、UID 65532、read-only rootfs、无端口，只挂载 runtime Identity Secret。代码在一次 clock snapshot 下计算 Session 7d 与 throttle 24h cutoff，Session/throttle 各最多删除 250 行、总计最多 500；第一阶段失败或结果未知时不进入第二阶段，第一阶段已提交而第二阶段失败时如实返回部分进度，不用“全局事务”伪装回滚。
+
 ## 9. Migration 专属配置
 
 `appconfig.LoadMigration` 只要求 Migration 密码。它复用 environment/log、endpoint、database、TLS、connect/write timeout，但不读取 business API 或 Identity runtime 的 user/password/read/ping/pool，也不读取 HTTP 配置。
@@ -342,10 +369,11 @@ make db-migrate
 - MySQL 地址缺少 host/port，数据库名或 business/Identity/Migration 用户名不合法；
 - TLS 枚举、环境 TLS 组合或 CA 组合不合法；
 - duration/整数无法解析、越界，business/Identity 各自 idle pool 大于 open pool，或任一 Ping 预算破坏 HTTP 响应余量；
+- provisioner/maintenance 专用 read、ping、operation timeout 越界或没有在共享 MySQL read/write timeout 内各保留 1 秒 cancellation/cleanup 预算；provisioner 独立 password 缺失/冲突，或任一 one-shot 意外读取其他进程变量；
 - API 的 MySQL opener、TLS、connector 或首次 MySQL Ping 失败；Redis client 创建不做启动 Ping；
 - Migration source/状态不安全。
 
-配置错误只列变量名和允许范围，不含原值。`Config`、`MySQLConfig`、`RedisConfig`、`MigrationConfig` 与 `MigrationMySQLConfig` 在 `String`、`GoString`、`slog.LogValuer` 和 JSON 边界返回整体脱敏文本；MySQL/Redis adapter 的含密码 Config 也遵守同一规则。
+配置错误只列变量名和允许范围，不含原值。`Config`、`MySQLConfig`、`RedisConfig`、`MigrationConfig`、`MigrationMySQLConfig`、`IdentityProvisionerConfig` 与 `IdentityMaintenanceConfig` 及其含密子配置，在 `String`、`GoString`、`slog.LogValuer` 和 JSON 边界返回整体脱敏文本；MySQL/Redis adapter 的含密码 Config 也遵守同一规则。
 
 整体脱敏是最后防线，不是记录配置对象的许可。日志仍应只选择 environment、component、operation、版本号等非秘密字段。驱动错误可能包含账号、主机、SQL 或拓扑，API/Migration 入口不能直接格式化它。
 
@@ -394,10 +422,20 @@ GROWTHOS_WEB_API_PROXY_TARGET / PORT
 
 两套 `sqlx.DB` 的创建顺序是 business → Identity → optional Redis，任何失败与正常停机都按 Redis → Identity → business 逆序释放。session route 注册失败也遵守同一所有权规则。双库 readiness 同时发起两个有界 `PingContext`，任一失败会取消 sibling 但仍等待其返回，不遗留未拥有的探针 goroutine。
 
+operations-only 进程不加入上述长期对象图：
+
+```text
+LoadIdentityProvisioner -> one short-lived pool(max 1) -> INSERT-only account create -> close
+LoadIdentityMaintenance -> one short-lived pool(max 1) -> fixed bounded cleanup      -> close
+```
+
+两个 host wrapper 先让 `mysql-grants` 收敛，再以最长 180 秒的 exact state 轮询等待 one-shot prerequisite；只有唯一合法 container 的 `exited:0` 算成功。`created:0`、`running:0`、`restarting:0` 继续等待，非零退出、歧义 ID、意外状态、inspect 失败或超时都失败关闭。该规则来自提交 `af4245e` 对真实 `docker compose up --wait` 误判已完成 `mysql-grants` 的修复，不能退化成只等 `healthy`。
+
 - `growth-api` 不读取 Migration Secret，也不执行 DDL；
 - `growth-migrate` 不读取 HTTP、business API 或 Identity runtime Secret/池参数；
 - `growth-migrate` 也不读取 Lottery feature/timeout、Strategy 缓存或 Redis 配置；
-- Compose `mysql-grants` 不读取 business API/Migration Secret，不使用 TCP 或容器网络；它只读取 root 与 Identity Secret，在 Migration 完成后经共享 Unix socket 把 `growthos_app` 和 `growthos_identity` 分别收敛到两表/三表 allowlist，并在 credential、grant 或 mandatory role 证明失败时关闭；
+- Compose `mysql-grants` 不读取 business API/Migration Secret，不使用 TCP 或容器网络；它只读取 root、Identity runtime 与 provisioner Secret，在 Migration 完成后经共享 Unix socket 把 `growthos_app`、`growthos_identity`、`growthos_identity_provisioner` 分别收敛到两表只读、三表 runtime 与单表 INSERT-only allowlist，并在 credential、grant 或 mandatory role 证明失败时关闭；
+- `growth-identity-provision` 不读取 runtime/Migration credential，不能 readback/upsert；`growth-identity-maintenance` 只复用 runtime Identity credential 与固定预算，不读取 provisioner/enrollment password、协议密钥或 caller cleanup policy；
 - Vite 不读取 Go API/Migration Secret，浏览器也不读取代理目标；
 - `mysqlstore` 不读取环境变量，只接收类型化配置；
 - `redisstore` 不读取环境变量，只接收类型化、整体脱敏配置；client 创建不执行 `PING`，连接池由 API 在缓存启用时拥有并在停机时显式关闭；
@@ -427,6 +465,13 @@ GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES=lesson-19-isolated-repository
 5. 跨组件 timeout/容量关系；
 6. 若改变安全、兼容或长期运维约束，新增或替代 ADR。
 
-当前没有配置热更新、远程配置中心、加密 Secret Manager 或秘密热轮换。第 16 节的本地生成器只解决可复现开发装配；授权作业当前只解决 `growthos_app` 两表只读与 `growthos_identity` 三表精确 DML 的 Compose 收敛，不是通用 IAM/DBA 平台。第 24 节 Redis 配置只解决一个可重建 Strategy 投影的有界加速器，不提供通用缓存平台。第 76 节若加入 Nacos，它也只能成为新的输入适配器，不能绕过本页类型、校验、账号隔离和秘密边界。
+当前没有配置热更新、远程配置中心、加密 Secret Manager 或秘密热轮换。第 16 节的本地生成器只解决可复现开发装配；授权作业当前只解决 `growthos_app` 两表只读、`growthos_identity` 三表精确 runtime 能力与 `growthos_identity_provisioner` 单表 INSERT-only 的 Compose 收敛，不是通用 IAM/DBA 平台。第 24 节 Redis 配置只解决一个可重建 Strategy 投影的有界加速器，不提供通用缓存平台。第 76 节若加入 Nacos，它也只能成为新的输入适配器，不能绕过本页类型、校验、账号隔离和秘密边界。
+
+## 15. 第 32 节当前证据边界
+
+- 两个 disposable provision Compose 环境已经通过并完成精确清理；official maintenance fixture 已通过 `2/1/3` 后 `0/0/0` 收敛、active Session fingerprint 不变和零 fixture 残留；
+- development loopback 的真实浏览器已完成 Nginx → Go → MySQL login、reload/current、logout、MySQL outage unknown/unavailable 与恢复重核；该证据没有直接读取 HttpOnly Cookie/storage，也不证明 Set-Cookie wire 属性；
+- Argon2id 当前开发机 baseline 为 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单/双 profile 19/38 MiB；它不构成 production 容量结论；
+- 原始 Session HTTP wire、独立 MySQL 最终矩阵、staging/production TLS/可信代理和全仓冻结门禁仍为 `PENDING`；第 33～35 节权限执行与投影不属于本配置切片。
 
 第 24 节的配置决策与真实证据见[课程](course/part-03/lesson-24-redis-strategy-cache.md)、[API](api/lessons/lesson-24.md)、[QA](qa/lessons/lesson-24.md)、[设计手记](design-thinking/lessons/lesson-24.md)、[面试问答](interview/lessons/lesson-24.md)、[Redis 运维手册](runbooks/redis-strategy-cache.md)和 [ADR-0020](decisions/ADR-0020-lottery-strategy-cache-aside.md)。

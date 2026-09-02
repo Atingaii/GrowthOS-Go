@@ -1,13 +1,14 @@
 # GrowthOS Identity 与真实会话认证基线 v1
 
-> **状态：第 32 节设计基线，尚未实现、尚未验收。**
+> **状态：第 32 节实现候选；核心源码与部分真实证据已完成，最终冻结验收尚未完成。**
 >
-> 本文冻结第 32 节“真实会话认证”的产品语义、信任边界、安全不变量和验收口径。文中出现的表、包、接口、Cookie、配置和命令都是待实现契约；在代码、Migration、真实 MySQL、HTTP、Compose 和浏览器证据完成前，不得写成当前系统事实。
+> 本文冻结第 32 节“真实会话认证”的产品语义、信任边界、安全不变量和验收口径。当前分支已经实现 Identity 三表、领域/应用/适配器、双连接池、Session HTTP、浏览器会话体验与两个 operations-only one-shot；但原始 HTTP wire 全矩阵、独立 MySQL 最终矩阵、staging/production TLS 和全仓冻结门禁仍未完成。下文分别标记“源码事实”“已执行证据”与 `PENDING`，不得由其中一层外推另一层。
 
 - **章节：** 第 32 节“真实会话认证”
 - **上游：** 第 31 节 Governance 访问控制模型与威胁边界
 - **下游：** 第 33 节服务端 RBAC 强制、第 34 节前端权限投影、第 35 节越权与浏览器端到端验收
 - **设计日期：** 2026-09-01
+- **实现校准日期：** 2026-09-02
 - **主要消费者：** GrowthOS workforce Web、后续可信服务端授权层
 - **非消费者：** 当前 ephemeral Lottery route、外部消费者身份主数据、数据库基础设施账号
 
@@ -906,6 +907,27 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 - `main` 不变，累计分支只在第 32 节冻结后 fast-forward；
 - coverage、`web/dist`、临时 schema/账号/Secret/浏览器 profile 全部精确清理。
 
+### 17.7 当前实现与证据台账（2026-09-02）
+
+以下“已实现”只表示当前候选分支存在可追溯源码；“实际通过”只覆盖紧邻描述的执行范围：
+
+| 范围 | 当前状态 | 可宣称的证据边界 |
+| --- | --- | --- |
+| Identity schema 与持久化 | 已实现 | `000012`～`000014` 依次建立 `identity_workforce_account`、`identity_session`、`identity_authentication_throttle`，当前 Migration latest 为 14；独立 disposable MySQL 最终迁移/Repository/授权全矩阵仍 `PENDING` |
+| API runtime | 已实现 | `growthos_app` 与 `growthos_identity` 使用独立 credential/pool；Session route、Argon2id、双维 throttle、opaque token、CSRF/Origin/Cookie 与双 pool readiness 已装配 |
+| 账号 provisioning | 已实现且两轮 disposable Compose 实际通过 | `growth-identity-provision` 使用独立 `growthos_identity_provisioner` 的 workforce-account `INSERT`-only 权限；调用方密码文件经私有快照传入，命令不 readback、不 upsert |
+| 历史 maintenance | 已实现且 official disposable fixture 实际通过 | `growth-identity-maintenance run` 复用 runtime Identity credential、固定一个 clock snapshot 与 Session/throttle 各 250 行预算；实测 `2/1/3` 后第二轮精确 `0/0/0`，active Session fingerprint 不变，fixture 零残留 |
+| Argon2id 资源基线 | 本地实际通过 | Apple M2 Pro 上 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单 profile 19 MiB、双 profile 最大 38 MiB；这不是 production p99、容器限额或 DoS 容量结论 |
+| 浏览器核心旅程 | development loopback 实际通过 | 真实 Nginx → Go → MySQL 完成 login、reload/current、logout；MySQL 中断时保持 unknown/unavailable 而不伪装 anonymous，恢复后可重新核查同一 Principal；该证据没有直接读取浏览器 HttpOnly Cookie，也不替代 wire 属性、旧 bearer replay或 TLS 验收 |
+| 原始 Session HTTP wire | `PENDING` | 仍须冻结 201→200→204→401、严格 framing/header/body、Cookie tuple、旧 bearer replay、429/503 与日志 sentinel 全矩阵 |
+| staging/production | `PENDING` | 配置已强制 HTTPS、MySQL `verify_identity` 与 Secure `__Host-` Cookie；真实 TLS、可信代理 client IP 与浏览器属性尚未验收 |
+| 后续权限系统 | 不属于第 32 节 | 第 33 节服务端 RBAC、第 34 节 capability 驱动 UI 裁剪、第 35 节越权 E2E 均未实现 |
+| 最终冻结 | `PENDING` | 全仓 Go/race/vet/fuzz/repeat、Web、doccheck、Compose、diff、远端 ref、累计学习分支与临时材料清理仍须由最终门禁统一确认 |
+
+真实长驻账号 provision 还暴露了一个有价值的部署缺陷：`docker compose up --wait` 会把已经快速成功并进入 `exited:0` 的 `mysql-grants` 当作等待失败。提交 `af4245e` 把 provision/maintenance wrapper 改为最长 180 秒的显式状态轮询：唯一合法 container 的 `exited:0` 才成功，`created:0`、`running:0`、`restarting:0` 继续等待，非零退出、歧义 ID、意外状态或超时全部失败关闭。该修复证明“one-shot 成功完成”与“长期 service healthy”必须采用不同验收语义。
+
+Argon2 fuzz 还发现一条资源准入时序缺陷：当 gate 有可用 slot、同时 1ms timer 也 ready 时，原 `select` 可能随机选择 timeout 并误报 503 unavailable；这不是 credential 绕过或权限漏洞，但会把可服务请求错误降级。提交 `5af29e2` 在 context 预检查后先执行 nonblocking available fast-path，只在槽位确实已满时启动 timer，并把 `(capacity=2, occupied=1, cancel=false)` 加入 fuzz seed。修复后 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过；其他 Identity fuzz targets 与全仓最终重跑仍属于冻结门禁。
+
 ## 18. ADR-0028 已具体化的编码参数
 
 ADR-0028 已把实现不得默默决定的项目收敛为：
@@ -923,7 +945,7 @@ ADR-0028 已把实现不得默默决定的项目收敛为：
 11. development 仅 loopback origin 可关闭 Secure，staging/production 强制 HTTPS + `__Host-`；
 12. 本地 AccountID 到 PrincipalID 由服务端稳定映射，未来企业 IAM 另立映射切片。
 
-这些是设计目标，不是已执行证据。Argon2 benchmark、MySQL 并发、代理来源、TLS Cookie 和 maintenance 仍必须在实现后真实验收。若改变 MySQL 唯一事实、opaque token、server-side revoke、session-bound CSRF、固定绝对过期、五会话上限、独立 Identity/DB identity 或第 33～35 节停止线，必须同步修改产品基线与 ADR 并解释原因。
+这些参数已经进入第 32 节实现候选，但“进入源码”不等于所有环境均已执行。当前 Argon2 开发机 benchmark、两轮 provision、official maintenance fixture 与 development 浏览器核心旅程已有上述范围内证据；独立 MySQL 最终矩阵、原始 HTTP wire、生产代理来源、TLS Cookie 和全仓冻结仍必须真实验收。若改变 MySQL 唯一事实、opaque token、server-side revoke、session-bound CSRF、固定绝对过期、五会话上限、独立 Identity/DB identity 或第 33～35 节停止线，必须同步修改产品基线与 ADR 并解释原因。
 
 ## 19. 本节完成后能与不能宣称什么
 
