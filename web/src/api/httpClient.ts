@@ -36,15 +36,27 @@ export interface ApiResponse<T> {
 export type RuntimeDecoder<T> = (value: unknown) => T | null;
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-export interface JsonRequestOptions<T> {
-  decode: RuntimeDecoder<T>;
+export interface RequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   fetcher?: FetchLike;
   now?: () => number;
 }
 
+export interface JsonRequestOptions<T> extends RequestOptions {
+  decode: RuntimeDecoder<T>;
+  expectedStatus?: number;
+}
+
 export interface JsonPostWithoutBodyOptions<T> extends JsonRequestOptions<T> {
+  headers?: Readonly<Record<string, string>>;
+}
+
+export interface JsonPostOptions<T> extends JsonRequestOptions<T> {
+  headers?: Readonly<Record<string, string>>;
+}
+
+export interface NoContentRequestOptions extends RequestOptions {
   headers?: Readonly<Record<string, string>>;
 }
 
@@ -111,6 +123,16 @@ function requestTimeout(timeoutMs: number | undefined): number {
   return timeout;
 }
 
+function validatedExpectedStatus(status: number | undefined): number | undefined {
+  if (status === undefined) {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(status) || status < 100 || status > 599) {
+    throw new ApiClientError("API 预期响应状态配置无效", { kind: "contract" });
+  }
+  return status;
+}
+
 function contractError(status: number, requestId?: string): ApiClientError {
   return new ApiClientError("服务返回了无法识别的 JSON 契约", {
     kind: "contract",
@@ -145,15 +167,17 @@ async function readJSON(response: Response, requestId?: string): Promise<unknown
   }
 }
 
-interface JsonRequestSpec {
-  method: "GET" | "POST";
+interface RequestSpec<T> {
+  method: "GET" | "POST" | "DELETE";
   headers: Readonly<Record<string, string>>;
+  body?: string;
+  decodeSuccess: (response: Response, requestId?: string) => Promise<T>;
 }
 
-async function executeJSONRequest<T>(
+async function executeRequest<T>(
   path: string,
-  options: JsonRequestOptions<T>,
-  spec: JsonRequestSpec,
+  options: RequestOptions,
+  spec: RequestSpec<T>,
 ): Promise<ApiResponse<T>> {
   const safePath = requestPath(path);
   const timeoutMs = requestTimeout(options.timeoutMs);
@@ -163,12 +187,12 @@ async function executeJSONRequest<T>(
   const controller = new AbortController();
   let timedOut = false;
 
-  const onCallerAbort = () => controller.abort();
   if (options.signal?.aborted) {
-    controller.abort();
-  } else {
-    options.signal?.addEventListener("abort", onCallerAbort, { once: true });
+    throw new ApiClientError("请求已取消", { kind: "cancelled" });
   }
+
+  const onCallerAbort = () => controller.abort();
+  options.signal?.addEventListener("abort", onCallerAbort, { once: true });
 
   const timeoutID = setTimeout(() => {
     timedOut = true;
@@ -176,7 +200,7 @@ async function executeJSONRequest<T>(
   }, timeoutMs);
 
   try {
-    const response = await fetcher(safePath, {
+    const requestInit: RequestInit = {
       method: spec.method,
       headers: spec.headers,
       cache: "no-store",
@@ -184,7 +208,12 @@ async function executeJSONRequest<T>(
       mode: "same-origin",
       redirect: "error",
       signal: controller.signal,
-    });
+    };
+    if (spec.body !== undefined) {
+      requestInit.body = spec.body;
+    }
+
+    const response = await fetcher(safePath, requestInit);
     if (controller.signal.aborted) {
       throw new Error("request aborted");
     }
@@ -197,9 +226,9 @@ async function executeJSONRequest<T>(
     ) {
       throw gatewayError(response.status, Math.max(0, Math.round(now() - startedAt)), requestId);
     }
-    const body = await readJSON(response, requestId);
 
     if (!response.ok) {
+      const body = await readJSON(response, requestId);
       const envelope = decodePublicError(body);
       if (envelope === null) {
         throw contractError(response.status, requestId);
@@ -216,14 +245,9 @@ async function executeJSONRequest<T>(
       });
     }
 
-    let data: T | null;
-    try {
-      data = options.decode(body);
-    } catch {
-      throw contractError(response.status, requestId);
-    }
-    if (data === null) {
-      throw contractError(response.status, requestId);
+    const data = await spec.decodeSuccess(response, requestId);
+    if (controller.signal.aborted) {
+      throw new Error("request aborted");
     }
 
     return {
@@ -249,13 +273,86 @@ async function executeJSONRequest<T>(
   }
 }
 
-export function requestJSON<T>(
+function jsonSuccessDecoder<T>(
+  options: JsonRequestOptions<T>,
+): (response: Response, requestId?: string) => Promise<T> {
+  const expectedStatus = validatedExpectedStatus(options.expectedStatus);
+  return async (response, requestId) => {
+    if (expectedStatus !== undefined && response.status !== expectedStatus) {
+      throw contractError(response.status, requestId);
+    }
+    const body = await readJSON(response, requestId);
+    let data: T | null;
+    try {
+      data = options.decode(body);
+    } catch {
+      throw contractError(response.status, requestId);
+    }
+    if (data === null) {
+      throw contractError(response.status, requestId);
+    }
+    return data;
+  };
+}
+
+function encodeJSONObject(body: Readonly<Record<string, unknown>>): string {
+  if (!isRecord(body)) {
+    throw new ApiClientError("API JSON 请求体必须是对象", { kind: "contract" });
+  }
+
+  try {
+    const encoded = JSON.stringify(body);
+    if (encoded === undefined || !isRecord(JSON.parse(encoded))) {
+      throw new Error("serialized value is not an object");
+    }
+    return encoded;
+  } catch {
+    throw new ApiClientError("API JSON 请求体无法序列化", { kind: "contract" });
+  }
+}
+
+function withoutPayloadFraming(headers: Readonly<Record<string, string>>): boolean {
+  return !Object.keys(headers).some((name) => {
+    const normalized = name.toLowerCase();
+    return (
+      normalized === "content-type" ||
+      normalized === "content-length" ||
+      normalized === "transfer-encoding"
+    );
+  });
+}
+
+async function decodeNoContent(response: Response, requestId?: string): Promise<void> {
+  if (response.status !== 204) {
+    throw contractError(response.status, requestId);
+  }
+  if (response.headers.has("Content-Type") || response.headers.has("Transfer-Encoding")) {
+    throw contractError(response.status, requestId);
+  }
+  const contentLength = response.headers.get("Content-Length");
+  if (contentLength !== null && contentLength !== "0") {
+    throw contractError(response.status, requestId);
+  }
+
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await response.arrayBuffer();
+  } catch {
+    throw contractError(response.status, requestId);
+  }
+  if (bytes.byteLength !== 0) {
+    throw contractError(response.status, requestId);
+  }
+}
+
+export async function requestJSON<T>(
   path: string,
   options: JsonRequestOptions<T>,
 ): Promise<ApiResponse<T>> {
-  return executeJSONRequest(path, options, {
+  return executeRequest(path, options, {
     method: "GET",
     headers: { Accept: "application/json" },
+    decodeSuccess: jsonSuccessDecoder(options),
   });
 }
 
@@ -265,15 +362,64 @@ export function requestJSON<T>(
  * Deliberately no `body` option exists here. The transport adds only `Accept`;
  * callers must opt into every other header and it never infers Content-Type.
  */
-export function postJSONWithoutBody<T>(
+export async function postJSONWithoutBody<T>(
   path: string,
   options: JsonPostWithoutBodyOptions<T>,
 ): Promise<ApiResponse<T>> {
   const { headers = {}, ...requestOptions } = options;
 
-  return executeJSONRequest(path, requestOptions, {
+  return executeRequest(path, requestOptions, {
     method: "POST",
     headers: { Accept: "application/json", ...headers },
+    decodeSuccess: jsonSuccessDecoder(options),
+  });
+}
+
+/** Sends one same-origin JSON object POST without retries. */
+export async function postJSON<T>(
+  path: string,
+  body: Readonly<Record<string, unknown>>,
+  options: JsonPostOptions<T>,
+): Promise<ApiResponse<T>> {
+  const { headers = {}, ...requestOptions } = options;
+  if (!withoutPayloadFraming(headers)) {
+    throw new ApiClientError("JSON POST 不允许覆盖 payload framing headers", {
+      kind: "contract",
+    });
+  }
+  const encodedBody = encodeJSONObject(body);
+
+  return executeRequest(path, requestOptions, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: encodedBody,
+    decodeSuccess: jsonSuccessDecoder(options),
+  });
+}
+
+/**
+ * Sends one bodyless DELETE and accepts only an exact, unframed 204 response.
+ * API failures still use the shared public JSON error-envelope path.
+ */
+export async function deleteNoContent(
+  path: string,
+  options: NoContentRequestOptions = {},
+): Promise<ApiResponse<void>> {
+  const { headers = {}, ...requestOptions } = options;
+  if (!withoutPayloadFraming(headers)) {
+    throw new ApiClientError("无正文 DELETE 不允许 payload framing headers", {
+      kind: "contract",
+    });
+  }
+
+  return executeRequest(path, requestOptions, {
+    method: "DELETE",
+    headers: { Accept: "application/json", ...headers },
+    decodeSuccess: decodeNoContent,
   });
 }
 

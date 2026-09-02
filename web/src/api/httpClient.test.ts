@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { postJSONWithoutBody, requestJSON, type FetchLike } from "./httpClient";
+import {
+  deleteNoContent,
+  postJSON,
+  postJSONWithoutBody,
+  requestJSON,
+  type FetchLike,
+} from "./httpClient";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -275,6 +281,29 @@ describe("requestJSON", () => {
     ).rejects.toMatchObject({ kind: "contract" });
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it.each([99, 600, 200.5])(
+    "rejects the invalid expected status %s before fetch",
+    async (expectedStatus) => {
+      const fetcher = vi.fn<FetchLike>();
+
+      await expect(
+        requestJSON("/health", { decode: decodeName, expectedStatus, fetcher }),
+      ).rejects.toMatchObject({ kind: "contract" });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it("classifies an unexpected successful status as a contract failure", async () => {
+    const fetcher = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(jsonResponse({ name: "GrowthOS" }, { status: 200 }));
+
+    await expect(
+      requestJSON("/health", { decode: decodeName, expectedStatus: 201, fetcher }),
+    ).rejects.toMatchObject({ kind: "contract", status: 200 });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
 });
 
 describe("postJSONWithoutBody", () => {
@@ -318,6 +347,187 @@ describe("postJSONWithoutBody", () => {
     await expect(
       postJSONWithoutBody("/api/v1/actions", { decode: decodeName, fetcher }),
     ).rejects.toMatchObject({ kind: "network" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+});
+
+describe("postJSON", () => {
+  it("sends one exact JSON object body through the shared safe transport", async () => {
+    const fetcher = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(jsonResponse({ name: "created" }, { status: 201 }));
+
+    await expect(
+      postJSON(
+        "/api/v1/resources",
+        { name: "created" },
+        { decode: decodeName, expectedStatus: 201, fetcher },
+      ),
+    ).resolves.toMatchObject({ data: { name: "created" }, status: 201 });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    const [path, init] = fetcher.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(path).toBe("/api/v1/resources");
+    expect(init).toMatchObject({
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      mode: "same-origin",
+      redirect: "error",
+      signal: expect.any(AbortSignal),
+      body: '{"name":"created"}',
+    });
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.has("Content-Length")).toBe(false);
+    expect(headers.has("Transfer-Encoding")).toBe(false);
+  });
+
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["array", []],
+    ["primitive", "value"],
+    ["undefined serialization", { toJSON: () => undefined }],
+    ["non-object serialization", { toJSON: () => "value" }],
+    ["bigint", { value: BigInt(1) }],
+  ])("rejects %s before fetch", async (_name, body) => {
+    const fetcher = vi.fn<FetchLike>();
+
+    await expect(
+      postJSON("/api/v1/resources", body as Readonly<Record<string, unknown>>, {
+        decode: decodeName,
+        fetcher,
+      }),
+    ).rejects.toMatchObject({ kind: "contract" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects circular JSON and payload-framing overrides before fetch", async () => {
+    const fetcher = vi.fn<FetchLike>();
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    await expect(
+      postJSON("/api/v1/resources", circular, { decode: decodeName, fetcher }),
+    ).rejects.toMatchObject({ kind: "contract" });
+    await expect(
+      postJSON(
+        "/api/v1/resources",
+        { name: "created" },
+        { decode: decodeName, headers: { "content-type": "text/plain" }, fetcher },
+      ),
+    ).rejects.toMatchObject({ kind: "contract" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a failed JSON POST", async () => {
+    const fetcher = vi.fn<FetchLike>().mockRejectedValue(new TypeError("connection refused"));
+
+    await expect(
+      postJSON("/api/v1/resources", { name: "created" }, { decode: decodeName, fetcher }),
+    ).rejects.toMatchObject({ kind: "network" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+});
+
+describe("deleteNoContent", () => {
+  it("sends one bodyless DELETE and returns correlation metadata for exact 204", async () => {
+    const fetcher = vi.fn<FetchLike>().mockResolvedValue(
+      new Response(null, {
+        status: 204,
+        headers: { "Content-Length": "0", "X-Request-ID": "req-delete" },
+      }),
+    );
+
+    await expect(
+      deleteNoContent("/api/v1/resource", {
+        headers: { "X-CSRF-Token": "opaque-token" },
+        fetcher,
+        now: vi.fn().mockReturnValueOnce(3).mockReturnValueOnce(8),
+      }),
+    ).resolves.toEqual({
+      data: undefined,
+      status: 204,
+      requestId: "req-delete",
+      elapsedMs: 5,
+    });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    const [path, init] = fetcher.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(path).toBe("/api/v1/resource");
+    expect(init).toMatchObject({
+      method: "DELETE",
+      cache: "no-store",
+      credentials: "same-origin",
+      mode: "same-origin",
+      redirect: "error",
+      signal: expect.any(AbortSignal),
+    });
+    expect(init).not.toHaveProperty("body");
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("X-CSRF-Token")).toBe("opaque-token");
+    expect(headers.has("Content-Type")).toBe(false);
+    expect(headers.has("Content-Length")).toBe(false);
+    expect(headers.has("Transfer-Encoding")).toBe(false);
+  });
+
+  it.each([
+    ["content type", { "Content-Type": "application/json" }],
+    ["nonzero content length", { "Content-Length": "1" }],
+    ["malformed content length", { "Content-Length": "zero" }],
+    ["transfer encoding", { "Transfer-Encoding": "chunked" }],
+  ])("rejects a 204 response with %s", async (_name, headers) => {
+    const fetcher = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(new Response(null, { status: 204, headers }));
+
+    await expect(deleteNoContent("/api/v1/resource", { fetcher })).rejects.toMatchObject({
+      kind: "contract",
+      status: 204,
+    });
+  });
+
+  it("rejects any response bytes and any successful status other than 204", async () => {
+    const responseWithBytes = new Response(null, { status: 204 });
+    vi.spyOn(responseWithBytes, "arrayBuffer").mockResolvedValue(
+      new Uint8Array([1]).buffer as ArrayBuffer,
+    );
+    const fetcher = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(responseWithBytes)
+      .mockResolvedValueOnce(jsonResponse({ name: "deleted" }, { status: 200 }));
+
+    await expect(deleteNoContent("/api/v1/resource", { fetcher })).rejects.toMatchObject({
+      kind: "contract",
+      status: 204,
+    });
+    await expect(deleteNoContent("/api/v1/resource", { fetcher })).rejects.toMatchObject({
+      kind: "contract",
+      status: 200,
+    });
+  });
+
+  it.each(["Content-Type", "content-length", "TRANSFER-ENCODING"])(
+    "rejects the request framing header %s before fetch",
+    async (header) => {
+      const fetcher = vi.fn<FetchLike>();
+
+      await expect(
+        deleteNoContent("/api/v1/resource", { headers: { [header]: "value" }, fetcher }),
+      ).rejects.toMatchObject({ kind: "contract" });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not retry a failed DELETE", async () => {
+    const fetcher = vi.fn<FetchLike>().mockRejectedValue(new TypeError("connection refused"));
+
+    await expect(deleteNoContent("/api/v1/resource", { fetcher })).rejects.toMatchObject({
+      kind: "network",
+    });
     expect(fetcher).toHaveBeenCalledOnce();
   });
 });
