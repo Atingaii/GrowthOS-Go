@@ -654,14 +654,19 @@ if [ "$builder_container_name" != "/$expected_builder_container" ] ||
 fi
 cleanup_images=1
 build_status=0
-# Compose may build the api and migrate targets concurrently even though both
-# targets share the same Go builder stage. Docker Desktop then runs two copies
-# of the compiler against the same dependency graph, which can exceed a
-# deliberately small local memory budget. Build each service in dependency-
-# neutral order: the api build populates the shared builder cache, then migrate
-# and Identity maintenance reuse it while Redis and the web bundle never
-# compete with the Go compiler.
-for acceptance_build_service in api migrate identity-provision identity-maintenance redis web; do
+# All four backend targets use the same Dockerfile, build arguments, and builder
+# stage, which already compiles the four binaries in one bounded RUN. Keep them
+# in one Bake invocation so BuildKit can de-duplicate that shared graph and one
+# transient registry metadata lookup cannot strand us between identical target
+# builds. Redis and Web stay sequential so their independent dependency graphs
+# never compete with the deliberately memory-bounded Go build.
+if ! compose build api migrate identity-provision identity-maintenance; then
+    build_status=1
+fi
+for acceptance_build_service in redis web; do
+    if [ "$build_status" -ne 0 ]; then
+        break
+    fi
     if ! compose build "$acceptance_build_service"; then
         build_status=1
         break
