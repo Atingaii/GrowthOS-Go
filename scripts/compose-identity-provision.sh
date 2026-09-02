@@ -153,9 +153,50 @@ compose() {
         "$@"
 }
 
+wait_for_successful_one_shot() {
+    one_shot_service=$1
+    one_shot_started_at=$(date +%s) || fail 'the one-shot prerequisite clock is unavailable'
+
+    while :; do
+        one_shot_container_id=$(compose ps --all --quiet "$one_shot_service") ||
+            fail "could not resolve the $one_shot_service prerequisite container"
+        case "$one_shot_container_id" in
+            '')
+                ;;
+            *[!0-9a-f]*)
+                fail "the $one_shot_service prerequisite container identity is ambiguous"
+                ;;
+            *)
+                one_shot_state=$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$one_shot_container_id") ||
+                    fail "could not inspect the $one_shot_service prerequisite container"
+                case "$one_shot_state" in
+                    exited:0)
+                        return 0
+                        ;;
+                    exited:*)
+                        fail "the $one_shot_service prerequisite failed"
+                        ;;
+                    created:0|running:0|restarting:0)
+                        ;;
+                    *)
+                        fail "the $one_shot_service prerequisite entered an unexpected state"
+                        ;;
+                esac
+                ;;
+        esac
+
+        one_shot_now=$(date +%s) || fail 'the one-shot prerequisite clock is unavailable'
+        if [ $((one_shot_now - one_shot_started_at)) -ge 180 ]; then
+            fail "the $one_shot_service prerequisite did not finish within 180 seconds"
+        fi
+        sleep 1
+    done
+}
+
 compose config --quiet
 compose build identity-provision
-compose up --detach --build --wait --wait-timeout 180 mysql-grants
+compose up --detach --build mysql-grants
+wait_for_successful_one_shot mysql-grants
 
 # Revalidate immediately before taking the private snapshot. Copying avoids the
 # uid-501/uid-65532 bind-mount mismatch without relaxing the caller's source
