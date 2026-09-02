@@ -2122,31 +2122,33 @@ assert_identity_set_cookie() {
     identity_cookie_jar=$1
     if [ "$(header_count Set-Cookie "$response_headers")" -ne 1 ] ||
        ! awk '
-            BEGIN { valid = 0 }
             {
                 line = $0
                 sub(/\r$/, "", line)
                 if (line !~ /^[Ss]et-[Cc]ookie:[[:space:]]*growthos_dev_session=/) {
                     next
                 }
-                value = line
-                sub(/^[^=]*=/, "", value)
-                sub(/;.*/, "", value)
-                valid = (length(value) == 43 && value ~ /^[A-Za-z0-9_-]+$/)
-                valid = (valid && line ~ /; Path=\//)
-                valid = (valid && line ~ /; Expires=[^;]+ GMT/)
-                valid = (valid && line ~ /; Max-Age=[1-9][0-9]*/)
-                valid = (valid && line ~ /; HttpOnly/)
-                valid = (valid && line ~ /; SameSite=Strict/)
-                valid = (valid && line !~ /; Secure/)
-                valid = (valid && line !~ /; Domain=/)
-                if (valid) {
-                    valid = 1
+                sub(/^[^:]*:[[:space:]]*/, "", line)
+                found++
+                if (split(line, field, "; ") != 6) {
+                    next
+                }
+                token = field[1]
+                sub(/^growthos_dev_session=/, "", token)
+                canonical = (field[1] == "growthos_dev_session=" token)
+                canonical = (canonical && length(token) == 43 && token ~ /^[A-Za-z0-9_-]+$/)
+                canonical = (canonical && field[2] == "Path=/")
+                canonical = (canonical && field[3] ~ /^Expires=[A-Z][a-z][a-z], [0-9][0-9] [A-Z][a-z][a-z] [0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9] GMT$/)
+                canonical = (canonical && field[4] ~ /^Max-Age=[1-9][0-9]*$/)
+                canonical = (canonical && field[5] == "HttpOnly")
+                canonical = (canonical && field[6] == "SameSite=Strict")
+                if (canonical) {
+                    valid++
                 }
             }
-            END { exit valid ? 0 : 1 }
+            END { exit (found == 1 && valid == 1) ? 0 : 1 }
         ' "$response_headers"; then
-        fail 'development session Set-Cookie lacks the exact token, Path, expiry, HttpOnly, Strict, host-only, or insecure-loopback shape'
+        fail 'development session Set-Cookie is not the exact six-field token, Path, expiry, Max-Age, HttpOnly, Strict, host-only, insecure-loopback tuple'
     fi
     assert_private_identity_file "$identity_cookie_jar" -
     if ! awk -F '\t' '
@@ -2182,18 +2184,13 @@ assert_identity_clear_cookie() {
                 if (line !~ /^[Ss]et-[Cc]ookie:[[:space:]]*growthos_dev_session=;/) {
                     next
                 }
-                valid = (line ~ /; Path=\//)
-                valid = (valid && line ~ /; Expires=Thu, 01 Jan 1970 00:00:01 GMT/)
-                valid = (valid && line ~ /; Max-Age=0/)
-                valid = (valid && line ~ /; HttpOnly/)
-                valid = (valid && line ~ /; SameSite=Strict/)
-                valid = (valid && line !~ /; Secure/)
-                valid = (valid && line !~ /; Domain=/)
-                if (valid) {
-                    valid = 1
+                sub(/^[^:]*:[[:space:]]*/, "", line)
+                found++
+                if (line == "growthos_dev_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0; HttpOnly; SameSite=Strict") {
+                    valid++
                 }
             }
-            END { exit valid ? 0 : 1 }
+            END { exit (found == 1 && valid == 1) ? 0 : 1 }
         ' "$response_headers"; then
         fail 'logout did not emit the exact development Cookie deletion tuple'
     fi
@@ -2438,7 +2435,7 @@ identity_request POST /api/v1/session 400 "$identity_login_body" - -
 assert_identity_error request_body_not_allowed 'request body is not allowed'
 assert_no_set_cookie
 
-awk 'BEGIN { for (index = 0; index < 2049; index++) printf "x" }' > "$identity_malformed_body"
+awk 'BEGIN { for (i = 0; i < 2049; i++) printf "x" }' > "$identity_malformed_body"
 chmod 0600 "$identity_malformed_body"
 assert_private_identity_file "$identity_malformed_body" 2049
 identity_prepare_login_config
@@ -3015,6 +3012,51 @@ if [ "$invalid_host_status" != 421 ] ||
     fail 'the loopback gateway did not reject an arbitrary Host with correlated no-store 421'
 fi
 ok 'the loopback gateway rejected an arbitrary Host before proxying'
+
+response_number=$((response_number + 1))
+response_headers="$response_directory/headers-$response_number"
+response_body="$response_directory/body-$response_number"
+invalid_api_host_status=$(curl \
+    --silent \
+    --show-error \
+    --connect-timeout "$connect_timeout" \
+    --max-time "$request_timeout" \
+    --header 'Host: attacker.example' \
+    --dump-header "$response_headers" \
+    --output "$response_body" \
+    --write-out '%{http_code}' \
+    "$base_url/api/v1/session") || fail 'invalid-Host Session request failed'
+invalid_api_host_request_id=$(header_value X-Request-ID "$response_headers")
+invalid_api_host_content_type=$(header_value Content-Type "$response_headers" | tr '[:upper:]' '[:lower:]')
+if [ "$invalid_api_host_status" != 421 ] ||
+   [ "$(header_count Content-Type "$response_headers")" -ne 1 ] ||
+   [ "${invalid_api_host_content_type%%;*}" != application/json ] ||
+   [ "$(header_count Cache-Control "$response_headers")" -ne 1 ] ||
+   [ "$(header_value Cache-Control "$response_headers")" != no-store ] ||
+   [ -z "$invalid_api_host_request_id" ] ||
+   [ "$(header_count X-Request-ID "$response_headers")" -ne 1 ] ||
+   [ "$(header_count Content-Security-Policy "$response_headers")" -ne 1 ] ||
+   [ "$(header_value Content-Security-Policy "$response_headers")" != "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" ] ||
+   [ "$(header_count Cross-Origin-Resource-Policy "$response_headers")" -ne 1 ] ||
+   [ "$(header_value Cross-Origin-Resource-Policy "$response_headers")" != same-origin ] ||
+   [ "$(header_count Permissions-Policy "$response_headers")" -ne 1 ] ||
+   [ "$(header_value Permissions-Policy "$response_headers")" != 'camera=(), geolocation=(), microphone=()' ] ||
+   [ "$(header_count Referrer-Policy "$response_headers")" -ne 1 ] ||
+   [ "$(header_value Referrer-Policy "$response_headers")" != no-referrer ] ||
+   [ "$(header_count X-Content-Type-Options "$response_headers")" -ne 1 ] ||
+   [ "$(header_value X-Content-Type-Options "$response_headers")" != nosniff ] ||
+   [ "$(header_count X-Frame-Options "$response_headers")" -ne 1 ] ||
+   [ "$(header_value X-Frame-Options "$response_headers")" != DENY ] ||
+   [ "$(header_count Set-Cookie "$response_headers")" -ne 0 ]; then
+    fail 'invalid-Host Session response escaped the canonical API edge contract'
+fi
+if ! jq -e \
+    --arg request_id "$invalid_api_host_request_id" \
+    '. == {error: {code: "misdirected_request", message: "request Host is not accepted", request_id: $request_id}}' \
+    "$response_body" >/dev/null; then
+    fail 'invalid-Host Session response did not return the correlated JSON error envelope'
+fi
+ok 'invalid-Host Session requests retain the canonical API security and error contract'
 
 max_route=/api/v1/lottery/strategies/18446744073709551615/ephemeral-selections
 request POST "$max_route" 200 - - ephemeral-selection
