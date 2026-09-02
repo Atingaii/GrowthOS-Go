@@ -1,213 +1,210 @@
-# Design QA — Lesson 22 Credits Workspace
+# Design QA — Lesson 32 Real Session Authentication
 
 **Status:** PASSED
-**QA date:** 2026-08-30
-**Scope:** GrowthOS user workspace, Lottery workbench, Admin/MCP/Agent operator workspaces, desktop and mobile shell behavior
 
-## 1. Scope and acceptance question
+**QA date:** 2026-09-02
 
-This review answers one concrete question: does the Lesson 22 frontend now express the high-density, flat, account-workspace language requested from `credit.linux.do`, while keeping GrowthOS branding, real feature boundaries, responsive behavior, and accessible interaction intact?
+**Scope:** public login boundary, current-session view, session-state transitions, desktop and mobile presentation
+
+## 1. Acceptance question and boundary
+
+This review answers one concrete question: does Lesson 32 turn the public `credit.linux.do` visual direction into a coherent, responsive GrowthOS authentication experience, while making the real server-session state understandable and preserving honest product boundaries?
 
 Included:
 
-- shared `WorkspaceShell` used by User, Admin, MCP, and Agent layouts;
-- user Home, Growth Feed, Campaigns/list-detail, Points, Coupons, Profile, and Lottery;
-- operator dashboards, data views, generic unavailable modules, and local-only Agent task behavior;
-- search palette, sidebar collapse, mobile drawer, notification sample, theme, full-width, profile and primary navigation actions;
-- a 1719 × 862 desktop comparison and a 390 × 844 mobile implementation review;
-- semantic, interaction, content-truth, and build checks.
+- the shared public `AuthLayout` header, introduction, trust points, login card, current-session card, checking state, unavailable state and signed-out notice;
+- the real `/login` → `/session` → `/login` path through Nginx, the Go identity boundary and MySQL;
+- ordinary reload, explicit session re-check, logout, backend failure and recovery behavior;
+- a same-input desktop comparison at 1719 × 862 CSS px, a 390 × 844 mobile review and a 1280 × 720 authenticated-session review;
+- keyboard focus, semantic labels, live status/error communication and reduced-motion behavior;
+- final frontend tests, type checking, production build, formatting and diff checks.
 
 Excluded:
 
-- pixel-for-pixel cloning of Linux DO branding, account data, logo, or proprietary authenticated content;
-- formal usability research, screen-reader certification, a full browser/device matrix, and automated visual regression infrastructure;
-- production authentication, live account data, server notifications, formal Lottery Draw/issuance, and operator write APIs.
+- authorization decisions, role/permission models, business-route protection or per-role navigation. Those belong to Lesson 33 RBAC, Lesson 34 frontend permission projection and Lesson 35 privilege-escalation/E2E acceptance;
+- password recovery, self-registration, SSO, MFA, device/session management and business workspace screens;
+- pixel-for-pixel copying of Linux DO branding, its balance illustration, text or account data;
+- direct inspection of an HttpOnly cookie from browser script, or claims based on reading browser storage internals;
+- a complete browser/device/assistive-technology certification or production Core Web Vitals measurement.
+
+This is therefore an authentication-boundary acceptance, not a claim that the complete GrowthOS permission system has shipped.
 
 ## 2. Visual truth and comparison setup
 
-### 2.1 Source priority
+### 2.1 Evidence priority
 
-| Priority | Source | Use in this review | Limitation |
+| Priority | Evidence | Purpose | Boundary |
 | --- | --- | --- | --- |
-| 1 | User-provided authenticated screenshot, `codex-clipboard-e48ac4a1-5416-4566-8c65-8d8c64fcdbea.png` | Primary truth for authenticated home geometry, density, hierarchy, chart/summary relationship, sidebar and topbar | Session attachment; not a repository dependency |
-| 2 | [`https://credit.linux.do/`](https://credit.linux.do/) | Public live behavior, basic responsive/context check | Unauthenticated access cannot reproduce the supplied authenticated home state |
-| 3 | [`linux-do/credit`](https://github.com/linux-do/credit) | Official public implementation context and provenance | Repository availability does not make every visual state public or stable |
-| 4 | GrowthOS source and requirements | Product copy, local data truth, capabilities, brand color, navigation | Must not be overridden merely to imitate the reference |
+| 1 | Public reference at [`https://credit.linux.do/`](https://credit.linux.do/) and `credit-linux-do-reference-1719x862.png` | Primary truth for the white dual-column first fold, restrained purple accent, typography hierarchy, whitespace and elevated right-hand focal surface | Reference is a public marketing entry, not a GrowthOS authentication contract |
+| 2 | `reference-vs-growthos-login-1719.png` | Required same-input visual comparison at the same 1719 × 862 viewport | Temporary manual-QA montage, not a checked-in asset |
+| 3 | `growthos-login-latest-1719x862.png` | Final desktop login state | Temporary browser capture |
+| 4 | `growthos-login-390x844-full.png` | Final narrow/mobile login state | Responsive acceptance; there is no matching mobile reference state |
+| 5 | `growthos-current-session-1280x720.png` | Authenticated session hierarchy, identity projection, expiry information, re-check and logout actions | Contains only disposable test-state evidence and is not a product-data fixture |
+| 6 | Real browser task flow and source/tests | Observable interaction, focus, routing, failure/recovery and semantic behavior | This visual review does not bypass browser privacy boundaries |
 
-The user's earlier GrowthOS screenshot, `codex-clipboard-63b547ac-74a4-41ec-8811-9de65277e6af.png`, was treated as the implementation baseline: it showed an over-wide horizontal navigation, excessive blank space, and large coupon-card composition that did not match the requested workspace model.
+The captures currently live under the disposable directory `/tmp/growthos-lesson32-design-evidence.ljwm79/`. They are retained only until the Lesson 32 freeze is complete so the final comparison can be independently rechecked; they must then be removed and are not durable repository evidence.
 
-### 2.2 State, dimensions, and density normalization
+### 2.2 Same-input comparison method
 
-| Dimension | Source | Implementation |
+The full reference and final `/login` capture were placed into one comparison image before judging the result. Both desktop frames use 1719 × 862 CSS px. Inspection covered:
+
+- global header height and first-fold vertical start;
+- left narrative/right focal-surface proportion;
+- headline scale, line length, baseline rhythm and supporting-copy contrast;
+- primary violet, neutral borders, background glow and shadow restraint;
+- input, password reveal and primary-action hierarchy;
+- large-screen negative-space balance and mobile reading/tab order;
+- whether visual confidence was supported by truthful session behavior rather than decorative security claims alone.
+
+The objective was visual-language fidelity, not duplication. The implementation intentionally replaces the reference balance card and marketing CTAs with the real login/current-session task while retaining its core composition: quiet white canvas, two-column first fold, oversized concise headline, a single elevated focal card and a limited violet accent.
+
+### 2.3 Final visible differences and rationale
+
+| Area | Reference | GrowthOS Lesson 32 | Decision |
+| --- | --- | --- | --- |
+| Header | Landing page has no persistent product header in the captured fold | Compact 64 px GrowthOS identity and a system-status escape hatch | Accepted: establishes product provenance and gives authentication failures a useful adjacent path |
+| Left column | Product promise, two CTAs and three platform qualities | Authentication purpose and three concrete session-safety boundaries | Accepted: preserves hierarchy while matching the task's security intent |
+| Right column | Decorative balance surface and income chip | Real labelled login form or current-session projection | Accepted: functional focal surface replaces illustration without changing the visual grammar |
+| Accent | Purple headline/action and soft blue-violet glow | Violet eyebrow/CTA/focus plus restrained radial violet/blue field | Accepted: recognizable direction without copying brand assets |
+| Density | Sparse marketing first fold | Slightly denser form/session details | Accepted: necessary task information remains contained in one card |
+| Mobile | No equivalent captured reference | Narrative precedes the form in DOM and visual order; secondary trust-point row is omitted | Accepted: preserves the task narrative and removes nonessential first-fold density |
+
+## 3. Visual and product rubric
+
+| Category | Final evidence | Result | Open severity |
+| --- | --- | --- | --- |
+| Composition | Desktop preserves the reference's balanced dual-column first fold; login/session card is the unambiguous task focus | Passed | none |
+| Typography | Large Chinese headline, compact mono eyebrow, 24 px card title, readable 14–18 px support copy and mono principal identifier create clear levels | Passed | none |
+| Spacing | Shared max-width, responsive 20/32/40 px gutters, 48–80 px page padding, consistent card/input/action gaps | Passed | none |
+| Color | White/zinc foundation, restrained `#625df5` accent, emerald authenticated state, amber indeterminate state and rose authentication errors | Passed | none |
+| Surfaces | One bordered `rounded-xl` task card with a restrained shadow; status blocks use borders and tint instead of competing floating cards | Passed | none |
+| Iconography | Lucide icons use a consistent stroke language and are hidden when decorative; controls have textual or accessible names | Passed | none |
+| Content truth | Copy distinguishes authenticated, anonymous, checking and unavailable states; a technical failure is never presented as “logged out” | Passed | none |
+| Responsiveness | 1719 × 862 desktop and 390 × 844 mobile inspected; no visible clipping or page-level horizontal overflow | Passed | none |
+| Interaction hierarchy | One primary login action; authenticated state separates neutral re-check from high-commitment logout | Passed | none |
+| Accessibility | Skip link, main landmark, labelled form, autocomplete hints, 44–48 px controls, visible focus, status/alert semantics and focus handoff | Passed | none |
+| Motion | Global `prefers-reduced-motion: reduce` rule reduces animation/transition duration and iteration; loading semantics remain available without depending on motion | Passed | none |
+| Scope honesty | UI projects authentication facts only; it does not display role, scope or permission vocabulary before those lessons exist | Passed | none |
+
+## 4. Interaction and state-machine acceptance
+
+### 4.1 Real browser path
+
+| Scenario | Observable result | Result |
 | --- | --- | --- |
-| Page state | Authenticated home, light theme, expanded sidebar | `/home`, light theme, expanded sidebar, local mock snapshot |
-| Source/implementation viewport | 1719 × 862 CSS px | 1719 × 862 CSS px |
-| Raster | 3438 × 1724 px source bitmap | Browser capture at the 1719 × 862 CSS viewport |
-| Density treatment | Source normalized from 2× to 1× CSS dimensions | Implementation kept at its native CSS crop |
-| Comparison | Full-view stitched pair, followed by focused inspection of shell and data regions | Same comparison input as source |
+| Initial anonymous load | Current-session check resolves anonymous and presents the login form, not protected workspace content | Passed |
+| Valid login | Form submits once, navigates with replacement from `/login` to `/session`, and renders the expected public principal projection | Passed |
+| Post-login focus | Focus moves to the `当前会话` heading so a keyboard or assistive-technology user receives the route/state change | Passed |
+| Authenticated reload | Reload remains on `/session` and reconstructs the visible session from the server boundary | Passed |
+| Explicit re-check | `重新核查` re-reads the session without manufacturing a new authenticated state | Passed |
+| Logout | Confirmed logout returns to `/login`, shows an explicit signed-out notice and does not leave the session view visible | Passed |
+| Post-logout reload | Reload remains anonymous on `/login`; the prior principal is not rendered | Passed |
+| Identity-store failure with a valid session | With MySQL unavailable, reload stays on the session route and renders `暂时无法确认登录状态`; it shows neither a login form nor stale principal data | Passed |
+| Recovery | After MySQL recovery, explicit `重新核查` restores the authenticated principal projection | Passed |
+| Final cleanup path | A final logout returns the browser to the anonymous login state | Passed |
 
-- **Source visual-truth record:** the user attachment basename above, plus the public URL and official repository; the attachment remains conversation input rather than a checked-in asset.
-- **Implementation screenshot path:** a disposable QA browser-capture path, deliberately removed after review and therefore not published as a stable repository path or link.
-- **Comparison input path:** a disposable same-input montage path, likewise removed after manual inspection and not retained as deliverable evidence.
+The failure drill is an important product decision: `unavailable` is a separate state from `anonymous`. Treating a dependency failure as logout would create a misleading UI, invite duplicate login attempts and obscure an operational incident.
 
-The full reference and implementation were put into the same temporary comparison input. Focused inspection covered:
+### 4.2 Form and action behavior
 
-- sidebar width, navigation rhythm, product identity and footer;
-- 72 px topbar, search position and action density;
-- page start line, trend chart, right-hand summary and first fold;
-- recent overview section, row density, borders and chart colors;
-- typography scale, numeric alignment, icons, empty space and surface treatment.
+- The login form has an accessible name, programmatic labels, username/current-password autocomplete tokens and native required/format constraints.
+- The password-reveal control exposes a stable action name and `aria-pressed`; its icon is decorative.
+- Password input is not mirrored into React component state and is cleared from the form immediately after the one-shot request starts.
+- Submission and logout expose busy text/live status, disable duplicate activation and retain visible focus on the active action.
+- Authentication errors map to user-safe copy and move focus to the alert; a request/support identifier may be displayed without exposing backend detail.
+- An ordinary logout failure keeps the authenticated snapshot visible because revocation was not proved; it does not falsely announce success or auto-retry a mutation.
+- The signed-out/session-ended notices receive focus when introduced, making the state transition perceivable beyond color.
 
-The comparison inputs and browser captures were disposable QA artifacts. They were manually inspected but are intentionally not retained, embedded, or linked from the repository.
+### 4.3 Concurrency correctness visible at the UI boundary
 
-### 2.3 Geometry target
+The final state machine uses abort signals and monotonically increasing check/action generations. A previously started `GET` cannot restore an old authenticated snapshot after logout begins or completes. Login, logout and re-check ownership are mutually bounded, so late promises cannot overwrite the newer state.
 
-The accepted desktop geometry is:
+This is verified by source-level tests and was repaired before the final browser pass; the visual review records the observable consequence rather than claiming that a screenshot alone proves concurrency safety.
 
-```text
-desktop sidebar      231 px
-topbar                72 px
-shell max width     1320 px
-large-screen padding  48 px × 2
-net content width   1224 px
-```
-
-`WorkspaceShell` owns these values for both header and main. Individual pages no longer add a second global max-width or shell padding. At smaller breakpoints the horizontal padding reduces to 32, 24, and 16 px; below `md`, the fixed desktop sidebar is removed from layout and replaced by a drawer.
-
-## 3. Visual rubric
-
-| Category | Acceptance evidence | Result | Severity after final pass |
-| --- | --- | --- | --- |
-| Typography | System font stack, compact Chinese hierarchy, 11–14 px supporting text, tabular/monospace IDs and metrics, no accidental marketing-display typography in data views | Passed | none |
-| Spacing/layout | Shared 231/72/1320/1224 geometry; compact rows; consistent 16/24/32/48 responsive gutters; no page-level double container | Passed | none |
-| Color/tokens | White/zinc canvases, 1 px zinc borders, restrained violet primary, blue trend, green positive, red expense/risk; dark theme remains legible | Passed | none |
-| Surface language | Flat grouped regions, light row fills and small 6/8/12 px radii; shadows restricted mainly to overlays/tooltips | Passed | none |
-| Image/asset fidelity | GrowthOS identity retained; no Linux DO logo/data copied; Lucide icons share a consistent stroke; mock avatar remains explicitly demo content | Passed with boundary | P3 external-avatar resilience |
-| Copy/content | `2026-03-14 12:00 CST` snapshot stated; Lottery says candidate, ephemeral, non-persistent; local/disabled operator capabilities are explicit | Passed | none |
-| Iconography | Action icons have labels or accessible names; decorative icons are hidden from assistive technology; no emoji or arbitrary inline icon mix | Passed | none |
-| Density | Home trend/summary and recent overview occupy the first fold without the previous large coupon-card voids | Passed | none |
-| Responsiveness | 1719 × 862 desktop and 390 × 844 mobile inspected; drawer replaces fixed sidebar; local table overflow stays local | Passed | none |
-| Interaction/accessibility | Skip link, main landmark, visible focus, keyboard search, dialog focus containment, Escape/overlay close, focus return, pressed/expanded states, reduced-motion hooks | Passed | none |
-| Product honesty | Real actions work; mocks are dated; unavailable writes are disabled; notification and Agent task state are clearly local | Passed | none |
-
-## 4. Iteration and comparison history
-
-| Iteration | Finding | Severity | Change | Re-check |
-| --- | --- | --- | --- | --- |
-| Baseline | Horizontal mega-navigation, large blank canvas and oversized coupon cards did not express the reference's account workspace | P1 | Replaced the global composition with a shared sidebar/topbar/content shell | Desktop full-view rerun |
-| Shell v1 | User pages could align, but independent Admin/MCP/Agent shells would drift in padding, search and actions | P1 | Made all four layouts compose `WorkspaceShell` with navigation data only | Cross-workspace route review |
-| Geometry | Repeated max-width/padding risked nested 1320 px containers and undersized content | P1 | Made shell the only global geometry owner; fixed 231/72/1320/1224 model | Same-viewport overlay inspection |
-| Content density | Home and supporting pages still needed row/table hierarchy rather than repeated promotional cards | P2 | Rebuilt Home, Feed, Campaigns, Points, Coupons and Profile with flat groups and compact metrics | Full page and first-fold review |
-| Product truth | Decorative actions and undated numbers could imply live services | P1 | Added snapshot label, disabled unavailable writes, real routes/Clipboard, local notification disclosure | Interaction and copy review |
-| Lottery v1 | Standalone theater treatment could feel detached from the Credits workspace; disclosure was too repetitive on narrow screens | P2 | Fit Lottery into shared content geometry and separated responsive disclosures | Desktop/mobile Lottery rerun |
-| Interaction hardening | Search path duplication, modal focus, drawer body scroll/focus return, and notification semantics needed explicit handling | P1 | De-duplicated search items; added containment, Escape, lock, return and ARIA states | Keyboard and mobile rerun |
-| Operator unification | Generic operator pages could present empty actions as implemented features | P2 | Used compact capability-boundary pages and disabled unavailable writes | Admin/MCP/Agent route review |
-| Performance review | Initial production build emitted a nonvisual >500 kB single-chunk warning | P3 | Lazy-loaded Home/Admin dashboard routes and isolated the shared ProductPage/Recharts layer in `06a4a38` | Clean production build without the warning |
-| Final | No visible P0/P1/P2 remained in the compared desktop state or representative mobile state | — | No further visual correction required for Lesson 22 scope | Passed |
-
-Every P0/P1/P2 listed above was followed by a fresh implementation capture or interaction pass. The final pass did not reuse the baseline judgment.
-
-## 5. Functional acceptance
-
-### 5.1 Shared shell
-
-- Sidebar collapse changes both the visual width and main offset; expanded state is exposed through `aria-expanded`.
-- Mobile menu opens a labelled modal drawer, locks background scrolling, traps focus, closes via Escape/overlay/close button, and returns focus to the opener.
-- `Cmd/Ctrl + K` opens search; duplicate aliases with the same path are de-duplicated; selecting a result navigates and closes.
-- Theme changes the document theme and exposes pressed state.
-- Full-width toggles between the 1320 px container and unconstrained shell width.
-- Notification opens a labelled local-sample region; mark-read only mutates browser state and says so.
-- Settings, primary action, user avatar/home identity, and cross-workspace navigation resolve to actual routes.
-
-### 5.2 User pages
-
-- Home: chart, summaries, recent overview, income/expense and campaign snapshot render at desktop density without hiding the snapshot boundary.
-- Growth Feed: content is readable; publish/like/comment/share remain visibly unavailable instead of feigning success.
-- Campaigns: search/status filtering and detail navigation work; no fake enrollment, qualification, budget write or reward issuance.
-- Points: semantic ledger table and local horizontal overflow; numbers do not claim real account value.
-- Coupons: status filtering and real Clipboard API feedback; copying does not mutate coupon status.
-- Profile: semantic read-only identity fields; no fake save action.
-
-### 5.3 Operator pages
-
-- Admin, MCP and Agent routes use the same shell and maintain their own navigation labels.
-- Admin/MCP values say they are snapshots, not live operational telemetry.
-- Agent can add an in-memory local task; it does not call an Agent, MCP tool, or write API, and it does not claim persistence.
-- Approval/publish/create actions without backends are disabled or rendered as unavailable capabilities.
-
-### 5.4 Lottery API
-
-- Canonical uint64 Strategy IDs are sent as strings to the real same-origin ephemeral endpoint.
-- The request has the required demo header, no query/body/idempotency key, and no automatic retry.
-- Loading blocks duplicate submission; stale promises cannot replace the current state.
-- `reward` means selected reward candidate; `no_reward` is a successful selection.
-- Invalid contract, 404, 502/503/504, network, timeout and cancellation stay distinguishable.
-- Request ID is correlation only; refresh does not recover a selection.
-
-## 6. Viewport coverage
+## 5. Desktop and mobile findings
 
 ### Desktop — 1719 × 862
 
 Passed:
 
-- source and implementation share the same CSS viewport;
-- expanded 231 px sidebar and 72 px header align with the target hierarchy;
-- header/main use the same 1320 px outer width and 1224 px net content width;
-- trend and summary remain in the first fold;
-- primary user and operator routes maintain consistent page starts and gutters;
-- overlays stay within the viewport and do not shift underlying geometry.
+- the compact header leaves the first fold focused on authentication;
+- both columns align around a shared vertical center and retain generous but intentional whitespace;
+- the headline remains the strongest object, while the form card is the clearest action destination;
+- the 28 rem card supports labels, 48 px fields and action feedback without appearing oversized;
+- trust points stay secondary and do not compete with login;
+- background glow is subtle enough that field borders, focus rings and body copy remain legible.
 
 ### Mobile — 390 × 844
 
 Passed:
 
-- no fixed desktop sidebar offset remains;
-- topbar actions remain reachable without page-level horizontal overflow;
-- drawer uses at most 84vw/292 px, leaving a visible dismissal area;
-- headings/actions stack, charts resize, Lottery panels become one column, and wide tables scroll locally;
-- interactive targets and visible focus remain usable.
+- the layout becomes one column with 20 px outer gutters and no horizontal clipping;
+- the narrative appears before the form in both DOM and visual order, keeping keyboard traversal consistent with reading order;
+- the headline scales down and wraps intentionally instead of clipping;
+- the system-status link retains the accessible name `查看系统状态` even when its visible text is hidden;
+- form controls remain full-width and at least 44 px high;
+- the three desktop trust points are hidden to protect task density, while essential security/authorization context remains in the form card.
 
-There was no authenticated reference screenshot for the same mobile state. Mobile is therefore marked as responsive/product acceptance, not reference pixel parity.
+The mobile outcome is responsive acceptance, not reference pixel parity, because no equivalent 390 × 844 reference screen was available.
 
-## 7. Quality gates and residual findings
+### Authenticated session — 1280 × 720
 
-At the final lesson checkpoint:
+Passed:
 
-- all 19 Vitest files and all 152 tests passed in the authoritative `make verify` rerun;
-- `tsc --noEmit` passed;
-- Vite production build passed without the previous >500 kB single-chunk warning;
-- real-browser desktop and mobile passes completed;
-- the normalized, stitched desktop comparison was manually inspected.
+- the card retains the same shell and visual position as login, preventing a layout jump between identity states;
+- `已认证`, principal, identity type and both expiry boundaries form a readable top-to-bottom hierarchy;
+- semantic description-list and `time` elements support the visible grouping;
+- long principal identifiers can wrap without escaping the card;
+- re-check and logout are visually separated and become a stacked action order at narrow widths.
 
-The final build split recorded by the production gate is:
+## 6. Defects repaired before the final pass
 
-- entry: 433.34 kB;
-- shared ProductPage/Recharts layer: 353.32 kB;
-- Home route: 52.07 kB;
-- Admin dashboard route: 2.08 kB.
+| Finding | Severity | Repair | Final re-check |
+| --- | --- | --- | --- |
+| A late current-session `GET` could republish the old session after logout | P1 | Logout now advances the check generation, aborts the active read and owns the transition | Unit concurrency coverage plus real login/logout/reload path passed |
+| Icon-only mobile system-status link lost a useful accessible name | P2 | Added the stable name `查看系统状态` to the link | Narrow viewport semantic check passed |
+| Mobile CSS ordering could diverge from DOM/tab order | P2 | Narrative and task card now share the same logical and visual order | 390 × 844 reading and keyboard-order review passed |
+| Route transition did not reliably announce the authenticated destination | P2 | Current-session heading accepts programmatic focus on entry | Real browser login confirmed heading focus |
 
-These are build artifact sizes, not claims about compressed transfer cost, runtime parse cost, Core Web Vitals, or production network performance.
+There are no open P0, P1 or P2 findings in the Lesson 32 visual/interaction scope.
 
-Residual findings:
+## 7. Quality gates
 
-| Severity | Finding | Disposition |
+The authoritative frontend checkpoint recorded:
+
+- 23 Vitest files passed;
+- 250 tests passed;
+- TypeScript type checking passed;
+- production build passed;
+- formatting check passed;
+- diff/whitespace check passed.
+
+The production entry bundle was 460.30 kB, 133.53 kB gzip. These figures describe one build artifact only; they are not claims about runtime parse cost, field performance, Core Web Vitals or a production network transfer budget.
+
+Browser acceptance was performed against the rebuilt Lesson 32 web image and the actual same-origin session endpoints. The browser review exercised visible UI and routing behavior. It did **not** read an HttpOnly cookie from JavaScript or inspect private browser storage to manufacture proof. Cookie flags and transport contracts belong to HTTP/API acceptance and source tests, while this document records what a user can observe.
+
+## 8. Residual boundaries and next lessons
+
+No visual defect at P0/P1/P2 remains, but the following are deliberate scope boundaries rather than hidden completion claims:
+
+| Follow-up | Why it is not Lesson 32 | Planned ownership |
 | --- | --- | --- |
-| P3 | Mock avatar depends on an external Unsplash URL | Keep explicit mock status; add a local fallback before offline/production hardening |
-| P3 | Two representative viewports and manual QA are not a full regression matrix | Add automated screenshots, screen-reader passes and browser/device coverage later |
-| P3 | A clean chunk-size build is not a field-performance result | Add a performance budget plus real-browser Core Web Vitals/network profiling before production claims |
+| Shared authorization vocabulary and model | Authentication establishes who the principal is; it does not decide what that principal may do | Lesson 33 RBAC |
+| Permission-aware navigation, routes and controls | Client projection must derive from a server-owned authorization contract | Lesson 34 frontend permission projection |
+| Direct URL/API privilege-escalation and browser E2E matrix | Hiding a control is not authorization; negative server and browser proof must follow server enforcement | Lesson 35 authorization acceptance |
+| Full device/browser/screen-reader matrix and screenshot regression | Two representative viewports and targeted semantics are not certification | Later frontend hardening |
+| Field performance budget | A successful build and bundle size do not establish real-user performance | Later observability/performance work |
 
-There are no open P0, P1, or P2 findings in this review scope.
+## 9. Evidence retention and cleanup
 
-## 8. Evidence boundary and cleanup
+The current `/tmp/growthos-lesson32-design-evidence.ljwm79/` reference, desktop, mobile, session and combined comparison images are disposable verification artifacts. They stay available only through the Lesson 32 freeze/review checkpoint. After the durable lesson documentation and Git tip are frozen, the exact temporary directory will be removed; no pre-existing user image, source asset or reusable project dependency is part of that cleanup.
 
-No disposable output screenshot is a deliverable. The reference, implementation, and focused regions were combined into temporary same-input comparison artifacts and manually inspected. Those files are intentionally absent from Git and from this document's links, and are removed during final task cleanup.
+The lasting audit trail is this document, the implementation, automated tests, recorded viewport/state dimensions and the public reference URL. No test password, private enrollment material or reusable account secret is recorded here.
 
-The durable audit trail is this document plus source code, tests, viewport/state/dimension records, public reference URLs, and the user-provided requirement context. This avoids leaving generated images as stale evidence while preserving enough information to reproduce the review.
+## 10. Final decision
 
-## 9. Final decision
+Lesson 32 passes its visual and interaction boundary. It translates the reference's quiet dual-column visual language into a real GrowthOS login/current-session journey; the responsive hierarchy, focus management, honest failure state and server-backed browser flow agree with one another.
 
-The implementation satisfies the requested visual direction at the product-language level: dense and flat account workspace, shared geometry, clear hierarchy, responsive shell, functional controls, and explicit data/capability boundaries. It does not claim to be a Linux DO clone or a production-complete GrowthOS system.
-
-The earlier bundle-size warning was nonvisual and has now been eliminated by route-level splitting. Desktop, mobile, interaction, content-truth and clean-build evidence is sufficient for the stated Lesson 22 scope.
+This decision is intentionally limited to real session authentication. It does not pre-approve RBAC, permission-filtered navigation or privilege-escalation resistance in later lessons.
 
 final result: passed
