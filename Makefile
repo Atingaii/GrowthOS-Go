@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql lesson28-mysql-acceptance lesson30-mysql-acceptance doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-identity-provision compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
+.PHONY: help fmt fmt-check vet test test-race api-run db-migrate db-status test-integration-mysql lesson28-mysql-acceptance lesson30-mysql-acceptance doc-check web-install web-test web-typecheck web-build web-verify compose-secrets compose-config compose-build compose-up compose-down compose-reset compose-ps compose-logs compose-migrate compose-grants compose-status compose-identity-provision compose-identity-maintenance compose-smoke compose-lottery-api-acceptance compose-load-health compose-load-ready compose-verify compose-m0 docs-sync docs-sync-watch verify
 
 COMPOSE_FILE ?= deploy/compose/compose.yaml
 COMPOSE_PROJECT ?= growthos
@@ -14,11 +14,26 @@ READYLOAD_DURATION ?= 30s
 
 # Command-line variables are recursively expanded by GNU Make when exported.
 # A dollar could therefore turn even an invalid caller value into a Make
-# function before shell quoting applies. This target rejects dollars from the
-# raw, unexpanded values at parse time (the direct wrapper remains available
-# for an unusual pathname containing one). Remaining bytes travel only through
-# quoted, target-scoped shell environment variables, so backticks and other
-# invalid identifier characters are not evaluated a second time.
+# function before shell quoting applies. The one-shot Identity targets reject
+# dollars from raw, unexpanded Make values at parse time (their direct wrappers
+# remain available for an unusual pathname containing one). Remaining bytes
+# travel only through quoted, target-scoped shell environment variables, so
+# backticks and other invalid characters are not evaluated a second time.
+ifneq ($(filter compose-identity-provision compose-identity-maintenance,$(MAKECMDGOALS)),)
+ifneq (,$(findstring $$,$(value COMPOSE_PROJECT)))
+$(error COMPOSE_PROJECT must not contain a dollar sign)
+endif
+ifneq (,$(findstring $$,$(value COMPOSE_FILE)))
+$(error COMPOSE_FILE must not contain a dollar sign; invoke the operation wrapper directly for that pathname)
+endif
+ifneq (,$(findstring $$,$(value GROWTHOS_COMPOSE_WEB_PORT)))
+$(error GROWTHOS_COMPOSE_WEB_PORT must not contain a dollar sign)
+endif
+ifneq (,$(findstring $$,$(value GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID)))
+$(error GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID must not contain a dollar sign)
+endif
+endif
+
 ifneq ($(filter compose-identity-provision,$(MAKECMDGOALS)),)
 ifneq (,$(findstring $$,$(value IDENTITY_ACCOUNT_ID)))
 $(error IDENTITY_ACCOUNT_ID must not contain a dollar sign)
@@ -31,18 +46,6 @@ $(error IDENTITY_PRINCIPAL_ID must not contain a dollar sign)
 endif
 ifneq (,$(findstring $$,$(value IDENTITY_PASSWORD_FILE)))
 $(error IDENTITY_PASSWORD_FILE must not contain a dollar sign; call scripts/compose-identity-provision.sh directly for that pathname)
-endif
-ifneq (,$(findstring $$,$(value COMPOSE_PROJECT)))
-$(error COMPOSE_PROJECT must not contain a dollar sign)
-endif
-ifneq (,$(findstring $$,$(value COMPOSE_FILE)))
-$(error COMPOSE_FILE must not contain a dollar sign; call scripts/compose-identity-provision.sh directly for that pathname)
-endif
-ifneq (,$(findstring $$,$(value GROWTHOS_COMPOSE_WEB_PORT)))
-$(error GROWTHOS_COMPOSE_WEB_PORT must not contain a dollar sign)
-endif
-ifneq (,$(findstring $$,$(value GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID)))
-$(error GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID must not contain a dollar sign)
 endif
 endif
 
@@ -68,6 +71,7 @@ help:
 		'  make compose-grants Reconcile the exact application table-grant allowlist' \
 		'  make compose-status Inspect migration state with the freshly built image' \
 		'  make compose-identity-provision  Create one local Identity account from a private password file' \
+		'  make compose-identity-maintenance  Run one bounded local Identity session cleanup' \
 		'  make compose-down Stop the Compose stack while retaining named volumes' \
 		'  make compose-ps  Show Compose services and health' \
 		'  make compose-smoke Verify normal stack state, HTTP contracts, and port isolation' \
@@ -206,6 +210,17 @@ compose-identity-provision:
 		--login-name "$$IDENTITY_LOGIN_NAME" \
 		--principal-id "$$IDENTITY_PRINCIPAL_ID" \
 		--password-file "$$IDENTITY_PASSWORD_FILE"
+
+compose-identity-maintenance: export COMPOSE_PROJECT := $(value COMPOSE_PROJECT)
+compose-identity-maintenance: export COMPOSE_FILE := $(value COMPOSE_FILE)
+compose-identity-maintenance: export GROWTHOS_COMPOSE_WEB_PORT := $(value GROWTHOS_COMPOSE_WEB_PORT)
+compose-identity-maintenance: export GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID := $(value GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID)
+compose-identity-maintenance:
+	GROWTHOS_COMPOSE_PROJECT="$$COMPOSE_PROJECT" \
+	GROWTHOS_COMPOSE_FILE="$$COMPOSE_FILE" \
+	GROWTHOS_COMPOSE_WEB_PORT="$$GROWTHOS_COMPOSE_WEB_PORT" \
+	GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID="$${GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID:-local-v1}" \
+	./scripts/compose-identity-maintenance.sh
 
 compose-smoke:
 	GROWTHOS_COMPOSE_PROJECT="$(COMPOSE_PROJECT)" \

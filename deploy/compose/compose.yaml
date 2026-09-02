@@ -147,6 +147,53 @@ services:
     stop_grace_period: 10s
     logging: *json-logging
 
+  identity-maintenance:
+    profiles:
+      - operations
+    image: growthos/identity-maintenance:lesson-32
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.backend
+      target: identity-maintenance
+      args:
+        VERSION: lesson-32
+    user: "65532:65532"
+    command: [run]
+    environment:
+      GROWTHOS_ENVIRONMENT: development
+      GROWTHOS_LOG_LEVEL: info
+      GROWTHOS_LOG_FORMAT: json
+      GROWTHOS_MYSQL_ADDRESS: mysql:3306
+      GROWTHOS_MYSQL_DATABASE: growthos
+      GROWTHOS_MYSQL_TLS_MODE: disabled
+      GROWTHOS_MYSQL_CONNECT_TIMEOUT: 3s
+      GROWTHOS_MYSQL_WRITE_TIMEOUT: 5s
+      GROWTHOS_IDENTITY_MYSQL_USER: growthos_identity
+      GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE: /run/secrets/mysql_identity_password
+      GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_READ_TIMEOUT: 5s
+      GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_PING_TIMEOUT: 3s
+      GROWTHOS_IDENTITY_MAINTENANCE_OPERATION_TIMEOUT: 3s
+    secrets:
+      - mysql_identity_password
+    depends_on:
+      mysql-grants:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+    networks:
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: "no"
+    stop_grace_period: 10s
+    logging: *json-logging
+
   api:
     image: growthos/api:lesson-32
     build:

@@ -51,7 +51,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -p="${GO_BUILD_PARALLELISM}" -buildvcs=false -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/growth-identity-provision ./cmd/growth-identity-provision
+      -o /out/growth-identity-provision ./cmd/growth-identity-provision && \
+    GOMAXPROCS="${GO_BUILD_MAX_PROCS}" \
+    GOMEMLIMIT="${GO_BUILD_MEMORY_LIMIT}" \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -p="${GO_BUILD_PARALLELISM}" -buildvcs=false -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/growth-identity-maintenance ./cmd/growth-identity-maintenance
 
 FROM alpine:${ALPINE_VERSION} AS runtime
 
@@ -81,3 +87,9 @@ FROM runtime AS identity-provision
 COPY --from=builder --chown=65532:65532 /out/growth-identity-provision /usr/local/bin/growth-identity-provision
 
 ENTRYPOINT ["/usr/local/bin/growth-identity-provision"]
+
+FROM runtime AS identity-maintenance
+
+COPY --from=builder --chown=65532:65532 /out/growth-identity-maintenance /usr/local/bin/growth-identity-maintenance
+
+ENTRYPOINT ["/usr/local/bin/growth-identity-maintenance"]

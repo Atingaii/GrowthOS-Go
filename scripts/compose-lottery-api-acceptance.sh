@@ -71,15 +71,17 @@ fi
 export GROWTHOS_LESSON24_ACCEPTANCE_PROJECT="$compose_project"
 acceptance_api_image="growthos/acceptance-api:$compose_project"
 acceptance_migrate_image="growthos/acceptance-migrate:$compose_project"
+acceptance_identity_maintenance_image="growthos/acceptance-identity-maintenance:$compose_project"
 acceptance_redis_image="growthos/acceptance-redis:$compose_project"
 acceptance_web_image="growthos/acceptance-web:$compose_project"
-acceptance_images="$acceptance_api_image $acceptance_migrate_image $acceptance_redis_image $acceptance_web_image"
+acceptance_images="$acceptance_api_image $acceptance_migrate_image $acceptance_identity_maintenance_image $acceptance_redis_image $acceptance_web_image"
 buildx_builder="${compose_project}builder"
 buildkit_image=moby/buildkit:buildx-stable-1
 expected_builder_container="buildx_buildkit_${buildx_builder}0"
 expected_builder_volume="${expected_builder_container}_state"
 export GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE="$acceptance_api_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE="$acceptance_migrate_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_MAINTENANCE_IMAGE="$acceptance_identity_maintenance_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_REDIS_IMAGE="$acceptance_redis_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_WEB_IMAGE="$acceptance_web_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_CACHE_ENABLED=true
@@ -208,7 +210,7 @@ verify_cleanup_project_labels() {
             return 1
         fi
         case "$cleanup_service" in
-            api|migrate|mysql|mysql-grants|redis|web)
+            api|identity-maintenance|migrate|mysql|mysql-grants|redis|web)
                 ;;
             *)
                 printf 'refusing cleanup: container %s has unexpected service label %s\n' "$cleanup_container_id" "$cleanup_service" >&2
@@ -566,9 +568,10 @@ build_status=0
 # targets share the same Go builder stage. Docker Desktop then runs two copies
 # of the compiler against the same dependency graph, which can exceed a
 # deliberately small local memory budget. Build each service in dependency-
-# neutral order: the api build populates the shared builder cache and migrate
-# reuses it, while Redis and the web bundle never compete with the Go compiler.
-for acceptance_build_service in api migrate redis web; do
+# neutral order: the api build populates the shared builder cache, then migrate
+# and Identity maintenance reuse it while Redis and the web bundle never
+# compete with the Go compiler.
+for acceptance_build_service in api migrate identity-maintenance redis web; do
     if ! compose build "$acceptance_build_service"; then
         build_status=1
         break
@@ -678,6 +681,19 @@ mysql_app_select_count() {
                   AND EVENT_NAME = 0x73746174656d656e742f636f6d2f45786563757465
             "
     '
+}
+
+mysql_root_execute() {
+    maintenance_sql=$1
+    # SQL is generated entirely by this disposable acceptance script; passing
+    # it positionally avoids a second shell interpolation boundary. The root
+    # credential remains file-backed inside the isolated MySQL container.
+    # shellcheck disable=SC2016
+    compose exec -T mysql sh -eu -c '
+        export MYSQL_PWD="$(cat /run/secrets/mysql_root_password)"
+        mysql --protocol=socket --user=root --database=growthos \
+            --batch --silent --skip-column-names --execute="$1"
+    ' sh "$maintenance_sql"
 }
 
 cache_outcome_count() {
@@ -856,6 +872,99 @@ for identity_key_non_consumer in mysql migrate mysql-grants redis web; do
     fi
 done
 ok 'only the API receives the independent Identity throttle and active CSRF keys'
+
+if ! compose --profile operations config --format json | jq -e \
+    --arg maintenance_image "$acceptance_identity_maintenance_image" '
+        .services["identity-maintenance"] as $service |
+        $service.profiles == ["operations"] and
+        $service.image == $maintenance_image and
+        $service.build.target == "identity-maintenance" and
+        $service.user == "65532:65532" and
+        $service.command == ["run"] and
+        $service.read_only == true and
+        $service.restart == "no" and
+        $service.cap_drop == ["ALL"] and
+        $service.security_opt == ["no-new-privileges:true"] and
+        $service.init == true and
+        ($service.networks | keys) == ["data"] and
+        ($service.ports // []) == [] and
+        ($service.volumes // []) == [] and
+        ($service.secrets | map(.source)) == ["mysql_identity_password"] and
+        ($service.environment | keys) == ([
+            "GROWTHOS_ENVIRONMENT",
+            "GROWTHOS_LOG_LEVEL",
+            "GROWTHOS_LOG_FORMAT",
+            "GROWTHOS_MYSQL_ADDRESS",
+            "GROWTHOS_MYSQL_DATABASE",
+            "GROWTHOS_MYSQL_TLS_MODE",
+            "GROWTHOS_MYSQL_CONNECT_TIMEOUT",
+            "GROWTHOS_MYSQL_WRITE_TIMEOUT",
+            "GROWTHOS_IDENTITY_MYSQL_USER",
+            "GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE",
+            "GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_READ_TIMEOUT",
+            "GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_PING_TIMEOUT",
+            "GROWTHOS_IDENTITY_MAINTENANCE_OPERATION_TIMEOUT"
+        ] | sort) and
+        $service.environment.GROWTHOS_ENVIRONMENT == "development" and
+        $service.environment.GROWTHOS_LOG_LEVEL == "info" and
+        $service.environment.GROWTHOS_LOG_FORMAT == "json" and
+        $service.environment.GROWTHOS_MYSQL_ADDRESS == "mysql:3306" and
+        $service.environment.GROWTHOS_MYSQL_DATABASE == "growthos" and
+        $service.environment.GROWTHOS_MYSQL_TLS_MODE == "disabled" and
+        $service.environment.GROWTHOS_MYSQL_CONNECT_TIMEOUT == "3s" and
+        $service.environment.GROWTHOS_MYSQL_WRITE_TIMEOUT == "5s" and
+        $service.environment.GROWTHOS_IDENTITY_MYSQL_USER == "growthos_identity" and
+        $service.environment.GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE == "/run/secrets/mysql_identity_password" and
+        $service.environment.GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_READ_TIMEOUT == "5s" and
+        $service.environment.GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_PING_TIMEOUT == "3s" and
+        $service.environment.GROWTHOS_IDENTITY_MAINTENANCE_OPERATION_TIMEOUT == "3s" and
+        ($service.depends_on | keys | sort) == ["mysql", "mysql-grants"] and
+        $service.depends_on["mysql-grants"].condition == "service_completed_successfully" and
+        $service.depends_on.mysql.condition == "service_healthy"
+    ' >/dev/null; then
+    fail 'identity-maintenance static Compose contract exceeds or omits its one-shot LoadIdentityMaintenance boundary'
+fi
+
+# Materialize but do not start the operations container so Docker's actual
+# user, mount, network, filesystem, capability, and fixed-command contract can
+# be attested before the real one-shot run. Remove this exact container before
+# exercising the disposable cleanup fixtures below.
+if ! compose --profile operations create identity-maintenance >/dev/null; then
+    fail 'could not create the identity-maintenance contract probe container'
+fi
+resolve_container identity-maintenance
+maintenance_contract_container_id=$resolved_container_id
+if ! docker inspect "$maintenance_contract_container_id" | jq -e \
+    --arg data "${compose_project}_data" \
+    --arg maintenance_image "$acceptance_identity_maintenance_image" '
+        .[0].Config.Image == $maintenance_image and
+        .[0].Config.User == "65532:65532" and
+        .[0].Config.Entrypoint == ["/usr/local/bin/growth-identity-maintenance"] and
+        .[0].Config.Cmd == ["run"] and
+        .[0].HostConfig.ReadonlyRootfs == true and
+        .[0].HostConfig.Privileged == false and
+        .[0].HostConfig.NetworkMode == $data and
+        .[0].HostConfig.RestartPolicy.Name == "no" and
+        .[0].HostConfig.CapDrop == ["ALL"] and
+        .[0].HostConfig.SecurityOpt == ["no-new-privileges:true"] and
+        ((.[0].HostConfig.PortBindings // {}) | length) == 0 and
+        ((.[0].Config.ExposedPorts // {}) | length) == 0 and
+        ([.[0].Mounts[]? | select(.Destination | startswith("/run/secrets/"))] | length) == 1 and
+        any(.[0].Mounts[]?;
+            .Destination == "/run/secrets/mysql_identity_password" and
+            .Type == "bind" and .RW == false)
+    ' >/dev/null; then
+    fail 'identity-maintenance materialized container differs from the non-root, read-only, data-only, one-secret contract'
+fi
+if ! compose --profile operations rm --force --stop identity-maintenance >/dev/null; then
+    fail 'could not remove the identity-maintenance contract probe container'
+fi
+if docker container inspect "$maintenance_contract_container_id" >/dev/null 2>&1 ||
+   [ -n "$(compose --profile operations ps --all --quiet identity-maintenance)" ]; then
+    fail 'identity-maintenance contract probe container remains after exact removal'
+fi
+ok 'identity-maintenance has a fixed run command and its materialized container is non-root/read-only, data-only, and runtime-credential-only'
+
 resolve_container redis
 if ! docker inspect "$resolved_container_id" | jq -e --arg cache "${compose_project}_cache" '
     (.[0].NetworkSettings.Networks | keys) == [$cache] and
@@ -1143,6 +1252,220 @@ for provisioner_denied_operation in select update delete other_insert; do
     fi
 done
 ok 'growthos_identity_provisioner has exact workforce INSERT with rollback and all read/update/delete/other-table probes denied'
+
+# Exercise the real maintenance image against exact, isolated fixtures. Two
+# independently eligible session histories and one expired inactive throttle
+# must be removed, while an active session and an unexpired throttle remain
+# byte-for-byte stable. The CLI receives only its fixed `run` command; cutoff,
+# retention, and the 250/250 budgets come from the trusted process clock and
+# application constants.
+maintenance_fixture_marker="accept.maintenance.$random_suffix"
+maintenance_account_id="$maintenance_fixture_marker.account"
+maintenance_active_session_ref="$maintenance_fixture_marker.active"
+maintenance_fixture_sql="
+    SET @observed = UTC_TIMESTAMP(6);
+    INSERT INTO identity_workforce_account (
+        account_id, login_name, principal_id, password_envelope,
+        account_status, credential_version, authentication_epoch,
+        created_at, updated_at
+    ) VALUES (
+        '$maintenance_account_id', 'maint_$random_suffix',
+        '$maintenance_fixture_marker.principal',
+        CONCAT(CHAR(36), 'argon2id', CHAR(36), 'acceptance'),
+        'enabled', 1, 1, DATE_SUB(@observed, INTERVAL 12 DAY), @observed
+    );
+    INSERT INTO identity_session (
+        session_ref, issue_operation_ref, account_id, token_digest,
+        authentication_epoch, issued_at, last_seen_at, idle_expires_at,
+        absolute_expires_at, revoked_at, revoke_reason,
+        revoke_operation_ref, updated_at
+    ) VALUES
+    (
+        '$maintenance_fixture_marker.expired',
+        '$maintenance_fixture_marker.issue.expired', '$maintenance_account_id',
+        UNHEX(SHA2('$maintenance_fixture_marker.token.expired', 256)), 1,
+        DATE_SUB(@observed, INTERVAL 12 DAY),
+        DATE_SUB(@observed, INTERVAL 11 DAY),
+        DATE_SUB(@observed, INTERVAL 10 DAY),
+        DATE_SUB(@observed, INTERVAL 9 DAY),
+        NULL, NULL, NULL, @observed
+    ),
+    (
+        '$maintenance_fixture_marker.revoked',
+        '$maintenance_fixture_marker.issue.revoked', '$maintenance_account_id',
+        UNHEX(SHA2('$maintenance_fixture_marker.token.revoked', 256)), 1,
+        DATE_SUB(@observed, INTERVAL 12 DAY),
+        DATE_SUB(@observed, INTERVAL 10 DAY),
+        DATE_SUB(@observed, INTERVAL 5 DAY),
+        DATE_ADD(@observed, INTERVAL 1 DAY),
+        DATE_SUB(@observed, INTERVAL 8 DAY), 'logout',
+        '$maintenance_fixture_marker.revoke.revoked', @observed
+    ),
+    (
+        '$maintenance_active_session_ref',
+        '$maintenance_fixture_marker.issue.active', '$maintenance_account_id',
+        UNHEX(SHA2('$maintenance_fixture_marker.token.active', 256)), 1,
+        DATE_SUB(@observed, INTERVAL 1 HOUR),
+        DATE_SUB(@observed, INTERVAL 30 MINUTE),
+        DATE_ADD(@observed, INTERVAL 30 MINUTE),
+        DATE_ADD(@observed, INTERVAL 1 DAY),
+        NULL, NULL, NULL, @observed
+    );
+    INSERT INTO identity_authentication_throttle (
+        dimension, subject_digest, window_started_at, window_expires_at,
+        failure_count, inflight_count, admission_epoch, inflight_expires_at,
+        blocked_until, updated_at, row_expires_at
+    ) VALUES
+    (
+        'login', UNHEX(SHA2('$maintenance_fixture_marker.throttle.expired', 256)),
+        DATE_SUB(@observed, INTERVAL 3 DAY),
+        DATE_SUB(@observed, INTERVAL 2 DAY),
+        0, 0, 1, NULL, NULL,
+        DATE_ADD(DATE_SUB(@observed, INTERVAL 3 DAY), INTERVAL 1 HOUR),
+        DATE_SUB(@observed, INTERVAL 1 DAY)
+    ),
+    (
+        'source', UNHEX(SHA2('$maintenance_fixture_marker.throttle.active', 256)),
+        DATE_SUB(@observed, INTERVAL 1 HOUR),
+        DATE_ADD(@observed, INTERVAL 1 HOUR),
+        0, 0, 1, NULL, NULL, @observed,
+        DATE_ADD(@observed, INTERVAL 1 DAY)
+    );
+"
+if ! mysql_root_execute "$maintenance_fixture_sql" >/dev/null; then
+    fail 'could not create the exact disposable Identity maintenance fixtures'
+fi
+
+maintenance_active_fingerprint_sql="
+    SELECT SHA2(CONCAT_WS(
+        CHAR(31), session_ref, issue_operation_ref, account_id,
+        HEX(token_digest), CAST(authentication_epoch AS CHAR),
+        DATE_FORMAT(issued_at, '%Y-%m-%d %H:%i:%s.%f'),
+        DATE_FORMAT(last_seen_at, '%Y-%m-%d %H:%i:%s.%f'),
+        DATE_FORMAT(idle_expires_at, '%Y-%m-%d %H:%i:%s.%f'),
+        DATE_FORMAT(absolute_expires_at, '%Y-%m-%d %H:%i:%s.%f'),
+        COALESCE(DATE_FORMAT(revoked_at, '%Y-%m-%d %H:%i:%s.%f'), 'NULL'),
+        COALESCE(revoke_reason, 'NULL'),
+        COALESCE(revoke_operation_ref, 'NULL'),
+        DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s.%f')
+    ), 256)
+    FROM identity_session
+    WHERE session_ref = '$maintenance_active_session_ref'
+"
+maintenance_active_fingerprint_before=$(mysql_root_execute "$maintenance_active_fingerprint_sql") ||
+    fail 'could not fingerprint the active maintenance session before cleanup'
+case "$maintenance_active_fingerprint_before" in
+    ''|*[!0-9a-fA-F]*)
+        fail 'the active maintenance session fingerprint is invalid'
+        ;;
+esac
+if [ "${#maintenance_active_fingerprint_before}" -ne 64 ]; then
+    fail 'the active maintenance session fingerprint has an invalid length'
+fi
+
+if ! maintenance_output=$(compose --profile operations run --rm --no-deps --no-tty identity-maintenance); then
+    fail 'the real one-shot Identity maintenance container failed'
+fi
+if ! printf '%s\n' "$maintenance_output" | jq -e -s '
+    length == 1 and
+    .[0].msg == "identity maintenance completed" and
+    .[0].service == "growth-identity-maintenance" and
+    .[0].component == "identity_maintenance" and
+    .[0].operation == "run" and
+    .[0].sessions_deleted == 2 and
+    .[0].throttles_deleted == 1 and
+    .[0].total_deleted == 3
+' >/dev/null; then
+    fail 'identity-maintenance did not report the exact bounded fixture cleanup result'
+fi
+if [ -n "$(compose --profile operations ps --all --quiet identity-maintenance)" ]; then
+    fail 'the one-shot identity-maintenance run left a project container behind'
+fi
+
+maintenance_state=$(mysql_root_execute "
+    SELECT CONCAT(
+        (SELECT COUNT(*) FROM identity_session
+         WHERE session_ref = '$maintenance_fixture_marker.expired'), ':',
+        (SELECT COUNT(*) FROM identity_session
+         WHERE session_ref = '$maintenance_fixture_marker.revoked'), ':',
+        (SELECT COUNT(*) FROM identity_session
+         WHERE session_ref = '$maintenance_active_session_ref'), ':',
+        (SELECT COUNT(*) FROM identity_authentication_throttle
+         WHERE dimension = 'login'
+           AND subject_digest = UNHEX(SHA2('$maintenance_fixture_marker.throttle.expired', 256))), ':',
+        (SELECT COUNT(*) FROM identity_authentication_throttle
+         WHERE dimension = 'source'
+           AND subject_digest = UNHEX(SHA2('$maintenance_fixture_marker.throttle.active', 256)))
+    )
+") || fail 'could not inspect maintenance fixture eligibility after cleanup'
+if [ "$maintenance_state" != '0:0:1:0:1' ]; then
+    fail "identity-maintenance changed the wrong fixture set: $maintenance_state"
+fi
+maintenance_active_fingerprint_after=$(mysql_root_execute "$maintenance_active_fingerprint_sql") ||
+    fail 'could not fingerprint the active maintenance session after cleanup'
+if [ "$maintenance_active_fingerprint_after" != "$maintenance_active_fingerprint_before" ]; then
+    fail 'identity-maintenance modified the active session while removing eligible history'
+fi
+
+if ! maintenance_convergence_output=$(compose --profile operations run --rm --no-deps --no-tty identity-maintenance); then
+    fail 'the convergent second Identity maintenance container failed'
+fi
+if ! printf '%s\n' "$maintenance_convergence_output" | jq -e -s '
+    length == 1 and
+    .[0].msg == "identity maintenance completed" and
+    .[0].service == "growth-identity-maintenance" and
+    .[0].component == "identity_maintenance" and
+    .[0].operation == "run" and
+    .[0].sessions_deleted == 0 and
+    .[0].throttles_deleted == 0 and
+    .[0].total_deleted == 0
+' >/dev/null; then
+    fail 'the convergent maintenance run did not report exact zero deletion counts'
+fi
+if [ -n "$(compose --profile operations ps --all --quiet identity-maintenance)" ]; then
+    fail 'the convergent identity-maintenance run left a project container behind'
+fi
+maintenance_active_fingerprint_converged=$(mysql_root_execute "$maintenance_active_fingerprint_sql") ||
+    fail 'could not fingerprint the active maintenance session after convergence'
+if [ "$maintenance_active_fingerprint_converged" != "$maintenance_active_fingerprint_before" ]; then
+    fail 'the convergent maintenance run changed the active session'
+fi
+
+maintenance_fixture_cleanup=$(mysql_root_execute "
+    DELETE FROM identity_session
+    WHERE session_ref LIKE '$maintenance_fixture_marker.%';
+    SET @remaining_sessions = ROW_COUNT();
+    DELETE FROM identity_authentication_throttle
+    WHERE subject_digest IN (
+        UNHEX(SHA2('$maintenance_fixture_marker.throttle.expired', 256)),
+        UNHEX(SHA2('$maintenance_fixture_marker.throttle.active', 256))
+    );
+    SET @remaining_throttles = ROW_COUNT();
+    DELETE FROM identity_workforce_account
+    WHERE account_id = '$maintenance_account_id';
+    SET @remaining_accounts = ROW_COUNT();
+    SELECT CONCAT(@remaining_sessions, ':', @remaining_throttles, ':', @remaining_accounts);
+") || fail 'could not remove the exact surviving maintenance fixtures'
+if [ "$maintenance_fixture_cleanup" != '1:1:1' ]; then
+    fail "surviving maintenance fixture cleanup was not exact: $maintenance_fixture_cleanup"
+fi
+maintenance_fixture_residue=$(mysql_root_execute "
+    SELECT CONCAT(
+        (SELECT COUNT(*) FROM identity_session
+         WHERE session_ref LIKE '$maintenance_fixture_marker.%'), ':',
+        (SELECT COUNT(*) FROM identity_authentication_throttle
+         WHERE subject_digest IN (
+             UNHEX(SHA2('$maintenance_fixture_marker.throttle.expired', 256)),
+             UNHEX(SHA2('$maintenance_fixture_marker.throttle.active', 256))
+         )), ':',
+        (SELECT COUNT(*) FROM identity_workforce_account
+         WHERE account_id = '$maintenance_account_id')
+    )
+") || fail 'could not verify exact maintenance fixture removal'
+if [ "$maintenance_fixture_residue" != '0:0:0' ]; then
+    fail "maintenance fixture residue remains: $maintenance_fixture_residue"
+fi
+ok 'real maintenance removed only 2 eligible sessions and 1 expired throttle, converged to exact zero, preserved the active session, and left no fixture residue'
 
 for denied_unassembled_table in \
     lottery_strategy_routing_graph \

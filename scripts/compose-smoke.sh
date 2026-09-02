@@ -594,6 +594,62 @@ if ! docker compose \
 fi
 ok 'identity-provision is an operations-only non-root/read-only service with one database secret and no static enrollment-password mount'
 
+if ! docker compose \
+    --project-name "$compose_project" \
+    --file "$compose_file" \
+    --profile operations \
+    config --format json | jq -e '
+        .services["identity-maintenance"] as $service |
+        $service.profiles == ["operations"] and
+        $service.image == "growthos/identity-maintenance:lesson-32" and
+        $service.build.target == "identity-maintenance" and
+        $service.user == "65532:65532" and
+        $service.command == ["run"] and
+        $service.read_only == true and
+        $service.restart == "no" and
+        $service.cap_drop == ["ALL"] and
+        $service.security_opt == ["no-new-privileges:true"] and
+        $service.init == true and
+        ($service.networks | keys) == ["data"] and
+        ($service.ports // []) == [] and
+        ($service.volumes // []) == [] and
+        ($service.secrets | map(.source)) == ["mysql_identity_password"] and
+        ($service.environment | keys) == ([
+            "GROWTHOS_ENVIRONMENT",
+            "GROWTHOS_LOG_LEVEL",
+            "GROWTHOS_LOG_FORMAT",
+            "GROWTHOS_MYSQL_ADDRESS",
+            "GROWTHOS_MYSQL_DATABASE",
+            "GROWTHOS_MYSQL_TLS_MODE",
+            "GROWTHOS_MYSQL_CONNECT_TIMEOUT",
+            "GROWTHOS_MYSQL_WRITE_TIMEOUT",
+            "GROWTHOS_IDENTITY_MYSQL_USER",
+            "GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE",
+            "GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_READ_TIMEOUT",
+            "GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_PING_TIMEOUT",
+            "GROWTHOS_IDENTITY_MAINTENANCE_OPERATION_TIMEOUT"
+        ] | sort) and
+        $service.environment.GROWTHOS_ENVIRONMENT == "development" and
+        $service.environment.GROWTHOS_LOG_LEVEL == "info" and
+        $service.environment.GROWTHOS_LOG_FORMAT == "json" and
+        $service.environment.GROWTHOS_MYSQL_ADDRESS == "mysql:3306" and
+        $service.environment.GROWTHOS_MYSQL_DATABASE == "growthos" and
+        $service.environment.GROWTHOS_MYSQL_TLS_MODE == "disabled" and
+        $service.environment.GROWTHOS_MYSQL_CONNECT_TIMEOUT == "3s" and
+        $service.environment.GROWTHOS_MYSQL_WRITE_TIMEOUT == "5s" and
+        $service.environment.GROWTHOS_IDENTITY_MYSQL_USER == "growthos_identity" and
+        $service.environment.GROWTHOS_IDENTITY_MYSQL_PASSWORD_FILE == "/run/secrets/mysql_identity_password" and
+        $service.environment.GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_READ_TIMEOUT == "5s" and
+        $service.environment.GROWTHOS_IDENTITY_MAINTENANCE_MYSQL_PING_TIMEOUT == "3s" and
+        $service.environment.GROWTHOS_IDENTITY_MAINTENANCE_OPERATION_TIMEOUT == "3s" and
+        ($service.depends_on | keys | sort) == ["mysql", "mysql-grants"] and
+        $service.depends_on["mysql-grants"].condition == "service_completed_successfully" and
+        $service.depends_on.mysql.condition == "service_healthy"
+    ' >/dev/null; then
+    fail 'identity-maintenance differs from its fixed-command, exact-env, runtime-credential-only operations contract'
+fi
+ok 'identity-maintenance is operations-only, fixed-command, non-root/read-only, data-only, and receives only the runtime Identity credential'
+
 for identity_key_non_consumer in mysql migrate mysql-grants redis web; do
     resolve_container "$identity_key_non_consumer"
     if docker inspect "$resolved_container_id" | jq -e '
