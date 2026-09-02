@@ -374,7 +374,7 @@ cleanup_temporary_directories() {
         if ! verify_temporary_directory "$secret_directory" "$secret_directory_identity" secret; then
             temporary_cleanup_status=1
         else
-            for secret_name in mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password redis_password identity_throttle_hmac_key identity_csrf_active_key; do
+            for secret_name in mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password mysql_identity_provisioner_password redis_password identity_throttle_hmac_key identity_csrf_active_key; do
                 remove_regular_file "$secret_directory/$secret_name" || temporary_cleanup_status=1
             done
             if ! rmdir "$secret_directory"; then
@@ -817,13 +817,13 @@ for mysql_secret_consumer in mysql migrate mysql-grants; do
     resolve_container "$mysql_secret_consumer"
     case "$mysql_secret_consumer" in
         mysql)
-            expected_mysql_secret_mounts='["/run/secrets/mysql_app_password","/run/secrets/mysql_identity_password","/run/secrets/mysql_migration_password","/run/secrets/mysql_root_password"]'
+            expected_mysql_secret_mounts='["/run/secrets/mysql_app_password","/run/secrets/mysql_identity_password","/run/secrets/mysql_identity_provisioner_password","/run/secrets/mysql_migration_password","/run/secrets/mysql_root_password"]'
             ;;
         migrate)
             expected_mysql_secret_mounts='["/run/secrets/mysql_migration_password"]'
             ;;
         mysql-grants)
-            expected_mysql_secret_mounts='["/run/secrets/mysql_identity_password","/run/secrets/mysql_root_password"]'
+            expected_mysql_secret_mounts='["/run/secrets/mysql_identity_password","/run/secrets/mysql_identity_provisioner_password","/run/secrets/mysql_root_password"]'
             ;;
     esac
     if ! docker inspect "$resolved_container_id" | jq -e \
@@ -835,6 +835,16 @@ for mysql_secret_consumer in mysql migrate mysql-grants; do
     fi
 done
 ok 'MySQL, migrator, grant reconciler, and API each receive only their declared MySQL Secrets'
+for provisioner_secret_non_consumer in migrate api redis web; do
+    resolve_container "$provisioner_secret_non_consumer"
+    if docker inspect "$resolved_container_id" | jq -e '
+        any(.[0].Mounts[]?;
+            .Destination == "/run/secrets/mysql_identity_provisioner_password")
+    ' >/dev/null; then
+        fail "$provisioner_secret_non_consumer unexpectedly receives the one-shot provisioner database credential"
+    fi
+done
+ok 'no disposable long-lived application process receives the one-shot provisioner credential'
 for identity_key_non_consumer in mysql migrate mysql-grants redis web; do
     resolve_container "$identity_key_non_consumer"
     if docker inspect "$resolved_container_id" | jq -e '
@@ -1068,6 +1078,71 @@ if compose exec -T mysql sh -c '
     fail 'growthos_identity unexpectedly has workforce-account login_name UPDATE permission'
 fi
 ok 'growthos_identity has exact session/throttle DML, account SELECT plus updated_at-only UPDATE, and no business/migration/credential-write access'
+
+# shellcheck disable=SC2016
+actual_identity_provisioner_grants=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos \
+        --batch --silent --skip-column-names --execute="SHOW GRANTS FOR CURRENT_USER"
+' | LC_ALL=C sort) || fail 'could not inspect growthos_identity_provisioner grants'
+expected_identity_provisioner_grants=$(LC_ALL=C sort <<'EOF'
+GRANT INSERT ON `growthos`.`identity_workforce_account` TO `growthos_identity_provisioner`@`%`
+GRANT USAGE ON *.* TO `growthos_identity_provisioner`@`%`
+EOF
+)
+if [ "$actual_identity_provisioner_grants" != "$expected_identity_provisioner_grants" ]; then
+    fail 'growthos_identity_provisioner grants differ from the INSERT-only allowlist'
+fi
+# shellcheck disable=SC2016
+if ! compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+        --execute="
+            SET @probe = REPLACE(UUID(), CHAR(45), CHAR(95));
+            START TRANSACTION;
+            INSERT INTO identity_workforce_account (
+                account_id, login_name, principal_id, password_envelope,
+                account_status, credential_version, authentication_epoch,
+                created_at, updated_at
+            ) VALUES (
+                CONCAT('"'"'accept.account.'"'"', @probe),
+                CONCAT('"'"'accept.login.'"'"', @probe),
+                CONCAT('"'"'accept.principal.'"'"', @probe),
+                CONCAT(CHAR(36), '"'"'argon2id'"'"', CHAR(36), '"'"'acceptance'"'"'),
+                '"'"'enabled'"'"', 1, 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+            );
+            ROLLBACK
+        "
+' >/dev/null; then
+    fail 'growthos_identity_provisioner cannot perform its rolled-back workforce INSERT'
+fi
+for provisioner_denied_operation in select update delete other_insert; do
+    case "$provisioner_denied_operation" in
+        select)
+            denied_sql='SELECT account_id FROM identity_workforce_account LIMIT 0'
+            ;;
+        update)
+            denied_sql='UPDATE identity_workforce_account SET updated_at = updated_at WHERE FALSE'
+            ;;
+        delete)
+            denied_sql='DELETE FROM identity_workforce_account WHERE FALSE'
+            ;;
+        other_insert)
+            denied_sql="INSERT INTO lottery_strategy (strategy_id, name) SELECT 1, 'permission probe' WHERE FALSE"
+            ;;
+    esac
+    # The SQL strings are fixed in the case statement and contain no external
+    # input; positional parameters avoid interpolating them into this shell.
+    # shellcheck disable=SC2016
+    if compose exec -T mysql sh -c '
+        export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+        mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+            --execute="$1"
+    ' sh "$denied_sql" >/dev/null 2>&1; then
+        fail "growthos_identity_provisioner unexpectedly passed the $provisioner_denied_operation denial"
+    fi
+done
+ok 'growthos_identity_provisioner has exact workforce INSERT with rollback and all read/update/delete/other-table probes denied'
 
 for denied_unassembled_table in \
     lottery_strategy_routing_graph \
@@ -1725,6 +1800,15 @@ actual_identity_grants_after=$(compose exec -T mysql sh -c '
 if [ "$actual_identity_grants_after" != "$expected_identity_grants" ]; then
     fail 'growthos_identity grants drifted during HTTP acceptance'
 fi
+# shellcheck disable=SC2016
+actual_identity_provisioner_grants_after=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos \
+        --batch --silent --skip-column-names --execute="SHOW GRANTS FOR CURRENT_USER"
+' | LC_ALL=C sort) || fail 'could not recheck growthos_identity_provisioner grants'
+if [ "$actual_identity_provisioner_grants_after" != "$expected_identity_provisioner_grants" ]; then
+    fail 'growthos_identity_provisioner grants drifted during HTTP acceptance'
+fi
 if ! docker inspect "$web_container_id" | jq -e --arg port "$web_port" '
     .[0].NetworkSettings.Ports == {
         "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": $port}]
@@ -1736,5 +1820,5 @@ published_container_ids_after=$(containers_publishing_loopback_port "$web_port")
 if [ "$published_container_ids_after" != "$web_container_id" ]; then
     fail 'the disposable web port lost its unique ownership during HTTP acceptance'
 fi
-ok 'post-traffic migration, both runtime grant sets, and loopback port checks remained exact'
+ok 'post-traffic migration, runtime/one-shot grant sets, and loopback port checks remained exact'
 ok "lesson-32 schema plus lesson-24 cache isolated Compose acceptance passed for $compose_project"

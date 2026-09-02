@@ -28,6 +28,7 @@ read_hex_secret() {
 app_password=$(read_hex_secret mysql_app_password /run/secrets/mysql_app_password)
 migration_password=$(read_hex_secret mysql_migration_password /run/secrets/mysql_migration_password)
 identity_password=$(read_hex_secret mysql_identity_password /run/secrets/mysql_identity_password)
+identity_provisioner_password=$(read_hex_secret mysql_identity_provisioner_password /run/secrets/mysql_identity_provisioner_password)
 
 MYSQL_PWD="${MYSQL_ROOT_PASSWORD:?mysql root password is unavailable}" mysql \
     --protocol=socket \
@@ -35,9 +36,10 @@ MYSQL_PWD="${MYSQL_ROOT_PASSWORD:?mysql root password is unavailable}" mysql \
 CREATE USER 'growthos_app'@'%' IDENTIFIED BY '${app_password}';
 CREATE USER 'growthos_migrator'@'%' IDENTIFIED BY '${migration_password}';
 CREATE USER 'growthos_identity'@'%' IDENTIFIED BY '${identity_password}';
+CREATE USER 'growthos_identity_provisioner'@'%' IDENTIFIED BY '${identity_provisioner_password}';
 
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
     ON \`growthos\`.* TO 'growthos_migrator'@'%';
 SQL
 
-unset app_password migration_password identity_password
+unset app_password migration_password identity_password identity_provisioner_password

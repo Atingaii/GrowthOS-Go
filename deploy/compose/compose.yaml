@@ -18,6 +18,7 @@ services:
       - mysql_app_password
       - mysql_migration_password
       - mysql_identity_password
+      - mysql_identity_provisioner_password
     volumes:
       - mysql_data:/var/lib/mysql
       - mysql_socket:/var/run/mysqld
@@ -83,6 +84,7 @@ services:
     secrets:
       - mysql_root_password
       - mysql_identity_password
+      - mysql_identity_provisioner_password
     volumes:
       - ./mysql/grants/empty:/var/lib/mysql:ro
       - mysql_socket:/var/run/mysqld:ro
@@ -96,6 +98,46 @@ services:
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=8m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: "no"
+    stop_grace_period: 10s
+    logging: *json-logging
+
+  identity-provision:
+    profiles:
+      - operations
+    image: growthos/identity-provision:lesson-32
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.backend
+      target: identity-provision
+      args:
+        VERSION: lesson-32
+    user: "65532:65532"
+    environment:
+      GROWTHOS_ENVIRONMENT: development
+      GROWTHOS_LOG_FORMAT: json
+      GROWTHOS_MYSQL_ADDRESS: mysql:3306
+      GROWTHOS_MYSQL_DATABASE: growthos
+      GROWTHOS_MYSQL_TLS_MODE: disabled
+      GROWTHOS_IDENTITY_PROVISIONER_MYSQL_USER: growthos_identity_provisioner
+      GROWTHOS_IDENTITY_PROVISIONER_MYSQL_PASSWORD_FILE: /run/secrets/mysql_identity_provisioner_password
+    secrets:
+      - mysql_identity_provisioner_password
+    depends_on:
+      mysql-grants:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+    networks:
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
     cap_drop:
       - ALL
     security_opt:
@@ -245,6 +287,8 @@ secrets:
     file: ./secrets/mysql_migration_password
   mysql_identity_password:
     file: ./secrets/mysql_identity_password
+  mysql_identity_provisioner_password:
+    file: ./secrets/mysql_identity_provisioner_password
   identity_throttle_hmac_key:
     file: ./secrets/identity_throttle_hmac_key
   identity_csrf_active_key:

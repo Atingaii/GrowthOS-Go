@@ -6,11 +6,12 @@ secret_directory=${1:-"$repository_root/deploy/compose/secrets"}
 compose_project=${GROWTHOS_COMPOSE_PROJECT:-growthos}
 compose_web_port=${GROWTHOS_COMPOSE_WEB_PORT:-8088}
 identity_csrf_active_key_id=${GROWTHOS_COMPOSE_IDENTITY_CSRF_ACTIVE_KEY_ID:-local-v1}
-hex_secret_names="mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password redis_password"
+hex_secret_names="mysql_root_password mysql_app_password mysql_migration_password mysql_identity_password mysql_identity_provisioner_password redis_password"
 binary_secret_names="identity_throttle_hmac_key identity_csrf_active_key"
 secret_names="$hex_secret_names $binary_secret_names"
 legacy_secret_names="mysql_root_password mysql_app_password mysql_migration_password redis_password"
-database_secret_names="$legacy_secret_names mysql_identity_password"
+identity_database_secret_names="$legacy_secret_names mysql_identity_password"
+lesson32_runtime_secret_names="$identity_database_secret_names $binary_secret_names"
 
 if ! command -v openssl >/dev/null 2>&1; then
     printf '%s\n' 'openssl is required to generate Compose development secrets' >&2
@@ -199,6 +200,60 @@ validate_identity_key_separation() {
     fi
 }
 
+validate_provisioner_password_separation() {
+    staged_directory=$1
+    existing_directory=$2
+    if [ -f "$staged_directory/mysql_identity_provisioner_password" ]; then
+        provisioner_secret="$staged_directory/mysql_identity_provisioner_password"
+    else
+        provisioner_secret="$existing_directory/mysql_identity_provisioner_password"
+    fi
+
+    for other_name in \
+        mysql_root_password \
+        mysql_app_password \
+        mysql_migration_password \
+        mysql_identity_password \
+        redis_password; do
+        if [ -f "$staged_directory/$other_name" ]; then
+            other_secret="$staged_directory/$other_name"
+        else
+            other_secret="$existing_directory/$other_name"
+        fi
+        if LC_ALL=C awk '
+            NR == FNR {
+                left = $0
+                sub(/\r$/, "", left)
+                left_lines++
+                next
+            }
+            {
+                right = $0
+                sub(/\r$/, "", right)
+                right_lines++
+            }
+            END {
+                if (left_lines != 1 || right_lines != 1) {
+                    exit 2
+                }
+                exit ((left == right) ? 0 : 1)
+            }
+        ' "$provisioner_secret" "$other_secret"; then
+            printf '%s\n' "Identity provisioner password must differ from $other_name" >&2
+            exit 1
+        else
+            comparison_status=$?
+            if [ "$comparison_status" -ne 1 ]; then
+                printf '%s\n' "could not verify separation of the Identity provisioner password and $other_name" >&2
+                exit 1
+            fi
+            unset comparison_status
+        fi
+    done
+
+    unset staged_directory existing_directory provisioner_secret other_secret other_name
+}
+
 present_count=0
 expected_count=0
 for name in $secret_names; do
@@ -213,23 +268,27 @@ if [ "$present_count" -eq "$expected_count" ]; then
         validate_secret "$name" "$secret_directory/$name"
     done
     validate_identity_key_separation "$secret_directory"
+    validate_provisioner_password_separation "$secret_directory" "$secret_directory"
     printf '%s\n' "Compose development secrets are valid in $secret_directory"
     exit 0
 fi
 
-# Lesson 32 has two supported upgrade sources. A pre-Lesson-32 four-file set
-# needs the Identity database password and both runtime keys; an intermediate
-# five-file set already has the database password and needs only the keys. The
-# old bytes are validated first and never overwritten. Every other partial set
-# remains a hard failure.
+# The additive upgrade path accepts only four historical states: the original
+# four-file set, the five-file Identity-database transition, the complete
+# seven-file Lesson 32 runtime set, or the new complete eight-file set handled
+# above. Existing bytes are validated first and never overwritten. Every other
+# partial set remains a hard failure.
 upgrade_existing_names=
 upgrade_missing_names=
 if [ "$present_count" -eq 4 ]; then
     upgrade_existing_names=$legacy_secret_names
-    upgrade_missing_names="mysql_identity_password $binary_secret_names"
+    upgrade_missing_names="mysql_identity_password mysql_identity_provisioner_password $binary_secret_names"
 elif [ "$present_count" -eq 5 ]; then
-    upgrade_existing_names=$database_secret_names
-    upgrade_missing_names=$binary_secret_names
+    upgrade_existing_names=$identity_database_secret_names
+    upgrade_missing_names="mysql_identity_provisioner_password $binary_secret_names"
+elif [ "$present_count" -eq 7 ]; then
+    upgrade_existing_names=$lesson32_runtime_secret_names
+    upgrade_missing_names=mysql_identity_provisioner_password
 fi
 
 upgrade_source_complete=1
@@ -248,20 +307,30 @@ if [ -n "$upgrade_existing_names" ] && [ "$upgrade_source_complete" -eq 1 ]; the
     for name in $upgrade_existing_names; do
         validate_secret "$name" "$secret_directory/$name"
     done
+    case " $upgrade_existing_names " in
+        *" identity_throttle_hmac_key "*)
+            validate_identity_key_separation "$secret_directory"
+            ;;
+    esac
 
     temporary_directory=$(mktemp -d "$secret_directory/.generate.XXXXXX")
 
     for name in $upgrade_missing_names; do
         generate_secret "$name" "$temporary_directory/$name"
     done
-    validate_identity_key_separation "$temporary_directory"
+    case " $upgrade_missing_names " in
+        *" identity_throttle_hmac_key "*)
+            validate_identity_key_separation "$temporary_directory"
+            ;;
+    esac
+    validate_provisioner_password_separation "$temporary_directory" "$secret_directory"
     for name in $upgrade_missing_names; do
         mv "$temporary_directory/$name" "$secret_directory/$name"
     done
     rmdir "$temporary_directory"
     temporary_directory=
 
-    printf '%s\n' "Extended the validated Compose secret set with the missing Identity secrets in $secret_directory"
+    printf '%s\n' "Extended the validated Compose secret set with the missing Identity one-shot/runtime secrets in $secret_directory"
     exit 0
 fi
 
@@ -286,6 +355,7 @@ for name in $secret_names; do
     generate_secret "$name" "$temporary_directory/$name"
 done
 validate_identity_key_separation "$temporary_directory"
+validate_provisioner_password_separation "$temporary_directory" "$temporary_directory"
 
 for name in $secret_names; do
     mv "$temporary_directory/$name" "$secret_directory/$name"

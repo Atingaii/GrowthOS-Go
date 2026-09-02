@@ -2,8 +2,10 @@
 set -eu
 
 # Bounded-mutation smoke test for the current Docker Compose development stack.
-# Its only product-data write is one invalid Strategy-ID Redis key with a 30s
-# TTL; an in-container EXIT trap removes it immediately when possible.
+# Its only persistent probe is one invalid Strategy-ID Redis key with a 30s
+# TTL; an in-container EXIT trap removes it immediately when possible. The
+# provisioner grant probe performs one valid MySQL INSERT inside a transaction
+# and rolls it back before the connection exits.
 # Supported overrides:
 #   GROWTHOS_COMPOSE_PROJECT       Compose project name (default: growthos)
 #   GROWTHOS_COMPOSE_FILE          Compose file path
@@ -426,6 +428,84 @@ if compose exec -T mysql sh -c '
 fi
 ok 'growthos_identity has exact session/throttle DML, account SELECT plus updated_at-only UPDATE, and no business/migration/credential-write access'
 
+# The account creator is not a second runtime repository. Its whole durable
+# authority is one INSERT on the workforce table, with no readback, mutation,
+# deletion, migration, business, session, or throttle access.
+# shellcheck disable=SC2016
+if ! actual_identity_provisioner_grants=$(compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos \
+        --batch --silent --skip-column-names --execute="SHOW GRANTS FOR CURRENT_USER"
+' | LC_ALL=C sort); then
+    fail 'could not inspect growthos_identity_provisioner grants'
+fi
+expected_identity_provisioner_grants=$(LC_ALL=C sort <<'EOF'
+GRANT INSERT ON `growthos`.`identity_workforce_account` TO `growthos_identity_provisioner`@`%`
+GRANT USAGE ON *.* TO `growthos_identity_provisioner`@`%`
+EOF
+)
+if [ "$actual_identity_provisioner_grants" != "$expected_identity_provisioner_grants" ]; then
+    fail 'growthos_identity_provisioner grants differ from the INSERT-only allowlist'
+fi
+# This is the only positive mutation probe. It inserts a valid random row and
+# rolls the transaction back before the connection exits.
+# shellcheck disable=SC2016
+if ! compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+        --execute="
+            SET @probe = REPLACE(UUID(), CHAR(45), CHAR(95));
+            START TRANSACTION;
+            INSERT INTO identity_workforce_account (
+                account_id, login_name, principal_id, password_envelope,
+                account_status, credential_version, authentication_epoch,
+                created_at, updated_at
+            ) VALUES (
+                CONCAT('"'"'smoke.account.'"'"', @probe),
+                CONCAT('"'"'smoke.login.'"'"', @probe),
+                CONCAT('"'"'smoke.principal.'"'"', @probe),
+                CONCAT(CHAR(36), '"'"'argon2id'"'"', CHAR(36), '"'"'smoke'"'"'),
+                '"'"'enabled'"'"', 1, 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+            );
+            ROLLBACK
+        "
+' >/dev/null; then
+    fail 'growthos_identity_provisioner cannot perform its rolled-back workforce INSERT'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+        --execute="SELECT account_id FROM identity_workforce_account LIMIT 0"
+' >/dev/null 2>&1; then
+    fail 'growthos_identity_provisioner unexpectedly has workforce SELECT permission'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+        --execute="UPDATE identity_workforce_account SET updated_at = updated_at WHERE FALSE"
+' >/dev/null 2>&1; then
+    fail 'growthos_identity_provisioner unexpectedly has workforce UPDATE permission'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+        --execute="DELETE FROM identity_workforce_account WHERE FALSE"
+' >/dev/null 2>&1; then
+    fail 'growthos_identity_provisioner unexpectedly has workforce DELETE permission'
+fi
+# shellcheck disable=SC2016
+if compose exec -T mysql sh -c '
+    export MYSQL_PWD="$(cat /run/secrets/mysql_identity_provisioner_password)"
+    mysql --protocol=tcp --host=127.0.0.1 --user=growthos_identity_provisioner --database=growthos --silent \
+        --execute="INSERT INTO lottery_strategy (strategy_id, name) SELECT 1, '"'"'permission probe'"'"' WHERE FALSE"
+' >/dev/null 2>&1; then
+    fail 'growthos_identity_provisioner unexpectedly has business-table INSERT permission'
+fi
+ok 'growthos_identity_provisioner has only workforce INSERT; rollback succeeds while SELECT, UPDATE, DELETE, and other-table writes are denied'
+
 resolve_container api
 api_container_id=$resolved_container_id
 if ! docker inspect "$api_container_id" | jq -e \
@@ -458,13 +538,13 @@ for mysql_secret_consumer in mysql migrate mysql-grants; do
     resolve_container "$mysql_secret_consumer"
     case "$mysql_secret_consumer" in
         mysql)
-            expected_mysql_secret_mounts='["/run/secrets/mysql_app_password","/run/secrets/mysql_identity_password","/run/secrets/mysql_migration_password","/run/secrets/mysql_root_password"]'
+            expected_mysql_secret_mounts='["/run/secrets/mysql_app_password","/run/secrets/mysql_identity_password","/run/secrets/mysql_identity_provisioner_password","/run/secrets/mysql_migration_password","/run/secrets/mysql_root_password"]'
             ;;
         migrate)
             expected_mysql_secret_mounts='["/run/secrets/mysql_migration_password"]'
             ;;
         mysql-grants)
-            expected_mysql_secret_mounts='["/run/secrets/mysql_identity_password","/run/secrets/mysql_root_password"]'
+            expected_mysql_secret_mounts='["/run/secrets/mysql_identity_password","/run/secrets/mysql_identity_provisioner_password","/run/secrets/mysql_root_password"]'
             ;;
     esac
     if ! docker inspect "$resolved_container_id" | jq -e \
@@ -476,6 +556,43 @@ for mysql_secret_consumer in mysql migrate mysql-grants; do
     fi
 done
 ok 'MySQL, migrator, grant reconciler, and API each receive only their declared MySQL Secrets'
+
+for provisioner_secret_non_consumer in migrate api redis web; do
+    resolve_container "$provisioner_secret_non_consumer"
+    if docker inspect "$resolved_container_id" | jq -e '
+        any(.[0].Mounts[]?;
+            .Destination == "/run/secrets/mysql_identity_provisioner_password")
+    ' >/dev/null; then
+        fail "$provisioner_secret_non_consumer unexpectedly receives the one-shot provisioner database credential"
+    fi
+done
+ok 'no long-lived application, cache, web, or migration process receives the one-shot provisioner credential'
+
+if ! docker compose \
+    --project-name "$compose_project" \
+    --file "$compose_file" \
+    --profile operations \
+    config --format json | jq -e '
+        .services["identity-provision"] as $service |
+        $service.profiles == ["operations"] and
+        $service.image == "growthos/identity-provision:lesson-32" and
+        $service.build.target == "identity-provision" and
+        $service.user == "65532:65532" and
+        $service.read_only == true and
+        $service.restart == "no" and
+        $service.cap_drop == ["ALL"] and
+        $service.security_opt == ["no-new-privileges:true"] and
+        ($service.networks | keys) == ["data"] and
+        ($service.ports // []) == [] and
+        ($service.volumes // []) == [] and
+        ($service.secrets | map(.source)) == ["mysql_identity_provisioner_password"] and
+        $service.environment.GROWTHOS_IDENTITY_PROVISIONER_MYSQL_USER == "growthos_identity_provisioner" and
+        $service.environment.GROWTHOS_IDENTITY_PROVISIONER_MYSQL_PASSWORD_FILE == "/run/secrets/mysql_identity_provisioner_password" and
+        $service.depends_on["mysql-grants"].condition == "service_completed_successfully"
+    ' >/dev/null; then
+    fail 'identity-provision differs from the operations-only, non-root, read-only, one-secret Compose contract'
+fi
+ok 'identity-provision is an operations-only non-root/read-only service with one database secret and no static enrollment-password mount'
 
 for identity_key_non_consumer in mysql migrate mysql-grants redis web; do
     resolve_container "$identity_key_non_consumer"

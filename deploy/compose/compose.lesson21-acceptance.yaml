@@ -36,6 +36,8 @@ secrets:
     file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/mysql_migration_password"
   mysql_identity_password:
     file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/mysql_identity_password"
+  mysql_identity_provisioner_password:
+    file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/mysql_identity_provisioner_password"
   identity_throttle_hmac_key:
     file: "${GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY:?set GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY}/identity_throttle_hmac_key"
   identity_csrf_active_key:
