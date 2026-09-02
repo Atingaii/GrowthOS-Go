@@ -1,15 +1,17 @@
 services:
+  identity-provision:
+    image: "${GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_PROVISION_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_PROVISION_IMAGE}"
+
   identity-maintenance:
     image: "${GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_MAINTENANCE_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_MAINTENANCE_IMAGE}"
 
   api:
     image: "${GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE:?set GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE}"
     environment:
-      # This legacy Lottery/cache acceptance does not attest the Identity
-      # browser boundary: its Docker-assigned host port is unknown until Web is
-      # created. Lesson 32 browser acceptance must bind and configure one exact
-      # origin before it starts the API rather than treating the base 8088
-      # development origin as evidence for this random-port overlay.
+      # The acceptance script creates Web first so Docker atomically allocates
+      # its loopback port, then replaces the non-routable bootstrap origin with
+      # this exact browser-visible origin before API is ever created or started.
+      GROWTHOS_IDENTITY_PUBLIC_ORIGIN: "${GROWTHOS_LESSON24_ACCEPTANCE_PUBLIC_ORIGIN:?set GROWTHOS_LESSON24_ACCEPTANCE_PUBLIC_ORIGIN}"
       # The process default is off and staging/production reject opt-in. Both
       # local Compose files acknowledge this development-only route explicitly.
       GROWTHOS_LOTTERY_EPHEMERAL_SELECTION_ENABLED: "true"

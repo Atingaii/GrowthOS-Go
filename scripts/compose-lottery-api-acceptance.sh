@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 077
 
 # Destructive-to-self acceptance for the current Lesson 32 Identity schema and
 # the still-ephemeral Lesson 24 Lottery API/cache behavior. Every run gets
@@ -35,7 +36,7 @@ require_command() {
     fi
 }
 
-for required_command in awk curl docker go jq mktemp openssl sed sort stat tr wc xargs; do
+for required_command in awk cat chmod cmp cp curl dd docker go jq mktemp openssl sed sort stat tr unlink wc xargs; do
     require_command "$required_command"
 done
 if ! docker compose version >/dev/null 2>&1; then
@@ -71,20 +72,25 @@ fi
 export GROWTHOS_LESSON24_ACCEPTANCE_PROJECT="$compose_project"
 acceptance_api_image="growthos/acceptance-api:$compose_project"
 acceptance_migrate_image="growthos/acceptance-migrate:$compose_project"
+acceptance_identity_provision_image="growthos/acceptance-identity-provision:$compose_project"
 acceptance_identity_maintenance_image="growthos/acceptance-identity-maintenance:$compose_project"
 acceptance_redis_image="growthos/acceptance-redis:$compose_project"
 acceptance_web_image="growthos/acceptance-web:$compose_project"
-acceptance_images="$acceptance_api_image $acceptance_migrate_image $acceptance_identity_maintenance_image $acceptance_redis_image $acceptance_web_image"
+acceptance_images="$acceptance_api_image $acceptance_migrate_image $acceptance_identity_provision_image $acceptance_identity_maintenance_image $acceptance_redis_image $acceptance_web_image"
 buildx_builder="${compose_project}builder"
 buildkit_image=moby/buildkit:buildx-stable-1
 expected_builder_container="buildx_buildkit_${buildx_builder}0"
 expected_builder_volume="${expected_builder_container}_state"
 export GROWTHOS_LESSON24_ACCEPTANCE_API_IMAGE="$acceptance_api_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_MIGRATE_IMAGE="$acceptance_migrate_image"
+export GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_PROVISION_IMAGE="$acceptance_identity_provision_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_IDENTITY_MAINTENANCE_IMAGE="$acceptance_identity_maintenance_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_REDIS_IMAGE="$acceptance_redis_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_WEB_IMAGE="$acceptance_web_image"
 export GROWTHOS_LESSON24_ACCEPTANCE_CACHE_ENABLED=true
+# Compose must be renderable before Web exists. Port 1 is deliberately never
+# contacted; it is replaced with Docker's exact allocation before API exists.
+export GROWTHOS_LESSON24_ACCEPTANCE_PUBLIC_ORIGIN=http://127.0.0.1:1
 export BUILDX_BUILDER="$buildx_builder"
 
 compose() {
@@ -186,8 +192,12 @@ fi
 
 secret_directory=
 response_directory=
+identity_directory=
 secret_directory_identity=
 response_directory_identity=
+identity_directory_identity=
+identity_password_snapshot=
+identity_password_snapshot_bytes=0
 response_number=0
 cleanup_project=0
 cleanup_images=0
@@ -210,7 +220,7 @@ verify_cleanup_project_labels() {
             return 1
         fi
         case "$cleanup_service" in
-            api|identity-maintenance|migrate|mysql|mysql-grants|redis|web)
+            api|identity-maintenance|identity-provision|migrate|mysql|mysql-grants|redis|web)
                 ;;
             *)
                 printf 'refusing cleanup: container %s has unexpected service label %s\n' "$cleanup_container_id" "$cleanup_service" >&2
@@ -306,6 +316,46 @@ remove_regular_file() {
     fi
 }
 
+remove_private_file() {
+    private_target=$1
+    if [ -L "$private_target" ]; then
+        printf 'refusing cleanup: private target became a symlink: %s\n' "$private_target" >&2
+        return 1
+    fi
+    if [ ! -e "$private_target" ]; then
+        return 0
+    fi
+    if [ ! -f "$private_target" ]; then
+        printf 'refusing cleanup: private target is not a regular file: %s\n' "$private_target" >&2
+        return 1
+    fi
+    private_bytes=$(LC_ALL=C wc -c < "$private_target" | awk '{ print $1 }') || return 1
+    case "$private_bytes" in
+        ''|*[!0-9]*)
+            printf 'refusing cleanup: private target size is invalid: %s\n' "$private_target" >&2
+            return 1
+            ;;
+    esac
+    chmod 0600 "$private_target" 2>/dev/null || return 1
+    if [ "$private_bytes" -gt 0 ]; then
+        dd if=/dev/zero of="$private_target" bs=1 count="$private_bytes" conv=notrunc \
+            >/dev/null 2>&1 || return 1
+    fi
+    unlink "$private_target"
+}
+
+remove_identity_password_snapshot() {
+    if [ -z "$identity_password_snapshot" ] ||
+       { [ ! -e "$identity_password_snapshot" ] && [ ! -L "$identity_password_snapshot" ]; }; then
+        return 0
+    fi
+    if [ "$identity_password_snapshot_bytes" -le 0 ]; then
+        printf '%s\n' 'refusing cleanup: enrollment snapshot size was not recorded' >&2
+        return 1
+    fi
+    remove_private_file "$identity_password_snapshot"
+}
+
 directory_identity() {
     identity_target=$1
     if identity_value=$(stat -f '%d:%i' -- "$identity_target" 2>/dev/null); then
@@ -344,14 +394,15 @@ verify_temporary_directory() {
 
 cleanup_temporary_directories() {
     temporary_cleanup_status=0
+    remove_identity_password_snapshot || temporary_cleanup_status=1
     if [ -n "$response_directory" ] && { [ -e "$response_directory" ] || [ -L "$response_directory" ]; }; then
         if ! verify_temporary_directory "$response_directory" "$response_directory_identity" response; then
             temporary_cleanup_status=1
         else
             cleanup_index=1
             while [ "$cleanup_index" -le "$response_number" ]; do
-                remove_regular_file "$response_directory/headers-$cleanup_index" || temporary_cleanup_status=1
-                remove_regular_file "$response_directory/body-$cleanup_index" || temporary_cleanup_status=1
+                remove_private_file "$response_directory/headers-$cleanup_index" || temporary_cleanup_status=1
+                remove_private_file "$response_directory/body-$cleanup_index" || temporary_cleanup_status=1
                 cleanup_index=$((cleanup_index + 1))
             done
             cleanup_index=1
@@ -368,6 +419,42 @@ cleanup_temporary_directories() {
             done
             if ! rmdir "$response_directory"; then
                 printf 'temporary response directory was not empty: %s\n' "$response_directory" >&2
+                temporary_cleanup_status=1
+            fi
+        fi
+    fi
+    if [ -n "$identity_directory" ] && { [ -e "$identity_directory" ] || [ -L "$identity_directory" ]; }; then
+        if ! verify_temporary_directory "$identity_directory" "$identity_directory_identity" identity; then
+            temporary_cleanup_status=1
+        else
+            for identity_private_name in \
+                enrollment-password \
+                wrong-password \
+                login-body \
+                malformed-body \
+                curl.conf \
+                sensitive-patterns \
+                token-a \
+                token-b \
+                token-scratch \
+                csrf-a \
+                csrf-b \
+                csrf-current \
+                cookie-a \
+                cookie-b \
+                cookie-state \
+                provision-output \
+                api-logs \
+                web-logs; do
+                remove_private_file "$identity_directory/$identity_private_name" || temporary_cleanup_status=1
+            done
+            cleanup_index=1
+            while [ "$cleanup_index" -le 6 ]; do
+                remove_private_file "$identity_directory/cap-cookie-$cleanup_index" || temporary_cleanup_status=1
+                cleanup_index=$((cleanup_index + 1))
+            done
+            if ! rmdir "$identity_directory"; then
+                printf 'temporary identity directory was not empty: %s\n' "$identity_directory" >&2
                 temporary_cleanup_status=1
             fi
         fi
@@ -498,7 +585,8 @@ cleanup() {
             cleanup_status=1
         fi
     else
-        printf 'preserved disposable secrets/responses at %s and %s for manual cleanup\n' "$secret_directory" "$response_directory" >&2
+        printf 'preserved disposable secrets/responses at %s, %s, and %s for manual cleanup\n' \
+            "$secret_directory" "$response_directory" "$identity_directory" >&2
     fi
 
     default_containers_after=$(snapshot_default_containers) || cleanup_status=1
@@ -527,6 +615,8 @@ secret_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson24-secrets.XXXXXX")
 secret_directory_identity=$(directory_identity "$secret_directory") || fail 'could not record the temporary secret directory identity'
 response_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson24-responses.XXXXXX")
 response_directory_identity=$(directory_identity "$response_directory") || fail 'could not record the temporary response directory identity'
+identity_directory=$(mktemp -d "${TMPDIR:-/tmp}/growthos-lesson32-identity.XXXXXX")
+identity_directory_identity=$(directory_identity "$identity_directory") || fail 'could not record the temporary identity directory identity'
 export GROWTHOS_LESSON24_ACCEPTANCE_SECRET_DIRECTORY="$secret_directory"
 
 # Arm project cleanup before the first command that may create a Docker
@@ -571,7 +661,7 @@ build_status=0
 # neutral order: the api build populates the shared builder cache, then migrate
 # and Identity maintenance reuse it while Redis and the web bundle never
 # compete with the Go compiler.
-for acceptance_build_service in api migrate identity-maintenance redis web; do
+for acceptance_build_service in api migrate identity-provision identity-maintenance redis web; do
     if ! compose build "$acceptance_build_service"; then
         build_status=1
         break
@@ -595,6 +685,51 @@ for acceptance_image in $acceptance_images; do
         fail "the build did not produce exactly one ownership record for $acceptance_image"
     fi
 done
+
+# Start only the edge first. Docker owns the atomic random-port allocation; API
+# does not exist yet and therefore cannot observe the bootstrap origin.
+if ! compose up --detach --no-deps --wait --wait-timeout 60 web; then
+    fail 'could not preallocate the disposable browser origin through Web'
+fi
+preallocated_web_container_id=$(compose ps --all --quiet web) ||
+    fail 'could not resolve the preallocated Web container'
+case "$preallocated_web_container_id" in
+    ''|*'
+'*)
+        fail 'the preallocated Web service must have exactly one container'
+        ;;
+esac
+if [ -n "$(compose ps --all --quiet api)" ]; then
+    fail 'API existed before the exact disposable browser origin was known'
+fi
+if [ "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$preallocated_web_container_id")" != "$compose_project" ] ||
+   [ "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$preallocated_web_container_id")" != web ]; then
+    fail 'the preallocated Web container lacks the exact disposable identity'
+fi
+preallocated_web_binding=$(compose port web 8080) ||
+    fail 'could not resolve the preallocated Web host port'
+case "$preallocated_web_binding" in
+    *'
+'*)
+        fail 'preallocated Web must have exactly one published host binding'
+        ;;
+esac
+preallocated_web_host=${preallocated_web_binding%:*}
+web_port=${preallocated_web_binding##*:}
+if [ "$preallocated_web_host" != '127.0.0.1' ]; then
+    fail "preallocated Web is published on $preallocated_web_host instead of 127.0.0.1"
+fi
+case "$web_port" in
+    ''|*[!0-9]*)
+        fail 'Docker returned a non-numeric preallocated Web port'
+        ;;
+esac
+if [ "$web_port" -lt 1 ] || [ "$web_port" -gt 65535 ]; then
+    fail 'Docker returned a preallocated Web port outside 1 through 65535'
+fi
+base_url="http://127.0.0.1:$web_port"
+export GROWTHOS_LESSON24_ACCEPTANCE_PUBLIC_ORIGIN="$base_url"
+compose config --quiet
 compose up --detach --wait --wait-timeout 180
 
 resolve_container() {
@@ -810,7 +945,8 @@ resolve_container api
 if ! docker inspect "$resolved_container_id" | jq -e \
     --arg edge "${compose_project}_edge" \
     --arg data "${compose_project}_data" \
-    --arg cache "${compose_project}_cache" '
+    --arg cache "${compose_project}_cache" \
+    --arg public_origin "$base_url" '
         (.[0].NetworkSettings.Networks | keys | sort) == ([$edge, $data, $cache] | sort) and
         .[0].Config.User == "65532:65532" and
         .[0].HostConfig.ReadonlyRootfs == true and
@@ -825,6 +961,7 @@ if ! docker inspect "$resolved_container_id" | jq -e \
         (.[0].Config.Env | index("GROWTHOS_IDENTITY_ARGON2_MAX_CONCURRENT=2")) != null and
         (.[0].Config.Env | index("GROWTHOS_IDENTITY_ARGON2_ACQUIRE_TIMEOUT=250ms")) != null and
         (.[0].Config.Env | index("GROWTHOS_IDENTITY_HTTP_HANDLER_TIMEOUT=3s")) != null and
+        (.[0].Config.Env | index("GROWTHOS_IDENTITY_PUBLIC_ORIGIN=" + $public_origin)) != null and
         any(.[0].Config.Env[]; startswith("GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID="))
     ' >/dev/null; then
     fail 'api network or Secret mounts differ from the business/Identity runtime plus cache contract'
@@ -1042,7 +1179,13 @@ fi
 resolve_container web
 web_container_id=$(docker inspect --format '{{.Id}}' "$resolved_container_id") ||
     fail 'could not normalize the disposable web container ID'
+if [ "$web_container_id" != "$preallocated_web_container_id" ]; then
+    fail 'Web was replaced after its browser origin was atomically allocated'
+fi
 web_binding=$(compose port web 8080) || fail 'could not resolve the web host port'
+if [ "$web_binding" != "$preallocated_web_binding" ]; then
+    fail 'Web host binding changed after API received its exact public origin'
+fi
 case "$web_binding" in
     *'
 '*)
@@ -1081,7 +1224,10 @@ for unpublished_service in mysql migrate mysql-grants api redis; do
         fail "$unpublished_service unexpectedly publishes a host port"
     fi
 done
-base_url="http://127.0.0.1:$web_port"
+if [ "$base_url" != "http://127.0.0.1:$web_port" ] ||
+   [ "$GROWTHOS_LESSON24_ACCEPTANCE_PUBLIC_ORIGIN" != "$base_url" ]; then
+    fail 'the browser URL and API public origin diverged'
+fi
 ok "Docker assigned unique loopback-only port $web_port to the disposable web proxy"
 
 # shellcheck disable=SC2016
@@ -1708,6 +1854,1135 @@ assert_multi_strategy_selection() {
         fail "$1 returned an invalid multi-award selection"
     fi
 }
+
+identity_file_mode() {
+    identity_mode_target=$1
+    if identity_mode_value=$(stat -f '%Lp' "$identity_mode_target" 2>/dev/null); then
+        printf '%s\n' "$identity_mode_value"
+        return 0
+    fi
+    stat -c '%a' "$identity_mode_target" 2>/dev/null
+}
+
+assert_private_identity_file() {
+    identity_private_target=$1
+    identity_expected_bytes=$2
+    if [ -L "$identity_private_target" ] || [ ! -f "$identity_private_target" ] ||
+       [ ! -r "$identity_private_target" ]; then
+        fail "private Identity artifact is not a readable non-symbolic regular file: $identity_private_target"
+    fi
+    identity_private_mode=$(identity_file_mode "$identity_private_target") ||
+        fail "could not inspect private Identity artifact mode: $identity_private_target"
+    if [ "$identity_private_mode" != 600 ]; then
+        fail "private Identity artifact mode is $identity_private_mode instead of 0600: $identity_private_target"
+    fi
+    if [ "$identity_expected_bytes" != '-' ]; then
+        identity_private_bytes=$(LC_ALL=C wc -c < "$identity_private_target" | awk '{ print $1 }') ||
+            fail "could not inspect private Identity artifact size: $identity_private_target"
+        if [ "$identity_private_bytes" != "$identity_expected_bytes" ]; then
+            fail "private Identity artifact has $identity_private_bytes bytes instead of $identity_expected_bytes: $identity_private_target"
+        fi
+    fi
+}
+
+write_identity_login_body() {
+    identity_body_login=$1
+    identity_body_password_file=$2
+    identity_body_target=$3
+    assert_private_identity_file "$identity_body_password_file" -
+    if ! jq -n \
+        --arg login_name "$identity_body_login" \
+        --rawfile password "$identity_body_password_file" \
+        '{login_name: $login_name, password: $password}' \
+        > "$identity_body_target"; then
+        fail 'could not create the private file-backed login request body'
+    fi
+    chmod 0600 "$identity_body_target"
+    assert_private_identity_file "$identity_body_target" -
+}
+
+identity_config_reset() {
+    : > "$identity_curl_config"
+    chmod 0600 "$identity_curl_config"
+    printf '%s\n' 'header = "Accept: application/json"' >> "$identity_curl_config"
+}
+
+identity_config_add() {
+    identity_config_header=$1
+    case "$identity_config_header" in
+        *'"'*|*'
+'*)
+            fail 'an internal Identity curl header contains unsafe configuration syntax'
+            ;;
+    esac
+    printf 'header = "%s"\n' "$identity_config_header" >> "$identity_curl_config"
+}
+
+identity_config_add_file_header() {
+    identity_secret_header_name=$1
+    identity_secret_header_file=$2
+    assert_private_identity_file "$identity_secret_header_file" -
+    if ! awk -v name="$identity_secret_header_name" '
+        BEGIN { valid_name = (name ~ /^[A-Za-z0-9-]+$/) }
+        NR == 1 && $0 ~ /^[A-Za-z0-9._-]+$/ {
+            printf "header = \"%s: %s\"\n", name, $0
+            emitted++
+        }
+        END { exit (valid_name && NR == 1 && emitted == 1) ? 0 : 1 }
+    ' "$identity_secret_header_file" >> "$identity_curl_config"; then
+        fail 'the private CSRF header source is malformed'
+    fi
+}
+
+identity_config_add_duplicate_cookie() {
+    identity_cookie_token_file=$1
+    assert_private_identity_file "$identity_cookie_token_file" -
+    if ! awk '
+        NR == 1 && length($0) == 43 && $0 ~ /^[A-Za-z0-9_-]+$/ {
+            printf "header = \"Cookie: growthos_dev_session=%s\"\n", $0
+            printf "header = \"Cookie: growthos_dev_session=%s\"\n", $0
+            emitted = 2
+        }
+        END { exit (NR == 1 && emitted == 2) ? 0 : 1 }
+    ' "$identity_cookie_token_file" >> "$identity_curl_config"; then
+        fail 'the duplicate-Cookie token source is malformed'
+    fi
+}
+
+identity_prepare_login_config() {
+    identity_config_reset
+    identity_config_add 'Content-Type: application/json'
+    identity_config_add "Origin: $base_url"
+    identity_config_add 'Sec-Fetch-Site: same-origin'
+}
+
+identity_prepare_current_config() {
+    identity_config_reset
+}
+
+identity_prepare_logout_config() {
+    identity_logout_csrf_file=$1
+    identity_config_reset
+    identity_config_add "Origin: $base_url"
+    identity_config_add 'Sec-Fetch-Site: same-origin'
+    identity_config_add_file_header X-CSRF-Token "$identity_logout_csrf_file"
+}
+
+identity_request() {
+    identity_request_method=$1
+    identity_request_route=$2
+    identity_expected_status=$3
+    identity_request_body_file=$4
+    identity_cookie_input=$5
+    identity_cookie_output=$6
+    assert_private_identity_file "$identity_curl_config" -
+    if [ "$identity_request_body_file" != '-' ]; then
+        assert_private_identity_file "$identity_request_body_file" -
+    fi
+    if [ "$identity_cookie_input" != '-' ]; then
+        assert_private_identity_file "$identity_cookie_input" -
+    fi
+    if [ "$identity_cookie_output" != '-' ] && [ "$identity_cookie_output" != "$identity_cookie_input" ]; then
+        : > "$identity_cookie_output"
+        chmod 0600 "$identity_cookie_output"
+    fi
+
+    response_number=$((response_number + 1))
+    response_headers="$response_directory/headers-$response_number"
+    response_body="$response_directory/body-$response_number"
+    : > "$response_headers"
+    : > "$response_body"
+    chmod 0600 "$response_headers" "$response_body"
+
+    set -- curl \
+        --silent \
+        --show-error \
+        --globoff \
+        --connect-timeout "$connect_timeout" \
+        --max-time "$request_timeout" \
+        --request "$identity_request_method" \
+        --config "$identity_curl_config" \
+        --dump-header "$response_headers" \
+        --output "$response_body" \
+        --write-out '%{http_code}'
+    if [ "$identity_cookie_input" != '-' ]; then
+        set -- "$@" --cookie "$identity_cookie_input"
+    fi
+    if [ "$identity_cookie_output" != '-' ]; then
+        set -- "$@" --cookie-jar "$identity_cookie_output"
+    fi
+    if [ "$identity_request_body_file" != '-' ]; then
+        set -- "$@" --data-binary @-
+        identity_response_status=$("$@" "$base_url$identity_request_route" < "$identity_request_body_file") ||
+            fail "Identity request to $identity_request_route failed"
+    else
+        identity_response_status=$("$@" "$base_url$identity_request_route") ||
+            fail "Identity request to $identity_request_route failed"
+    fi
+    response_status=$identity_response_status
+    if [ "$identity_response_status" != "$identity_expected_status" ]; then
+        fail "$identity_request_method $identity_request_route returned $identity_response_status instead of $identity_expected_status"
+    fi
+    assert_private_identity_file "$response_headers" -
+    assert_private_identity_file "$response_body" -
+    if [ "$identity_cookie_output" != '-' ]; then
+        chmod 0600 "$identity_cookie_output"
+        assert_private_identity_file "$identity_cookie_output" -
+    fi
+    if [ "$(header_value Cache-Control "$response_headers")" != no-store ] ||
+       [ "$(header_count Cache-Control "$response_headers")" -ne 1 ]; then
+        fail "$identity_request_method $identity_request_route did not return exactly one Cache-Control: no-store"
+    fi
+    response_request_id=$(header_value X-Request-ID "$response_headers")
+    if [ -z "$response_request_id" ] ||
+       [ "$(header_count X-Request-ID "$response_headers")" -ne 1 ]; then
+        fail "$identity_request_method $identity_request_route did not return exactly one request ID"
+    fi
+    if [ "$(header_count Content-Security-Policy "$response_headers")" -ne 1 ] ||
+       [ "$(header_value Content-Security-Policy "$response_headers")" != "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" ] ||
+       [ "$(header_count Cross-Origin-Resource-Policy "$response_headers")" -ne 1 ] ||
+       [ "$(header_value Cross-Origin-Resource-Policy "$response_headers")" != same-origin ] ||
+       [ "$(header_count Permissions-Policy "$response_headers")" -ne 1 ] ||
+       [ "$(header_value Permissions-Policy "$response_headers")" != 'camera=(), geolocation=(), microphone=()' ] ||
+       [ "$(header_count Referrer-Policy "$response_headers")" -ne 1 ] ||
+       [ "$(header_value Referrer-Policy "$response_headers")" != no-referrer ] ||
+       [ "$(header_count X-Content-Type-Options "$response_headers")" -ne 1 ] ||
+       [ "$(header_value X-Content-Type-Options "$response_headers")" != nosniff ] ||
+       [ "$(header_count X-Frame-Options "$response_headers")" -ne 1 ] ||
+       [ "$(header_value X-Frame-Options "$response_headers")" != DENY ]; then
+        fail "$identity_request_method $identity_request_route did not return one exact canonical API security-header set"
+    fi
+    if [ "$identity_expected_status" = 204 ]; then
+        if [ -s "$response_body" ] || [ "$(header_count Content-Type "$response_headers")" -ne 0 ]; then
+            fail "$identity_request_method $identity_request_route did not return an exact zero-body 204"
+        fi
+    else
+        identity_response_content_type=$(header_value Content-Type "$response_headers" | tr '[:upper:]' '[:lower:]')
+        if [ "${identity_response_content_type%%;*}" != application/json ] ||
+           [ "$(header_count Content-Type "$response_headers")" -ne 1 ]; then
+            fail "$identity_request_method $identity_request_route did not return exactly one application/json Content-Type"
+        fi
+        if ! jq -e . "$response_body" >/dev/null 2>&1; then
+            fail "$identity_request_method $identity_request_route did not return valid JSON"
+        fi
+    fi
+}
+
+assert_identity_error() {
+    identity_expected_code=$1
+    identity_expected_message=$2
+    if ! jq -e \
+        --arg code "$identity_expected_code" \
+        --arg message "$identity_expected_message" \
+        --arg request_id "$response_request_id" '
+            . == {error: {code: $code, message: $message, request_id: $request_id}}
+        ' "$response_body" >/dev/null; then
+        fail "Identity error response does not match $identity_expected_code and its correlated request ID"
+    fi
+}
+
+identity_error_signature() {
+    jq -er '.error | [.code, .message] | join(":")' "$response_body"
+}
+
+assert_identity_session() {
+    identity_expected_principal=$1
+    if ! jq -e --arg principal "$identity_expected_principal" '
+        def canonical_utc:
+            type == "string" and
+            test("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$");
+        (keys == ["data"]) and
+        (.data | keys == [
+            "absolute_expires_at",
+            "authenticated",
+            "csrf_token",
+            "idle_expires_at",
+            "principal"
+        ]) and
+        .data.authenticated == true and
+        .data.principal == {kind: "human", id: $principal} and
+        (.data.idle_expires_at | canonical_utc) and
+        (.data.absolute_expires_at | canonical_utc) and
+        (.data.idle_expires_at < .data.absolute_expires_at) and
+        (.data.csrf_token | type == "string" and length > 32 and length <= 512 and test("^[A-Za-z0-9._-]+$")) and
+        ([paths | .[-1] | strings] | all(
+            . != "role" and . != "roles" and
+            . != "scope" and . != "scopes" and
+            . != "permission" and . != "permissions" and
+            . != "account" and . != "account_id" and
+            . != "login" and . != "login_name" and
+            . != "token" and . != "session_token"
+        ))
+    ' "$response_body" >/dev/null; then
+        fail 'Identity session DTO is not the exact authentication-only public shape'
+    fi
+}
+
+assert_identity_set_cookie() {
+    identity_cookie_jar=$1
+    if [ "$(header_count Set-Cookie "$response_headers")" -ne 1 ] ||
+       ! awk '
+            BEGIN { valid = 0 }
+            {
+                line = $0
+                sub(/\r$/, "", line)
+                if (line !~ /^[Ss]et-[Cc]ookie:[[:space:]]*growthos_dev_session=/) {
+                    next
+                }
+                value = line
+                sub(/^[^=]*=/, "", value)
+                sub(/;.*/, "", value)
+                valid = (length(value) == 43 && value ~ /^[A-Za-z0-9_-]+$/)
+                valid = (valid && line ~ /; Path=\//)
+                valid = (valid && line ~ /; Expires=[^;]+ GMT/)
+                valid = (valid && line ~ /; Max-Age=[1-9][0-9]*/)
+                valid = (valid && line ~ /; HttpOnly/)
+                valid = (valid && line ~ /; SameSite=Strict/)
+                valid = (valid && line !~ /; Secure/)
+                valid = (valid && line !~ /; Domain=/)
+                if (valid) {
+                    valid = 1
+                }
+            }
+            END { exit valid ? 0 : 1 }
+        ' "$response_headers"; then
+        fail 'development session Set-Cookie lacks the exact token, Path, expiry, HttpOnly, Strict, host-only, or insecure-loopback shape'
+    fi
+    assert_private_identity_file "$identity_cookie_jar" -
+    if ! awk -F '\t' '
+        $6 == "growthos_dev_session" {
+            candidate = ($1 == "#HttpOnly_127.0.0.1" && $2 == "FALSE")
+            candidate = (candidate && $3 == "/" && $4 == "FALSE")
+            candidate = (candidate && $5 ~ /^[0-9]+$/)
+            candidate = (candidate && length($7) == 43 && $7 ~ /^[A-Za-z0-9_-]+$/)
+            if (candidate) {
+                valid++
+            }
+            found++
+        }
+        END { exit (found == 1 && valid == 1) ? 0 : 1 }
+    ' "$identity_cookie_jar"; then
+        fail 'curl did not persist the development Cookie as one HttpOnly host-only non-Secure Path=/ credential'
+    fi
+}
+
+assert_no_set_cookie() {
+    if [ "$(header_count Set-Cookie "$response_headers")" -ne 0 ]; then
+        fail 'the Identity response unexpectedly changed the session Cookie'
+    fi
+}
+
+assert_identity_clear_cookie() {
+    identity_cleared_cookie_jar=$1
+    if [ "$(header_count Set-Cookie "$response_headers")" -ne 1 ] ||
+       ! awk '
+            {
+                line = $0
+                sub(/\r$/, "", line)
+                if (line !~ /^[Ss]et-[Cc]ookie:[[:space:]]*growthos_dev_session=;/) {
+                    next
+                }
+                valid = (line ~ /; Path=\//)
+                valid = (valid && line ~ /; Expires=Thu, 01 Jan 1970 00:00:01 GMT/)
+                valid = (valid && line ~ /; Max-Age=0/)
+                valid = (valid && line ~ /; HttpOnly/)
+                valid = (valid && line ~ /; SameSite=Strict/)
+                valid = (valid && line !~ /; Secure/)
+                valid = (valid && line !~ /; Domain=/)
+                if (valid) {
+                    valid = 1
+                }
+            }
+            END { exit valid ? 0 : 1 }
+        ' "$response_headers"; then
+        fail 'logout did not emit the exact development Cookie deletion tuple'
+    fi
+    if awk -F '\t' '$6 == "growthos_dev_session" { found++ } END { exit found == 0 ? 0 : 1 }' \
+        "$identity_cleared_cookie_jar"; then
+        :
+    else
+        fail 'logout left the deleted session credential in the output Cookie jar'
+    fi
+}
+
+extract_identity_cookie_token() {
+    identity_extract_cookie_jar=$1
+    identity_extract_token_target=$2
+    assert_private_identity_file "$identity_extract_cookie_jar" -
+    if ! awk -F '\t' '
+        $6 == "growthos_dev_session" && length($7) == 43 && $7 ~ /^[A-Za-z0-9_-]+$/ {
+            print $7
+            found++
+        }
+        END { exit found == 1 ? 0 : 1 }
+    ' "$identity_extract_cookie_jar" > "$identity_extract_token_target"; then
+        fail 'could not extract exactly one canonical raw session token from the private Cookie jar'
+    fi
+    chmod 0600 "$identity_extract_token_target"
+    assert_private_identity_file "$identity_extract_token_target" 44
+}
+
+extract_identity_csrf() {
+    identity_extract_body=$1
+    identity_extract_csrf_target=$2
+    if ! jq -er '.data.csrf_token | select(type == "string" and length > 32 and test("^[A-Za-z0-9._-]+$"))' \
+        "$identity_extract_body" > "$identity_extract_csrf_target"; then
+        fail 'could not extract one canonical CSRF token from the private response body'
+    fi
+    chmod 0600 "$identity_extract_csrf_target"
+    assert_private_identity_file "$identity_extract_csrf_target" -
+}
+
+record_identity_login_secrets() {
+    identity_record_cookie=$1
+    identity_record_body=$2
+    identity_record_token_target=$3
+    identity_record_csrf_target=$4
+    extract_identity_cookie_token "$identity_record_cookie" "$identity_record_token_target"
+    extract_identity_csrf "$identity_record_body" "$identity_record_csrf_target"
+    cat "$identity_record_token_target" >> "$identity_sensitive_patterns"
+    cat "$identity_record_csrf_target" >> "$identity_sensitive_patterns"
+}
+
+record_identity_current_csrf() {
+    identity_record_current_body=$1
+    identity_record_current_target=$2
+    extract_identity_csrf "$identity_record_current_body" "$identity_record_current_target"
+    cat "$identity_record_current_target" >> "$identity_sensitive_patterns"
+}
+
+# Session HTTP acceptance starts from an empty Identity data plane and creates
+# its only credential through the real INSERT-only operations service. Raw
+# password, Cookie, and CSRF bytes remain file-backed throughout the flow.
+identity_state_before=$(mysql_root_execute '
+    SELECT CONCAT(
+        (SELECT COUNT(*) FROM identity_workforce_account), CHAR(58),
+        (SELECT COUNT(*) FROM identity_session), CHAR(58),
+        (SELECT COUNT(*) FROM identity_authentication_throttle)
+    )
+') || fail 'could not inspect the empty Identity state before HTTP acceptance'
+if [ "$identity_state_before" != '0:0:0' ]; then
+    fail "Identity HTTP acceptance did not start empty: $identity_state_before"
+fi
+
+identity_account_id="accept.http.$random_suffix.account"
+identity_login_name="http_$random_suffix"
+identity_unknown_login="unknown_$random_suffix"
+identity_principal_id="accept.http.$random_suffix.principal"
+identity_password_file="$identity_directory/enrollment-password"
+identity_wrong_password_file="$identity_directory/wrong-password"
+identity_password_snapshot="$identity_directory/enrollment-password-snapshot"
+identity_login_body="$identity_directory/login-body"
+identity_malformed_body="$identity_directory/malformed-body"
+identity_curl_config="$identity_directory/curl.conf"
+identity_sensitive_patterns="$identity_directory/sensitive-patterns"
+identity_token_a="$identity_directory/token-a"
+identity_token_b="$identity_directory/token-b"
+identity_token_scratch="$identity_directory/token-scratch"
+identity_csrf_a="$identity_directory/csrf-a"
+identity_csrf_b="$identity_directory/csrf-b"
+identity_csrf_current="$identity_directory/csrf-current"
+identity_cookie_a="$identity_directory/cookie-a"
+identity_cookie_b="$identity_directory/cookie-b"
+identity_cookie_state="$identity_directory/cookie-state"
+identity_provision_output="$identity_directory/provision-output"
+identity_api_logs="$identity_directory/api-logs"
+identity_web_logs="$identity_directory/web-logs"
+
+openssl rand -hex 24 | tr -d '\n' > "$identity_password_file"
+openssl rand -hex 24 | tr -d '\n' > "$identity_wrong_password_file"
+chmod 0600 "$identity_password_file" "$identity_wrong_password_file"
+assert_private_identity_file "$identity_password_file" 48
+assert_private_identity_file "$identity_wrong_password_file" 48
+if cmp -s "$identity_password_file" "$identity_wrong_password_file"; then
+    fail 'the valid and wrong Identity passwords unexpectedly match'
+else
+    identity_comparison_status=$?
+    if [ "$identity_comparison_status" -ne 1 ]; then
+        fail 'could not compare the isolated Identity passwords'
+    fi
+fi
+: > "$identity_sensitive_patterns"
+{
+    cat "$identity_password_file"
+    printf '\n'
+    cat "$identity_wrong_password_file"
+    printf '\n'
+} >> "$identity_sensitive_patterns"
+chmod 0600 "$identity_sensitive_patterns"
+
+identity_password_snapshot_bytes=48
+cp "$identity_password_file" "$identity_password_snapshot"
+identity_password_snapshot_bytes=$(LC_ALL=C wc -c < "$identity_password_snapshot" | awk '{ print $1 }')
+if [ "$identity_password_snapshot_bytes" -ne 48 ] ||
+   ! cmp -s "$identity_password_file" "$identity_password_snapshot"; then
+    fail 'the bounded enrollment snapshot differs from its 0600 caller source'
+fi
+# uid 65532 needs the bind-mounted file read bit. The containing directory is
+# still mode 0700; the exact snapshot is overwritten and unlinked immediately.
+chmod 0444 "$identity_password_snapshot"
+if ! compose --progress quiet --profile operations run \
+    --rm \
+    --no-deps \
+    --no-tty \
+    --volume "$identity_password_snapshot:/run/identity-enrollment/password:ro" \
+    identity-provision \
+    create \
+    --account-id "$identity_account_id" \
+    --login-name "$identity_login_name" \
+    --principal-id "$identity_principal_id" \
+    --password-file /run/identity-enrollment/password \
+    > "$identity_provision_output" 2>&1; then
+    fail 'the operations-only Identity provisioner did not create the HTTP fixture account'
+fi
+remove_identity_password_snapshot || fail 'could not securely remove the enrollment snapshot'
+if [ -e "$identity_password_snapshot" ] || [ -L "$identity_password_snapshot" ]; then
+    fail 'the enrollment snapshot remains after the one-shot provisioner returned'
+fi
+assert_private_identity_file "$identity_password_file" 48
+if [ -n "$(compose --profile operations ps --all --quiet identity-provision)" ]; then
+    fail 'the one-shot Identity provisioner left a project container behind'
+fi
+if ! jq -e -s \
+    --arg service growth-identity-provision \
+    --arg version lesson-32 '
+        length == 1 and
+        .[0].msg == "identity account provision completed" and
+        .[0].service == $service and
+        .[0].version == $version and
+        .[0].environment == "development" and
+        .[0].component == "identity_provisioning" and
+        .[0].operation == "create" and
+        .[0].result == "created" and
+        (((.[0] | has("password")) or
+          (.[0] | has("password_envelope")) or
+          (.[0] | has("token"))) | not)
+    ' "$identity_provision_output" >/dev/null; then
+    fail 'the Identity provisioner did not emit its exact redacted success record'
+fi
+identity_account_state=$(mysql_root_execute "
+    SELECT CONCAT_WS(CHAR(58), account_id, login_name, principal_id,
+        account_status, credential_version, authentication_epoch)
+    FROM identity_workforce_account
+    WHERE account_id = '$identity_account_id'
+") || fail 'could not inspect the provisioned Identity HTTP fixture'
+if [ "$identity_account_state" != "$identity_account_id:$identity_login_name:$identity_principal_id:enabled:1:1" ]; then
+    fail 'the provisioned Identity HTTP fixture differs from the reviewed identity and lifecycle state'
+fi
+ok 'the INSERT-only operations provisioner created the sole HTTP credential from a private bounded password file'
+
+# Strict login vocabulary: media type, JSON grammar, query, alternate
+# credential sources, Origin, and Fetch Metadata all reject before login.
+write_identity_login_body "$identity_login_name" "$identity_password_file" "$identity_login_body"
+identity_config_reset
+identity_config_add 'Content-Type:'
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 415 "$identity_login_body" - -
+assert_identity_error unsupported_media_type 'unsupported media type'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json; charset=utf-8'
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 415 "$identity_login_body" - -
+assert_identity_error unsupported_media_type 'unsupported media type'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add 'Content-Type: application/json'
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 415 "$identity_login_body" - -
+assert_identity_error unsupported_media_type 'unsupported media type'
+assert_no_set_cookie
+
+printf '%s' '{"login_name":' > "$identity_malformed_body"
+chmod 0600 "$identity_malformed_body"
+identity_prepare_login_config
+identity_request POST /api/v1/session 400 "$identity_malformed_body" - -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+printf '%s' '{"login_name":"operator","login_name":"duplicate","password":"rejected"}' > "$identity_malformed_body"
+identity_prepare_login_config
+identity_request POST /api/v1/session 400 "$identity_malformed_body" - -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+printf '%s' '{"login_name":"operator","password":"rejected"}{"trailing":true}' > "$identity_malformed_body"
+# Fetch Metadata is optional for controlled non-browser clients; the exact
+# Origin remains mandatory and the downstream JSON grammar still fails closed.
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add "Origin: $base_url"
+identity_request POST /api/v1/session 400 "$identity_malformed_body" - -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+# The edge is the last component that can observe transfer framing before
+# nginx dechunks the body. It must reject both chunked transfer and declared
+# trailers, while an ordinary declared body larger than the Identity adapter's
+# 2 KiB limit must still reach Go and fail closed there.
+identity_prepare_login_config
+identity_config_add 'Transfer-Encoding: chunked'
+identity_request POST /api/v1/session 400 "$identity_login_body" - -
+assert_identity_error request_body_not_allowed 'request body is not allowed'
+assert_no_set_cookie
+
+identity_prepare_login_config
+identity_config_add 'Trailer: X-Acceptance-Trailer'
+identity_request POST /api/v1/session 400 "$identity_login_body" - -
+assert_identity_error request_body_not_allowed 'request body is not allowed'
+assert_no_set_cookie
+
+awk 'BEGIN { for (index = 0; index < 2049; index++) printf "x" }' > "$identity_malformed_body"
+chmod 0600 "$identity_malformed_body"
+assert_private_identity_file "$identity_malformed_body" 2049
+identity_prepare_login_config
+identity_request POST /api/v1/session 400 "$identity_malformed_body" - -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+identity_prepare_login_config
+identity_request POST '/api/v1/session?credential=forbidden' 400 "$identity_login_body" - -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+identity_prepare_login_config
+identity_config_add 'Authorization: Basic YXR0YWNrZXI6c2VjcmV0'
+identity_request POST /api/v1/session 400 "$identity_login_body" - -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+for identity_forbidden_header in X-Account-ID X-Principal-ID X-Role X-Permission X-Scope X-Tenant-ID; do
+    identity_prepare_login_config
+    identity_config_add "$identity_forbidden_header: attacker"
+    identity_request POST /api/v1/session 400 "$identity_login_body" - -
+    assert_identity_error invalid_request 'invalid request'
+    assert_no_set_cookie
+done
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 403 "$identity_login_body" - -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add 'Origin: http://127.0.0.1:1'
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 403 "$identity_login_body" - -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add "Origin: $base_url"
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 403 "$identity_login_body" - -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-site'
+identity_request POST /api/v1/session 403 "$identity_login_body" - -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Content-Type: application/json'
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request POST /api/v1/session 403 "$identity_login_body" - -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+# Wrong, unknown, and later disabled accounts intentionally share one public
+# 401 contract. Their request bodies remain private files, never curl argv.
+write_identity_login_body "$identity_login_name" "$identity_wrong_password_file" "$identity_login_body"
+identity_prepare_login_config
+identity_request POST /api/v1/session 401 "$identity_login_body" - -
+assert_identity_error authentication_failed 'authentication failed'
+assert_no_set_cookie
+wrong_login_signature=$(identity_error_signature)
+
+write_identity_login_body "$identity_unknown_login" "$identity_password_file" "$identity_login_body"
+identity_prepare_login_config
+identity_request POST /api/v1/session 401 "$identity_login_body" - -
+assert_identity_error authentication_failed 'authentication failed'
+assert_no_set_cookie
+unknown_login_signature=$(identity_error_signature)
+
+# Login -> current -> replacement proves both the normal DTO and fixation
+# defense. No authorization vocabulary is allowed into the session DTO.
+write_identity_login_body "$identity_login_name" "$identity_password_file" "$identity_login_body"
+identity_prepare_login_config
+identity_request POST /api/v1/session 201 "$identity_login_body" - "$identity_cookie_a"
+assert_identity_session "$identity_principal_id"
+assert_identity_set_cookie "$identity_cookie_a"
+record_identity_login_secrets "$identity_cookie_a" "$response_body" "$identity_token_a" "$identity_csrf_a"
+
+identity_prepare_current_config
+identity_request GET /api/v1/session 200 - "$identity_cookie_a" -
+assert_identity_session "$identity_principal_id"
+assert_no_set_cookie
+record_identity_current_csrf "$response_body" "$identity_csrf_current"
+
+identity_prepare_login_config
+identity_request POST /api/v1/session 201 "$identity_login_body" "$identity_cookie_a" "$identity_cookie_b"
+assert_identity_session "$identity_principal_id"
+assert_identity_set_cookie "$identity_cookie_b"
+record_identity_login_secrets "$identity_cookie_b" "$response_body" "$identity_token_b" "$identity_csrf_b"
+if cmp -s "$identity_token_a" "$identity_token_b"; then
+    fail 'login fixation defense reused the incoming session token'
+else
+    identity_comparison_status=$?
+    if [ "$identity_comparison_status" -ne 1 ]; then
+        fail 'could not compare the login replacement tokens'
+    fi
+fi
+identity_fixation_state=$(mysql_root_execute "
+    SELECT CONCAT(
+        COUNT(*), CHAR(58),
+        SUM(revoked_at IS NULL), CHAR(58),
+        SUM(revoke_reason = 'security_response')
+    )
+    FROM identity_session
+    WHERE account_id = '$identity_account_id'
+") || fail 'could not inspect the fixation replacement state'
+if [ "$identity_fixation_state" != '2:1:1' ]; then
+    fail "login fixation replacement state is $identity_fixation_state instead of 2:1:1"
+fi
+
+identity_config_reset
+identity_config_add_duplicate_cookie "$identity_token_b"
+identity_request GET /api/v1/session 401 - - "$identity_cookie_state"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_state"
+
+identity_prepare_current_config
+identity_request GET /api/v1/session 401 - "$identity_cookie_a" "$identity_cookie_state"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_state"
+
+printf '%s' 'forbidden-body' > "$identity_malformed_body"
+identity_prepare_current_config
+identity_request GET /api/v1/session 400 "$identity_malformed_body" "$identity_cookie_b" -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+identity_prepare_logout_config "$identity_csrf_b"
+identity_request DELETE '/api/v1/session?session=forbidden' 400 - "$identity_cookie_b" -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+identity_prepare_logout_config "$identity_csrf_b"
+identity_request DELETE /api/v1/session 400 "$identity_malformed_body" "$identity_cookie_b" -
+assert_identity_error invalid_request 'invalid request'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add 'Origin: http://127.0.0.1:1'
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: cross-site'
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add "Origin: $base_url"
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add 'X-CSRF-Token: invalid'
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_config_reset
+identity_config_add "Origin: $base_url"
+identity_config_add 'Sec-Fetch-Site: same-origin'
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_config_add_file_header X-CSRF-Token "$identity_csrf_b"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_prepare_logout_config "$identity_csrf_a"
+identity_request DELETE /api/v1/session 403 - "$identity_cookie_b" -
+assert_identity_error request_origin_rejected 'request origin rejected'
+assert_no_set_cookie
+
+identity_prepare_logout_config "$identity_csrf_b"
+identity_request DELETE /api/v1/session 204 - "$identity_cookie_b" "$identity_cookie_state"
+assert_identity_clear_cookie "$identity_cookie_state"
+
+identity_prepare_current_config
+identity_request GET /api/v1/session 401 - "$identity_cookie_b" "$identity_cookie_state"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_state"
+identity_logout_state=$(mysql_root_execute "
+    SELECT CONCAT(
+        COUNT(*), CHAR(58), SUM(revoked_at IS NULL), CHAR(58),
+        SUM(revoke_reason = 'security_response'), CHAR(58),
+        SUM(revoke_reason = 'logout')
+    )
+    FROM identity_session
+    WHERE account_id = '$identity_account_id'
+") || fail 'could not inspect the exact logout state'
+if [ "$identity_logout_state" != '2:0:1:1' ]; then
+    fail "logout state is $identity_logout_state instead of 2:0:1:1"
+fi
+ok 'Session login/current/logout, token replacement, replay, Cookie shape, and CSRF boundaries passed through Nginx'
+
+# Six independent browser logins retain exactly five active sessions and evict
+# only the deterministic oldest one.
+identity_cap_index=1
+while [ "$identity_cap_index" -le 6 ]; do
+    identity_cap_cookie="$identity_directory/cap-cookie-$identity_cap_index"
+    identity_prepare_login_config
+    identity_request POST /api/v1/session 201 "$identity_login_body" - "$identity_cap_cookie"
+    assert_identity_session "$identity_principal_id"
+    assert_identity_set_cookie "$identity_cap_cookie"
+    record_identity_login_secrets \
+        "$identity_cap_cookie" "$response_body" \
+        "$identity_token_scratch" "$identity_csrf_current"
+    identity_cap_index=$((identity_cap_index + 1))
+done
+identity_cap_state=$(mysql_root_execute "
+    SELECT CONCAT(
+        COUNT(*), CHAR(58), SUM(revoked_at IS NULL), CHAR(58),
+        SUM(revoke_reason = 'concurrency_limit')
+    )
+    FROM identity_session
+    WHERE account_id = '$identity_account_id'
+") || fail 'could not inspect the active-session cap'
+if [ "$identity_cap_state" != '8:5:1' ]; then
+    fail "active-session cap state is $identity_cap_state instead of 8:5:1"
+fi
+identity_prepare_current_config
+identity_request GET /api/v1/session 401 - "$identity_directory/cap-cookie-1" "$identity_cookie_state"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_state"
+identity_prepare_current_config
+identity_request GET /api/v1/session 200 - "$identity_directory/cap-cookie-6" -
+assert_identity_session "$identity_principal_id"
+record_identity_current_csrf "$response_body" "$identity_csrf_current"
+ok 'the sixth independent login preserved an exact maximum of five active sessions and evicted the oldest token'
+
+# A valid Cookie remains an indeterminate server-side credential while MySQL
+# is down: both current and login return 503, never anonymous 401, and the same
+# Cookie recovers once the existing database container is healthy again.
+resolve_container mysql
+identity_mysql_container_id=$resolved_container_id
+if ! compose stop mysql; then
+    fail 'could not stop disposable MySQL for Identity dependency acceptance'
+fi
+if [ "$(docker inspect --format '{{.State.Status}}' "$identity_mysql_container_id")" != exited ]; then
+    fail 'disposable MySQL did not stop for Identity dependency acceptance'
+fi
+identity_prepare_current_config
+identity_request GET /api/v1/session 503 - "$identity_directory/cap-cookie-6" -
+assert_identity_error authentication_unavailable 'authentication temporarily unavailable'
+assert_no_set_cookie
+identity_prepare_login_config
+identity_request POST /api/v1/session 503 "$identity_login_body" - -
+assert_identity_error authentication_unavailable 'authentication temporarily unavailable'
+assert_no_set_cookie
+if ! compose up --detach --wait --wait-timeout 120 mysql; then
+    fail 'could not restore disposable MySQL after Identity dependency acceptance'
+fi
+resolve_container mysql
+if [ "$resolved_container_id" != "$identity_mysql_container_id" ]; then
+    fail 'Identity dependency recovery replaced the disposable MySQL container'
+fi
+assert_running_healthy api
+identity_prepare_current_config
+identity_request GET /api/v1/session 200 - "$identity_directory/cap-cookie-6" -
+assert_identity_session "$identity_principal_id"
+record_identity_current_csrf "$response_body" "$identity_csrf_current"
+ok 'Identity returned exact 503 while MySQL was unavailable and the same server-side session recovered'
+
+# Controlled root-only lifecycle mutations exercise inactive session states;
+# credentials themselves still originate solely from the provisioner.
+identity_expired_update=$(mysql_root_execute "
+    SET @observed = UTC_TIMESTAMP(6);
+    UPDATE identity_session AS target
+    JOIN (
+        SELECT session_ref
+        FROM identity_session
+        WHERE account_id = '$identity_account_id'
+          AND revoked_at IS NULL
+        ORDER BY issued_at DESC, session_ref DESC
+        LIMIT 1
+    ) AS selected ON selected.session_ref = target.session_ref
+    SET target.issued_at = DATE_SUB(@observed, INTERVAL 3 MINUTE),
+        target.last_seen_at = DATE_SUB(@observed, INTERVAL 2 MINUTE),
+        target.idle_expires_at = DATE_SUB(@observed, INTERVAL 1 MINUTE),
+        target.absolute_expires_at = DATE_ADD(@observed, INTERVAL 1 HOUR),
+        target.updated_at = @observed;
+    SELECT ROW_COUNT();
+") || fail 'could not create the controlled expired-session state'
+if [ "$identity_expired_update" != 1 ]; then
+    fail 'the controlled expired-session mutation did not affect exactly one row'
+fi
+identity_prepare_current_config
+identity_request GET /api/v1/session 401 - "$identity_directory/cap-cookie-6" "$identity_cookie_state"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_state"
+expired_current_signature=$(identity_error_signature)
+
+identity_prepare_login_config
+identity_request POST /api/v1/session 201 "$identity_login_body" - "$identity_cookie_state"
+assert_identity_session "$identity_principal_id"
+assert_identity_set_cookie "$identity_cookie_state"
+record_identity_login_secrets \
+    "$identity_cookie_state" "$response_body" \
+    "$identity_token_scratch" "$identity_csrf_current"
+identity_epoch_update=$(mysql_root_execute "
+    UPDATE identity_workforce_account
+    SET authentication_epoch = authentication_epoch + 1,
+        updated_at = UTC_TIMESTAMP(6)
+    WHERE account_id = '$identity_account_id'
+      AND account_status = 'enabled'
+      AND authentication_epoch = 1;
+    SELECT ROW_COUNT();
+") || fail 'could not create the controlled authentication-epoch mismatch'
+if [ "$identity_epoch_update" != 1 ]; then
+    fail 'the authentication-epoch mutation did not affect exactly one account'
+fi
+identity_prepare_current_config
+identity_request GET /api/v1/session 401 - "$identity_cookie_state" "$identity_cookie_a"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_a"
+epoch_current_signature=$(identity_error_signature)
+
+identity_prepare_login_config
+identity_request POST /api/v1/session 201 "$identity_login_body" - "$identity_cookie_state"
+assert_identity_session "$identity_principal_id"
+assert_identity_set_cookie "$identity_cookie_state"
+record_identity_login_secrets \
+    "$identity_cookie_state" "$response_body" \
+    "$identity_token_scratch" "$identity_csrf_current"
+identity_disable_update=$(mysql_root_execute "
+    UPDATE identity_workforce_account
+    SET account_status = 'disabled', updated_at = UTC_TIMESTAMP(6)
+    WHERE account_id = '$identity_account_id'
+      AND account_status = 'enabled'
+      AND authentication_epoch = 2;
+    SELECT ROW_COUNT();
+") || fail 'could not create the controlled disabled-account state'
+if [ "$identity_disable_update" != 1 ]; then
+    fail 'the disabled-account mutation did not affect exactly one account'
+fi
+identity_prepare_current_config
+identity_request GET /api/v1/session 401 - "$identity_cookie_state" "$identity_cookie_a"
+assert_identity_error unauthenticated 'authentication required'
+assert_identity_clear_cookie "$identity_cookie_a"
+disabled_current_signature=$(identity_error_signature)
+identity_prepare_login_config
+identity_request POST /api/v1/session 401 "$identity_login_body" - -
+assert_identity_error authentication_failed 'authentication failed'
+assert_no_set_cookie
+disabled_login_signature=$(identity_error_signature)
+if [ "$wrong_login_signature" != "$unknown_login_signature" ] ||
+   [ "$wrong_login_signature" != "$disabled_login_signature" ]; then
+    fail 'wrong, unknown, and disabled credentials did not share one exact public 401 contract'
+fi
+if [ "$expired_current_signature" != "$epoch_current_signature" ] ||
+   [ "$expired_current_signature" != "$disabled_current_signature" ]; then
+    fail 'expired, epoch-mismatched, and disabled sessions did not share one exact public 401 contract'
+fi
+ok 'wrong/unknown/disabled login and expired/epoch/disabled current-session states remained indistinguishable'
+
+# Isolate the public persistent-throttle contract after all successful-login
+# scenarios. The disposable data plane started empty and currently contains
+# exactly the three rows asserted below, so this bounded reset cannot touch a
+# pre-existing or unrelated tenant. Five failures on one login close only its
+# login dimension (threshold 5); the source dimension remains open at 5 of 30.
+# The sixth request must still return a stable 429 with no Cookie.
+identity_throttle_reset=$(mysql_root_execute '
+    DELETE FROM identity_authentication_throttle;
+    SELECT ROW_COUNT();
+') || fail 'could not reset the owned disposable throttle rows before the 429 probe'
+if [ "$identity_throttle_reset" != 3 ]; then
+    fail "Identity throttle reset removed $identity_throttle_reset rows instead of the exact owned three"
+fi
+identity_throttled_login="throttled_$random_suffix"
+write_identity_login_body "$identity_throttled_login" "$identity_password_file" "$identity_login_body"
+identity_throttle_attempt=1
+while [ "$identity_throttle_attempt" -le 5 ]; do
+    identity_prepare_login_config
+    identity_request POST /api/v1/session 401 "$identity_login_body" - -
+    assert_identity_error authentication_failed 'authentication failed'
+    assert_no_set_cookie
+    identity_throttle_attempt=$((identity_throttle_attempt + 1))
+done
+identity_prepare_login_config
+identity_request POST /api/v1/session 429 "$identity_login_body" - -
+assert_identity_error authentication_throttled 'authentication throttled'
+assert_no_set_cookie
+identity_throttle_state=$(mysql_root_execute '
+    SELECT CONCAT(
+        COUNT(*), CHAR(58),
+        COALESCE(SUM(failure_count), 0), CHAR(58),
+        COALESCE(SUM(inflight_count), 0), CHAR(58),
+        COALESCE(SUM(blocked_until > UTC_TIMESTAMP(6)), 0)
+    )
+    FROM identity_authentication_throttle;
+') || fail 'could not inspect the persistent HTTP throttle state'
+if [ "$identity_throttle_state" != '2:10:0:1' ]; then
+    fail "persistent login-throttle state is $identity_throttle_state instead of 2:10:0:1"
+fi
+ok 'five failures closed only the login dimension and the sixth request returned an exact Cookie-free 429'
+
+# Reset the two owned rows, then distribute failures across thirty distinct
+# login names. No per-login row reaches five, so only the shared source row can
+# close; the thirty-first distinct login proves the independent source=30 gate.
+identity_throttle_reset=$(mysql_root_execute '
+    DELETE FROM identity_authentication_throttle;
+    SELECT ROW_COUNT();
+') || fail 'could not reset the owned login-throttle rows before the source probe'
+if [ "$identity_throttle_reset" != 2 ]; then
+    fail "Identity login-throttle reset removed $identity_throttle_reset rows instead of two"
+fi
+identity_source_attempt=1
+while [ "$identity_source_attempt" -le 30 ]; do
+    identity_source_login="source_${identity_source_attempt}_$random_suffix"
+    write_identity_login_body "$identity_source_login" "$identity_password_file" "$identity_login_body"
+    identity_prepare_login_config
+    identity_request POST /api/v1/session 401 "$identity_login_body" - -
+    assert_identity_error authentication_failed 'authentication failed'
+    assert_no_set_cookie
+    identity_source_attempt=$((identity_source_attempt + 1))
+done
+write_identity_login_body "source_blocked_$random_suffix" "$identity_password_file" "$identity_login_body"
+identity_prepare_login_config
+identity_request POST /api/v1/session 429 "$identity_login_body" - -
+assert_identity_error authentication_throttled 'authentication throttled'
+assert_no_set_cookie
+identity_source_throttle_state=$(mysql_root_execute '
+    SELECT CONCAT(
+        COUNT(*), CHAR(58),
+        COALESCE(SUM(dimension = 0x6c6f67696e), 0), CHAR(58),
+        COALESCE(SUM(dimension = 0x736f75726365), 0), CHAR(58),
+        COALESCE(SUM(failure_count), 0), CHAR(58),
+        COALESCE(SUM(inflight_count), 0), CHAR(58),
+        COALESCE(SUM(blocked_until > UTC_TIMESTAMP(6)), 0)
+    )
+    FROM identity_authentication_throttle;
+') || fail 'could not inspect the persistent source-throttle state'
+if [ "$identity_source_throttle_state" != '31:30:1:60:0:1' ]; then
+    fail "persistent source-throttle state is $identity_source_throttle_state instead of 31:30:1:60:0:1"
+fi
+ok 'thirty distributed failures closed only the source dimension and the next distinct login returned an exact Cookie-free 429'
+
+# Scan real provisioner/API/gateway output against every password, raw Cookie,
+# and CSRF value observed above. grep output is suppressed so a regression
+# cannot echo the secret to the acceptance console.
+if ! awk 'length($0) == 0 { invalid = 1 } END { exit (NR > 10 && !invalid) ? 0 : 1 }' \
+    "$identity_sensitive_patterns"; then
+    fail 'the Identity sensitive-pattern set is incomplete or malformed'
+fi
+resolve_container api
+docker logs "$resolved_container_id" > "$identity_api_logs" 2>&1 ||
+    fail 'could not capture disposable API logs for Identity secret scanning'
+resolve_container web
+docker logs "$resolved_container_id" > "$identity_web_logs" 2>&1 ||
+    fail 'could not capture disposable Web logs for Identity secret scanning'
+chmod 0600 "$identity_api_logs" "$identity_web_logs" "$identity_provision_output"
+if grep -F -f "$identity_sensitive_patterns" \
+    "$identity_provision_output" "$identity_api_logs" "$identity_web_logs" >/dev/null 2>&1; then
+    fail 'a password, raw session token, or CSRF token appeared in process or gateway logs'
+else
+    identity_secret_scan_status=$?
+fi
+if [ "$identity_secret_scan_status" -ne 1 ]; then
+    fail 'the Identity process/gateway secret scan could not inspect every private input'
+fi
+
+identity_final_state=$(mysql_root_execute "
+    SELECT CONCAT_WS(CHAR(58), account_status, authentication_epoch,
+        (SELECT COUNT(*) FROM identity_session WHERE account_id = '$identity_account_id'),
+        (SELECT COUNT(*) FROM identity_authentication_throttle))
+    FROM identity_workforce_account
+    WHERE account_id = '$identity_account_id'
+") || fail 'could not inspect the final Identity HTTP fixture state'
+if [ "$identity_final_state" != 'disabled:2:10:31' ]; then
+    fail "final Identity HTTP fixture state is $identity_final_state instead of disabled:2:10:31"
+fi
+identity_fixture_cleanup=$(mysql_root_execute "
+    START TRANSACTION;
+    DELETE FROM identity_session WHERE account_id = '$identity_account_id';
+    SET @deleted_sessions = ROW_COUNT();
+    DELETE FROM identity_authentication_throttle;
+    SET @deleted_throttles = ROW_COUNT();
+    DELETE FROM identity_workforce_account WHERE account_id = '$identity_account_id';
+    SET @deleted_accounts = ROW_COUNT();
+    SELECT CONCAT(@deleted_sessions, CHAR(58), @deleted_throttles, CHAR(58), @deleted_accounts);
+    COMMIT;
+") || fail 'could not remove the exact Identity HTTP fixtures'
+if [ "$identity_fixture_cleanup" != '10:31:1' ]; then
+    fail "Identity HTTP fixture cleanup was $identity_fixture_cleanup instead of 10:31:1"
+fi
+identity_fixture_residue=$(mysql_root_execute '
+    SELECT CONCAT(
+        (SELECT COUNT(*) FROM identity_workforce_account), CHAR(58),
+        (SELECT COUNT(*) FROM identity_session), CHAR(58),
+        (SELECT COUNT(*) FROM identity_authentication_throttle)
+    )
+') || fail 'could not verify Identity HTTP fixture cleanup'
+if [ "$identity_fixture_residue" != '0:0:0' ]; then
+    fail "Identity HTTP fixture residue remains: $identity_fixture_residue"
+fi
+ok 'real Session HTTP acceptance left exact zero account/session/throttle residue and no secret-bearing logs'
 
 request GET /health 200 - - -
 if ! jq -e '.status == "ok" and .version == "lesson-32" and (.timestamp | type == "string" and length > 0)' "$response_body" >/dev/null; then
