@@ -187,10 +187,10 @@ ok 'api image identifies the lesson-32 real session authentication build'
 
 resolve_container web
 inspect_value '{{.Config.Image}}' image
-if [ "$inspected_value" != 'growthos/web:lesson-22' ]; then
-    fail "web image is $inspected_value instead of growthos/web:lesson-22"
+if [ "$inspected_value" != 'growthos/web:lesson-32' ]; then
+    fail "web image is $inspected_value instead of growthos/web:lesson-32"
 fi
-ok 'web image identifies the lesson-22 real React Lottery page build'
+ok 'web image identifies the lesson-32 real Session experience build'
 
 resolve_container redis
 inspect_value '{{.Config.Image}}' image

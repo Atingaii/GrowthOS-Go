@@ -299,7 +299,7 @@ services:
     logging: *json-logging
 
   web:
-    image: growthos/web:lesson-22
+    image: growthos/web:lesson-32
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.web
