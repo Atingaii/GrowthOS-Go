@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -367,6 +368,64 @@ func TestProcessGateRejectsConflictingCapacity(t *testing.T) {
 	}
 	if _, err := New(Config{MaxConcurrent: MaximumMaxConcurrent}); !errors.Is(err, ErrInvalidConfiguration) {
 		t.Fatalf("New(conflicting capacity) error = %v", err)
+	}
+}
+
+func BenchmarkCurrentProfileLoginVerification(b *testing.B) {
+	password := []byte("GrowthOS benchmark credential v1")
+	salt := []byte("benchmark-salt-1")
+	output := derive(password, salt, currentParameters)
+	encoded, err := encodeEnvelope(currentParameters, salt, output)
+	zero(output)
+	if err != nil {
+		b.Fatalf("encode benchmark envelope: %v", err)
+	}
+
+	b.Run("serial", func(b *testing.B) {
+		hasher := benchmarkHasher()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			verification, verifyErr := hasher.VerifyLogin(
+				context.Background(),
+				password,
+				encoded,
+			)
+			if verifyErr != nil || !verification.Matched() {
+				b.Fatalf("VerifyLogin() = %v, %v", verification, verifyErr)
+			}
+		}
+		b.ReportMetric(float64(CurrentMemoryKiB)/1024, "argon2-MiB/op")
+	})
+
+	b.Run("parallel-capacity-2", func(b *testing.B) {
+		previousMaximum := runtime.GOMAXPROCS(2)
+		defer runtime.GOMAXPROCS(previousMaximum)
+
+		hasher := benchmarkHasher()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(parallel *testing.PB) {
+			for parallel.Next() {
+				verification, verifyErr := hasher.VerifyLogin(
+					context.Background(),
+					password,
+					encoded,
+				)
+				if verifyErr != nil || !verification.Matched() {
+					b.Errorf("VerifyLogin() = %v, %v", verification, verifyErr)
+					return
+				}
+			}
+		})
+		b.ReportMetric(float64(2*CurrentMemoryKiB)/1024, "max-argon2-MiB")
+	})
+}
+
+func benchmarkHasher() *Hasher {
+	return &Hasher{
+		gate:           newWorkGate(DefaultMaxConcurrent),
+		acquireTimeout: MaximumAcquireTimeout,
 	}
 }
 
