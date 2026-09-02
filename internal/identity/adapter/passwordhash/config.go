@@ -121,6 +121,16 @@ func (g *workGate) acquire(ctx context.Context, wait time.Duration) error {
 		return hashingUnavailable(err)
 	}
 
+	// Admit immediately available work before arming the wait budget. Without
+	// this fast path, a goroutine descheduled after NewTimer could resume with
+	// both the buffered send and timer case ready, allowing select to reject
+	// work even though capacity had been available for the entire call.
+	select {
+	case g.slots <- struct{}{}:
+		return nil
+	default:
+	}
+
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 

@@ -58,6 +58,9 @@ func FuzzPasswordBounds(f *testing.F) {
 
 func FuzzWorkGateCapacityAndCancellation(f *testing.F) {
 	f.Add(uint8(1), uint8(1), true)
+	// Regression seed: capacity=2, occupied=1 exposed a timer/select race in
+	// which an immediately available slot could be reported as unavailable.
+	f.Add(uint8(1), uint8(1), false)
 	f.Add(uint8(4), uint8(2), false)
 
 	f.Fuzz(func(t *testing.T, capacitySeed, occupiedSeed uint8, cancelAttempt bool) {
