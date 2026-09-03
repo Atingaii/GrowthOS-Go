@@ -22,6 +22,7 @@ func TestCapabilityCatalogAcceptsOnlyRegisteredPairs(t *testing.T) {
 		{ResourceKindCollection, ResourceTypeLotteryStrategy, ActionCreate},
 		{ResourceKindCollection, ResourceTypeLotteryStrategy, ActionRead},
 		{ResourceKindObject, ResourceTypeLotteryStrategy, ActionRead},
+		{ResourceKindObject, ResourceTypeLotteryStrategy, ActionSimulate},
 		{ResourceKindCollection, ResourceTypeLotteryRoutingGraph, ActionCreate},
 		{ResourceKindCollection, ResourceTypeLotteryRoutingGraph, ActionRead},
 		{ResourceKindObject, ResourceTypeLotteryRoutingGraph, ActionRead},
@@ -59,6 +60,9 @@ func TestCapabilityCatalogAcceptsOnlyRegisteredPairs(t *testing.T) {
 		{ResourceKindCollection, ResourceTypeMarketingActivity, ActionPublish, ErrCapabilityUnsupported},
 		{ResourceKindObject, ResourceTypeMarketingActivity, ActionCreate, ErrCapabilityUnsupported},
 		{ResourceKindObject, ResourceTypeLotteryStrategy, ActionPublish, ErrCapabilityUnsupported},
+		{ResourceKindCollection, ResourceTypeLotteryStrategy, ActionSimulate, ErrCapabilityUnsupported},
+		{ResourceKindObject, ResourceTypeMarketingActivity, ActionSimulate, ErrCapabilityUnsupported},
+		{ResourceKindObject, ResourceTypeLotteryRoutingGraph, ActionSimulate, ErrCapabilityUnsupported},
 		{ResourceKindObject, ResourceTypeGovernanceAudit, ActionRead, ErrCapabilityUnsupported},
 		{ResourceKindCollection, ResourceTypeGovernancePolicy, ActionChange, ErrCapabilityUnsupported},
 	}
@@ -103,6 +107,7 @@ func TestClosedCapabilityEnums(t *testing.T) {
 	for _, action := range []Action{
 		ActionCreate,
 		ActionRead,
+		ActionSimulate,
 		ActionPublish,
 		ActionRollback,
 		ActionRetire,

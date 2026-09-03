@@ -9,13 +9,13 @@ import (
 func TestCapabilityCatalogMatchesReviewedKindTypeActionMatrix(t *testing.T) {
 	t.Parallel()
 
-	expected := lesson31ExpectedCapabilities(t)
+	expected := reviewedExpectedCapabilities(t)
 	expectedSet := make(map[Permission]struct{}, len(expected))
 	for _, permission := range expected {
 		expectedSet[permission] = struct{}{}
 	}
-	if len(expectedSet) != 16 {
-		t.Fatalf("reviewed capability count = %d, want 16", len(expectedSet))
+	if len(expectedSet) != 17 {
+		t.Fatalf("reviewed capability count = %d, want 17", len(expectedSet))
 	}
 
 	kinds := []ResourceKind{ResourceKindCollection, ResourceKindObject}
@@ -29,6 +29,7 @@ func TestCapabilityCatalogMatchesReviewedKindTypeActionMatrix(t *testing.T) {
 	actions := []Action{
 		ActionCreate,
 		ActionRead,
+		ActionSimulate,
 		ActionPublish,
 		ActionRollback,
 		ActionRetire,
@@ -60,7 +61,7 @@ func TestBaselineRoleTemplatesMatchIndependentCapabilityCeilings(t *testing.T) {
 	t.Parallel()
 
 	expectedByRole := map[RoleID][]Permission{
-		RolePlatformAdministrator: lesson31ExpectedCapabilities(t),
+		RolePlatformAdministrator: reviewedExpectedCapabilities(t),
 		RoleMarketingOperator: {
 			mustPermission(t, ResourceKindCollection, ResourceTypeMarketingActivity, ActionCreate),
 			mustPermission(t, ResourceKindCollection, ResourceTypeMarketingActivity, ActionRead),
@@ -79,6 +80,7 @@ func TestBaselineRoleTemplatesMatchIndependentCapabilityCeilings(t *testing.T) {
 			mustPermission(t, ResourceKindCollection, ResourceTypeLotteryStrategy, ActionCreate),
 			mustPermission(t, ResourceKindCollection, ResourceTypeLotteryStrategy, ActionRead),
 			mustPermission(t, ResourceKindObject, ResourceTypeLotteryStrategy, ActionRead),
+			mustPermission(t, ResourceKindObject, ResourceTypeLotteryStrategy, ActionSimulate),
 			mustPermission(t, ResourceKindCollection, ResourceTypeLotteryRoutingGraph, ActionCreate),
 			mustPermission(t, ResourceKindCollection, ResourceTypeLotteryRoutingGraph, ActionRead),
 			mustPermission(t, ResourceKindObject, ResourceTypeLotteryRoutingGraph, ActionRead),
@@ -97,7 +99,7 @@ func TestBaselineRoleTemplatesMatchIndependentCapabilityCeilings(t *testing.T) {
 		RoleGrowthMember: {},
 	}
 
-	allCapabilities := lesson31ExpectedCapabilities(t)
+	allCapabilities := reviewedExpectedCapabilities(t)
 	for roleID, expected := range expectedByRole {
 		slices.SortFunc(expected, comparePermission)
 		actual := findBaselineRole(t, roleID).Permissions()
@@ -196,7 +198,7 @@ func TestReadCapabilityDoesNotCrossCollectionObjectBoundary(t *testing.T) {
 	}
 }
 
-func lesson31ExpectedCapabilities(t *testing.T) []Permission {
+func reviewedExpectedCapabilities(t *testing.T) []Permission {
 	t.Helper()
 	return []Permission{
 		mustPermission(t, ResourceKindCollection, ResourceTypeMarketingActivity, ActionCreate),
@@ -208,6 +210,7 @@ func lesson31ExpectedCapabilities(t *testing.T) []Permission {
 		mustPermission(t, ResourceKindCollection, ResourceTypeLotteryStrategy, ActionCreate),
 		mustPermission(t, ResourceKindCollection, ResourceTypeLotteryStrategy, ActionRead),
 		mustPermission(t, ResourceKindObject, ResourceTypeLotteryStrategy, ActionRead),
+		mustPermission(t, ResourceKindObject, ResourceTypeLotteryStrategy, ActionSimulate),
 		mustPermission(t, ResourceKindCollection, ResourceTypeLotteryRoutingGraph, ActionCreate),
 		mustPermission(t, ResourceKindCollection, ResourceTypeLotteryRoutingGraph, ActionRead),
 		mustPermission(t, ResourceKindObject, ResourceTypeLotteryRoutingGraph, ActionRead),

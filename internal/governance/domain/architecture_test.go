@@ -55,7 +55,7 @@ func TestLesson31GovernanceDomainRemainsPureTypedAndBounded(t *testing.T) {
 	}
 }
 
-func TestLesson31GovernancePolicyKernelRemainsOutsideRuntimeComposition(t *testing.T) {
+func TestLesson33GovernancePolicyKernelHasExplicitRuntimeImporters(t *testing.T) {
 	t.Parallel()
 
 	repositoryRoot := lesson31RepositoryRoot(t)
@@ -176,8 +176,37 @@ var _ = governance.Decision{}
 	if files != 1 {
 		t.Fatalf("parsed files = %d, want 1", files)
 	}
-	if joined := strings.Join(violations, "\n"); !strings.Contains(joined, "prematurely imports the Lesson 31 policy kernel") {
+	if joined := strings.Join(violations, "\n"); !strings.Contains(joined, "imports the Governance policy kernel outside the explicit Lesson 33 boundary") {
 		t.Fatalf("violations = %q", joined)
+	}
+}
+
+func TestLesson33RuntimeGuardAllowsOnlyReviewedIntegrationLayers(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	allowed := filepath.Join(root, "internal", "governance", "application")
+	if err := os.MkdirAll(allowed, 0o700); err != nil {
+		t.Fatalf("create allowed fixture: %v", err)
+	}
+	allowedFile := filepath.Join(allowed, "enforcer.go")
+	source := `package application
+import governance "github.com/Atingaii/GrowthOS-Go/internal/governance/domain"
+var _ = governance.Decision{}
+`
+	if err := os.WriteFile(allowedFile, []byte(source), 0o600); err != nil {
+		t.Fatalf("write allowed fixture: %v", err)
+	}
+
+	violations, files, err := lesson31ExternalGovernanceImportViolations(root, "")
+	if err != nil {
+		t.Fatalf("inspect fixture: %v", err)
+	}
+	if files != 1 {
+		t.Fatalf("parsed files = %d, want 1", files)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("reviewed importer violations = %q", violations)
 	}
 }
 
@@ -286,8 +315,11 @@ func lesson31ExternalGovernanceImportViolations(
 			}
 			if importPath == lesson31DomainImport ||
 				strings.HasPrefix(importPath, lesson31DomainImport+"/") {
+				if lesson33GovernanceRuntimeImporterAllowed(root, cleanPath) {
+					continue
+				}
 				violations = append(violations, fmt.Sprintf(
-					"%s prematurely imports the Lesson 31 policy kernel",
+					"%s imports the Governance policy kernel outside the explicit Lesson 33 boundary",
 					path,
 				))
 			}
@@ -295,6 +327,25 @@ func lesson31ExternalGovernanceImportViolations(
 		return nil
 	})
 	return violations, parsedFiles, err
+}
+
+func lesson33GovernanceRuntimeImporterAllowed(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	if err != nil || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	relative = filepath.ToSlash(relative)
+	allowedPrefixes := []string{
+		"internal/governance/application/",
+		"internal/governance/adapter/",
+		"internal/lottery/adapter/governanceauth/",
+	}
+	for _, prefix := range allowedPrefixes {
+		if strings.HasPrefix(relative, prefix) {
+			return true
+		}
+	}
+	return relative == "cmd/growth-api/authorization.go"
 }
 
 func lesson31RepositoryRoot(t *testing.T) string {

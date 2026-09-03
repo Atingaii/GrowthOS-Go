@@ -57,13 +57,55 @@ func TestPermissionIsExactAcrossResourceKindTypeAndAction(t *testing.T) {
 	}
 }
 
+func TestStrategySimulatePermissionIsExactToStrategyObject(t *testing.T) {
+	t.Parallel()
+
+	permission := mustPermission(
+		t,
+		ResourceKindObject,
+		ResourceTypeLotteryStrategy,
+		ActionSimulate,
+	)
+	strategy := mustObjectResource(
+		t,
+		ResourceTypeLotteryStrategy,
+		mustResourceID(t, "strategy-1"),
+		"",
+		Principal{},
+	)
+	strategyCollection, err := NewCollectionResource(ResourceTypeLotteryStrategy, "")
+	if err != nil {
+		t.Fatalf("new strategy collection: %v", err)
+	}
+	routingGraph := mustObjectResource(
+		t,
+		ResourceTypeLotteryRoutingGraph,
+		mustResourceID(t, "routing-graph-1"),
+		"",
+		Principal{},
+	)
+
+	if !permission.matches(strategy, ActionSimulate) {
+		t.Fatal("exact strategy object simulate did not match")
+	}
+	if permission.matches(strategy, ActionRead) {
+		t.Fatal("strategy simulate permission matched read")
+	}
+	if permission.matches(strategyCollection, ActionSimulate) {
+		t.Fatal("strategy object simulate permission matched collection")
+	}
+	if permission.matches(routingGraph, ActionSimulate) {
+		t.Fatal("strategy simulate permission matched routing graph")
+	}
+}
+
 func TestBaselineRolesAreClosedCanonicalCapabilityCeilings(t *testing.T) {
 	t.Parallel()
 
 	wantCounts := map[RoleID]int{
-		RolePlatformAdministrator: 16,
+		RolePlatformAdministrator: 17,
 		RoleMarketingOperator:     10,
-		RoleLotteryDesigner:       8,
+		RoleLotteryDesigner:       9,
 		RoleSecurityAuditor:       9,
 		RoleGrowthMember:          0,
 	}
@@ -105,6 +147,30 @@ func TestBaselineRolesAreClosedCanonicalCapabilityCeilings(t *testing.T) {
 		mustPermission(t, ResourceKindObject, ResourceTypeGovernancePolicy, ActionChange),
 	) {
 		t.Fatal("marketing operator gained policy change capability")
+	}
+	strategySimulate := mustPermission(
+		t,
+		ResourceKindObject,
+		ResourceTypeLotteryStrategy,
+		ActionSimulate,
+	)
+	if !slices.Contains(administrator.Permissions(), strategySimulate) {
+		t.Fatal("platform administrator lacks exact strategy simulate capability")
+	}
+	if !slices.Contains(
+		findBaselineRole(t, RoleLotteryDesigner).Permissions(),
+		strategySimulate,
+	) {
+		t.Fatal("lottery designer lacks exact strategy simulate capability")
+	}
+	for _, roleID := range []RoleID{
+		RoleMarketingOperator,
+		RoleSecurityAuditor,
+		RoleGrowthMember,
+	} {
+		if slices.Contains(findBaselineRole(t, roleID).Permissions(), strategySimulate) {
+			t.Fatalf("role %q gained exact strategy simulate capability", roleID)
+		}
 	}
 	member := findBaselineRole(t, RoleGrowthMember)
 	if len(member.Permissions()) != 0 {

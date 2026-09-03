@@ -128,8 +128,8 @@ func (role Role) clone() Role {
 	return Role{id: role.id, permissions: role.Permissions()}
 }
 
-// BaselineRoles returns the full reviewed capability ceiling for all v1 roles
-// in canonical RoleID order. A caller cannot mutate future results.
+// BaselineRoles returns the full reviewed capability ceiling for all built-in
+// roles in canonical RoleID order. A caller cannot mutate future results.
 func BaselineRoles() []Role {
 	roleIDs := []RoleID{
 		RolePlatformAdministrator,
@@ -200,6 +200,11 @@ func roleTemplatePermissions(roleID RoleID) []Permission {
 		ResourceTypeLotteryStrategy,
 		ActionRead,
 	)
+	strategySimulateObject := catalogPermission(
+		ResourceKindObject,
+		ResourceTypeLotteryStrategy,
+		ActionSimulate,
+	)
 	graphCreateCollection := catalogPermission(
 		ResourceKindCollection,
 		ResourceTypeLotteryRoutingGraph,
@@ -248,6 +253,7 @@ func roleTemplatePermissions(roleID RoleID) []Permission {
 			strategyCreateCollection,
 			strategyReadCollection,
 			strategyReadObject,
+			strategySimulateObject,
 			graphCreateCollection,
 			graphReadCollection,
 			graphReadObject,
@@ -276,6 +282,7 @@ func roleTemplatePermissions(roleID RoleID) []Permission {
 			strategyCreateCollection,
 			strategyReadCollection,
 			strategyReadObject,
+			strategySimulateObject,
 			graphCreateCollection,
 			graphReadCollection,
 			graphReadObject,

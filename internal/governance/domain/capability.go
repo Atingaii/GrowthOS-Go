@@ -34,16 +34,23 @@ type Action string
 const (
 	ActionCreate   Action = "create"
 	ActionRead     Action = "read"
+	ActionSimulate Action = "simulate"
 	ActionPublish  Action = "publish"
 	ActionRollback Action = "rollback"
 	ActionRetire   Action = "retire"
 	ActionChange   Action = "change"
 )
 
-// Valid reports whether action belongs to the reviewed v1 vocabulary.
+// Valid reports whether action belongs to the reviewed vocabulary.
 func (action Action) Valid() bool {
 	switch action {
-	case ActionCreate, ActionRead, ActionPublish, ActionRollback, ActionRetire, ActionChange:
+	case ActionCreate,
+		ActionRead,
+		ActionSimulate,
+		ActionPublish,
+		ActionRollback,
+		ActionRetire,
+		ActionChange:
 		return true
 	default:
 		return false
@@ -86,7 +93,12 @@ func ValidateCapability(resourceKind ResourceKind, resourceType ResourceType, ac
 			resourceKind == ResourceKindObject &&
 				(action == ActionRead || action == ActionPublish ||
 					action == ActionRollback || action == ActionRetire)
-	case ResourceTypeLotteryStrategy, ResourceTypeLotteryRoutingGraph:
+	case ResourceTypeLotteryStrategy:
+		valid = resourceKind == ResourceKindCollection &&
+			(action == ActionCreate || action == ActionRead) ||
+			resourceKind == ResourceKindObject &&
+				(action == ActionRead || action == ActionSimulate)
+	case ResourceTypeLotteryRoutingGraph:
 		valid = resourceKind == ResourceKindCollection &&
 			(action == ActionCreate || action == ActionRead) ||
 			resourceKind == ResourceKindObject && action == ActionRead

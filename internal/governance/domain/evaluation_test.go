@@ -386,6 +386,82 @@ func TestPolicyEvaluateDistinguishesCollectionAndObjectCapabilities(t *testing.T
 	}
 }
 
+func TestPolicyEvaluateStrategySimulateHonorsRoleCapabilityCeilings(t *testing.T) {
+	t.Parallel()
+
+	resource := mustObjectResource(
+		t,
+		ResourceTypeLotteryStrategy,
+		mustResourceID(t, "strategy-1"),
+		"",
+		Principal{},
+	)
+	tests := []struct {
+		roleID      RoleID
+		wantAllowed bool
+	}{
+		{roleID: RolePlatformAdministrator, wantAllowed: true},
+		{roleID: RoleLotteryDesigner, wantAllowed: true},
+		{roleID: RoleMarketingOperator, wantAllowed: false},
+		{roleID: RoleSecurityAuditor, wantAllowed: false},
+		{roleID: RoleGrowthMember, wantAllowed: false},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(string(test.roleID), func(t *testing.T) {
+			t.Parallel()
+
+			principal := mustPrincipal(
+				t,
+				PrincipalKindHuman,
+				"principal-"+string(test.roleID),
+			)
+			binding := mustRoleBinding(
+				t,
+				"binding-"+string(test.roleID),
+				principal,
+				test.roleID,
+				NewSystemScope(),
+				BindingEffectAllow,
+			)
+			policy := mustBaselinePolicy(t, "strategy-simulate", 1, []RoleBinding{binding})
+			decision, err := policy.Evaluate(mustAuthorizationRequest(
+				t,
+				principal,
+				resource,
+				ActionSimulate,
+				"evaluate-strategy-simulate-"+string(test.roleID),
+			))
+			if err != nil {
+				t.Fatalf("evaluate: %v", err)
+			}
+			if decision.Allowed() != test.wantAllowed || !decision.Confirmed() {
+				t.Fatalf("decision = %#v, want allowed=%v", decision, test.wantAllowed)
+			}
+			if test.wantAllowed {
+				if decision.Reason() != DecisionReasonExplicitAllow {
+					t.Fatalf("allow reason = %q", decision.Reason())
+				}
+				matches := decision.Matches()
+				if len(matches) != 1 || matches[0].RoleID() != test.roleID ||
+					matches[0].Permission() != mustPermission(
+						t,
+						ResourceKindObject,
+						ResourceTypeLotteryStrategy,
+						ActionSimulate,
+					) {
+					t.Fatalf("allow evidence = %#v", matches)
+				}
+				return
+			}
+			if decision.Reason() != DecisionReasonNoPermission || len(decision.Matches()) != 0 {
+				t.Fatalf("deny decision = %#v, want no_permission without matches", decision)
+			}
+		})
+	}
+}
+
 func TestPolicyEvaluateIsOrderIndependent(t *testing.T) {
 	t.Parallel()
 
