@@ -1,16 +1,16 @@
 # GrowthOS 系统设计 V0
 
-**状态：** V0 逻辑设计基线；第 32 节真实 Session 认证实现候选正在完成最终验收
+**状态：** V0 逻辑设计基线；第 32 节真实 Session 认证开发范围已验收
 
 **更新日期：** 2026-09-03
 
-**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；第 23～29 节持续校准规则/求值边界；第 30 节验收 Strategy snapshot/Activity publication；第 31 节以[访问控制模型基线](access-control-model-threat-boundary-v1.md)与 [ADR-0027](../decisions/ADR-0027-governance-access-control-model.md)验收 Governance 纯 Policy language/evaluator；第 32 节以[真实 Session 认证基线](identity-session-authentication-v1.md)与 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)建立 Identity 实现候选和认证停止线。
+**来源章节：** [第 8 节：画 V0 系统设计](../course/part-01/lesson-08-v0-system-design.md)；第 23～29 节持续校准规则/求值边界；第 30 节验收 Strategy snapshot/Activity publication；第 31 节以[访问控制模型基线](access-control-model-threat-boundary-v1.md)与 [ADR-0027](../decisions/ADR-0027-governance-access-control-model.md)验收 Governance 纯 Policy language/evaluator；第 32 节以[真实 Session 认证基线](identity-session-authentication-v1.md)与 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)建立并验收 Identity 开发实现和认证停止线。
 
 ## 1. 文档目的
 
 本设计把产品定位、用户旅程、运营与 AI 工作流、领域事件、限界上下文和非功能需求放进同一套系统边界中。它回答“GrowthOS 是什么、谁使用、拥有哪些业务能力、依赖哪些外部系统”，不回答最终需要多少微服务、数据库表或中间件。
 
-V0 是后续实现的导航图，不是已完成能力清单。第 11～24 节形成可运行 Gin/React/MySQL/Redis/Compose 基线；第 25～30 节形成未装配的 Participation、Lottery graph/snapshot 与 Marketing Activity publication。第 31 节新增 Governance exact capability、固定 Role ceiling、四种 Scope、immutable Policy revision 与 default-deny evaluator。第 32 节实现候选再新增独立 Identity 上下文、本地 workforce credential、MySQL 权威 Session、三张 Identity 表、独立数据库身份与 pool，以及同源 `/login`、`/session` 消费者；源码 Migration latest 为 14，共十三张应用表。第 32 节只跨越“匿名输入 → trusted human Principal”的认证边界：Policy repository、服务端 RBAC enforcement、业务 Resource fact 装配、前端 capability 裁剪和越权 E2E 仍分别留给第 33～35 节。
+V0 是后续实现的导航图，不是已完成能力清单。第 11～24 节形成可运行 Gin/React/MySQL/Redis/Compose 基线；第 25～30 节形成未装配的 Participation、Lottery graph/snapshot 与 Marketing Activity publication。第 31 节新增 Governance exact capability、固定 Role ceiling、四种 Scope、immutable Policy revision 与 default-deny evaluator。第 32 节开发实现新增并已验收独立 Identity 上下文、本地 workforce credential、MySQL 权威 Session、三张 Identity 表、独立数据库身份与 pool，以及同源 `/login`、`/session` 消费者；源码 Migration latest 为 14，共十三张应用表。第 32 节只跨越“匿名输入 → trusted human Principal”的认证边界：Policy repository、服务端 RBAC enforcement、业务 Resource fact 装配、前端 capability 裁剪和越权 E2E 留给尚未实现的第 33～35 节。
 
 ## 2. 图例与状态
 
@@ -159,7 +159,7 @@ flowchart LR
 
 | 优先级 | 用例 | 说明 |
 | --- | --- | --- |
-| 信任入口 | workforce 登录、Session 恢复与退出 | 第 32 节实现候选已建立真实认证入口；认证成功不代表业务授权成功 |
+| 信任入口 | workforce 登录、Session 恢复与退出 | 第 32 节已在开发范围建立并验收真实认证入口；认证成功不代表业务授权成功 |
 | 核心 | 活动配置、参与、抽奖、权益结果 | 构成营销事实主链路，后续按章节逐步实现 |
 | 增长 | Feed、行为、画像、实验与分析 | 建立触达和反馈闭环，核心交易失败时不能靠分析数据修正 |
 | 治理 | 权限、审批、审计、暂停与止损 | 人工和 AI 写操作共用，不是后台页面的附属功能 |
@@ -277,7 +277,7 @@ flowchart LR
 
 | 时间范围 | 能力 | 状态 |
 | --- | --- | --- |
-| 当前 | 第 1～31 节已经按台账验收；第 30 节历史 snapshot/Activity/v11 工程证据保持；第 31 节有未装配 Governance evaluator；第 32 节候选的独立 MySQL 与 development HTTP wire 官方门禁已通过，最终全仓/ref 冻结仍在进行 | Session API、独立 Identity pool 和 `/login`、`/session` 已进入候选；第 32 节尚未冻结，也没有受 RBAC 保护的业务 endpoint |
+| 当前 | 第 1～32 节开发范围已经按台账验收；第 30 节历史 snapshot/Activity/v11 工程证据保持；第 31 节有未装配 Governance evaluator；第 32 节独立 MySQL、完整 development Compose/Session wire、浏览器核心旅程及代码/文档门禁已通过 | Session API、独立 Identity pool 和 `/login`、`/session` 已完成开发验收；raw framing、真实 wire COMMIT 丢应答、production TLS/可信代理与更广设备/AT 仍待环境验收，也没有受 RBAC 保护的业务 endpoint |
 | 第 33～77 节 | 第 33～35 节在真实运营后台前依次建立服务端 RBAC、前端权限裁剪与越权 E2E；随后推进运营后台、活动账户、订单、库存、消息一致性、权益、Feed 与增长反馈闭环 | 尚未实现，不能提前改写完成状态 |
 | 第 78～101 节 | 服务拆分、gRPC、Nacos、MCP、Agent、可观测和 Kubernetes | 仅为远期方向 |
 
@@ -337,6 +337,6 @@ flowchart LR
 
 ## 12. 下一阶段输入
 
-第 11～30 节依次形成运行基线、ephemeral Lottery、资格/路由、exact graph/snapshot 和 Activity publication。第 31 节建立公共 Principal/Resource/Action/Role/Scope/Policy 语言与纯 default-deny evaluator；第 32 节实现候选建立本地 workforce credential、MySQL 权威 Session 与 trusted human Principal，并提供同源 Session API 和认证页面。待最终验收冻结后，第 33～35 节再依次建立服务端强制、前端权限感知和越权端到端验收。当前不能用登录成功、隐藏菜单、会员 tier、构造出的 Principal、Route 或 publication resolve 成功代替授权。
+第 11～30 节依次形成运行基线、ephemeral Lottery、资格/路由、exact graph/snapshot 和 Activity publication。第 31 节建立公共 Principal/Resource/Action/Role/Scope/Policy 语言与纯 default-deny evaluator；第 32 节已完成本地 workforce credential、MySQL 权威 Session 与 trusted human Principal 的开发验收，并提供同源 Session API 和认证页面。第 33～35 节尚未实现，后续再依次建立服务端强制、前端权限感知和越权端到端验收。当前不能用登录成功、隐藏菜单、会员 tier、构造出的 Principal、Route 或 publication resolve 成功代替授权。
 
-继续遵守 V0 的真实状态表达：历史 v11 工程验收不等于 runtime 或 SLO，publication resolve 不等于 Draw/授权/审批，Policy allow 不等于 caller 已认证或 handler 已强制，Session 成功也不等于业务请求已授权。第 32 节实现候选的证据入口见[产品基线](identity-session-authentication-v1.md)、[课程](../course/part-04/lesson-32-real-session-authentication.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)、[设计手记](../design-thinking/lessons/lesson-32.md)、[面试问答](../interview/lessons/lesson-32.md)、[运维手册](../runbooks/identity-session-operations.md)和 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)。独立 MySQL 与 development HTTP wire 的官方门禁已通过；最终全仓门禁、远程 ref 对齐与冻结 tip 完成前，本文件仍不把第 32 节登记为已验收。
+继续遵守 V0 的真实状态表达：历史 v11 工程验收不等于 runtime 或 SLO，publication resolve 不等于 Draw/授权/审批，Policy allow 不等于 caller 已认证或 handler 已强制，Session 成功也不等于业务请求已授权。第 32 节已验收实现的证据入口见[产品基线](identity-session-authentication-v1.md)、[课程](../course/part-04/lesson-32-real-session-authentication.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)、[设计手记](../design-thinking/lessons/lesson-32.md)、[面试问答](../interview/lessons/lesson-32.md)、[运维手册](../runbooks/identity-session-operations.md)和 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)。其 development 认证范围已经闭环；raw Content-Length 特定代理变体、真实 wire COMMIT 丢应答、production TLS/可信代理与更广设备/AT 仍未完成，不能将本节登记外推成生产就绪。

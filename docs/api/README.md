@@ -45,6 +45,7 @@
 | 第 29 节 | 新增未装配的 exact Strategy 路由图封闭求值内核；公开 route、DTO、header、status、error code、React、schema 与 Compose 契约全部不变 | 已验收 | [第 29 节 API 记录](lessons/lesson-29.md) |
 | 第 30 节 | 新增未装配的 Strategy snapshot、Marketing Activity publication/CAS/rollback/resolve gate 与 Lottery ACL；不新增公开 route、DTO、header、status、error code 或 React 调用 | 已验收 | [第 30 节 API 记录](lessons/lesson-30.md) |
 | 第 31 节 | 新增未装配的 Governance 访问控制策略语言与纯判定内核；HTTP/MCP/Agent/schema/UI/DB/Compose 和既有 endpoint 授权行为全部零变化 | 已验收 | [第 31 节 API 记录](lessons/lesson-31.md) |
+| 第 32 节 | 新增同一路径的 `POST/GET/DELETE /api/v1/session`，以及 React `/login`、`/session` 的真实会话消费者；只完成认证，不给任何业务 endpoint 添加 RBAC | 已验收 | [第 32 节 API 记录](lessons/lesson-32.md) |
 
 ## 阅读方式
 

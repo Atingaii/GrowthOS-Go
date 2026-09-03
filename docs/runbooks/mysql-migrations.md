@@ -2,7 +2,7 @@
 
 **适用范围：** GrowthOS-Go 第 13 节及之后的 MySQL 前向 Migration
 
-**当前边界：** 产品源码 Migration latest 为 14；旧 `000001`～`000011` 字节历史保留，`000012`～`000014` 依次新增 workforce account、Session 与 authentication throttle 三张 Identity 表，当前共十三张业务/Identity 表。第 28 节 v5、第 30 节 disposable/长期 v5→v11 仍是各自时间切片的历史证据；第 32 节已运行部分 Compose、provision、maintenance 与浏览器证据，但独立 MySQL 最终 migration/Repository/grant 矩阵和全仓冻结门禁仍为 `PENDING`。
+**当前边界：** 产品源码 Migration latest 为 14；旧 `000001`～`000011` 字节历史保留，`000012`～`000014` 依次新增 workforce account、Session 与 authentication throttle 三张 Identity 表，当前共十三张业务/Identity 表。第 28 节 v5、第 30 节 disposable/长期 v5→v11 仍是各自时间切片的历史证据；第 32 节独立 MySQL 8.4.11 schema/Repository/runtime-grant 与最终代码/文档门禁已实际通过，生产 TLS 与部署三账号完整轮换仍为 `PENDING`。
 
 ## 1. 目的
 
@@ -256,11 +256,22 @@ Migration 执行成功但连接/source 关闭失败时，命令仍非零退出�
 
 ### 8.1 第 32 节当前实现与执行证据
 
-当前候选源码已经把 Migration latest 推进到 14，并将 Identity runtime、INSERT-only provisioner 与 maintenance 的 SQL 能力写入 Compose grant reconciliation/smoke。两个 disposable provision Compose 环境已经实际通过并精确清理；official maintenance fixture 在 v14 表上实测第一次删除 Session/throttle/total `2/1/3`、第二次 `0/0/0`，active Session fingerprint 不变且 fixture 零残留。development loopback 真实浏览器也已通过 Nginx → Go → MySQL 的 login、reload/current、logout，以及 MySQL outage 下 unknown/unavailable 与恢复重核；该证据没有直接读取 HttpOnly Cookie，也不替代原始 wire 或 schema/grant 全矩阵。
+当前已验收源码已经把 Migration latest 推进到 14，并将 Identity runtime、INSERT-only provisioner 与 maintenance 的 SQL 能力写入 Compose grant reconciliation/smoke。两个 disposable provision Compose、official maintenance、development browser 与 HTTP core wire 各自已有证据；本节只登记独立数据库门禁，不用其他层代替 schema/grant。
 
 长驻 provision 实跑曾因 `docker compose up --wait` 把已成功完成的 `mysql-grants` `exited:0` 当作等待失败而停止。提交 `af4245e` 已让 provision/maintenance wrapper 最长 180 秒轮询唯一 container 的 exact state：只接受 `exited:0`，等待 `created:0`/`running:0`/`restarting:0`，对非零退出、歧义、意外状态、inspect 失败和超时关闭。该事实只证明 prerequisite 判定已修复，不把一次成功升级成所有数据库场景均通过。
 
-第 32 节最终仍须在独立 disposable MySQL 8.4.11 上完成并冻结：v11→v14 与 clean/second-up/dirty stop、三表精确 schema/index/FK/CHECK、Repository account/session/throttle 并发与故障注入、三个数据库身份的正向/1142/1143 负向能力、mandatory role，以及退出后的精确清理。原始 Session HTTP wire、staging/production TLS 和全仓最终门禁也仍为 `PENDING`。
+第 32 节现提供显式 opt-in 的独立门禁：
+
+```bash
+GROWTHOS_LESSON32_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 \
+  make lesson32-mysql-acceptance
+```
+
+脚本使用随机 name/精确 label、随机 loopback port、tmpfs 数据目录与私有 root/Migrator/runtime Secret。它先运行 `TestIdentitySchemaMySQLIntegration`：fresh v14、second-up、v11→v14、旧业务结构/数据 fingerprint、Identity schema/index/FK/CHECK/binary semantics、dirty fail-closed；测试结束后确认数据库为 0 表。随后运行 migration immutability/inventory，用真实 `growth-migrate up/status` 恢复 v14，授予 runtime workforce `SELECT + UPDATE(updated_at)` 和 Session/throttle DML，再执行 `TestRepositoryMySQL84Acceptance` 的 credential、并发 fencing、锁等待取消、Session lifecycle、maintenance 与 grant deny。
+
+本轮从 HEAD `4149576` 执行，容器 `growthos-lesson32-mysql-e4e83e6c1b0e7036f42e65f9`、label `com.growthos.acceptance.lesson32=run-e4e83e6c1b0e7036f42e65f9`，`VERSION()=8.4.11`，19 秒 exit 0。真实 migrator 报 `applied/14`，status 为 `clean/14/latest=14`；终态 `schema_migrations=14:0`、workforce/session/throttle `0:0:0`、`identity_l32_forbidden=0`。runtime 正向 lock-read/updated_at 成功，credential/login update、account insert/delete、migration/Lottery/Marketing read 与 DDL 被拒绝；helper 还严格比较 direct grants 与空 mandatory role。
+
+脚本对随机 container ID/name/label 做精确清理，Secret 按长度覆写后 unlink 并删私有目录；SSD、CoW、快照与控制器重映射意味着这不是物理不可恢复保证。外部复核 name/label/temp 均为 0，长期 `growthos` containers/volumes/networks 前后快照一致。该门禁只创建 Migrator/runtime 两个测试账号；不能据此单独宣称 production host/TLS、长期 business/provisioner 身份轮换或 raw COMMIT outcome-unknown 网络注入已通过。
 
 ### 8.2 第 28/30 节历史与通用隔离入口
 
@@ -334,6 +345,7 @@ make test-integration-mysql
 - 确认测试隔离表与隔离版本表已经删除；
 - `lesson28-mysql-acceptance` 只可停止同时匹配本次精确 container ID、随机 name 与 label 的容器，并只删除已解析的任务 Secret 文件/目录；不得按前缀、通配符或全局 prune 扩大清理范围；
 - `lesson30-mysql-acceptance` 同样只能清理本次解析出的精确 container ID/name/label 和任务 Secret 目录；不得误删长期 `growthos` 或其他验收任务资源；
+- `lesson32-mysql-acceptance` 同样只清理由本轮精确 container ID/name/label 共同证明归属的容器与私有临时目录；Secret 先按已知长度覆写再 unlink，但 SSD、CoW、快照和控制器重映射下不能宣称物理不可恢复。本轮外部 name/label/temp 复核为零，长期 `growthos` containers/volumes/networks 前后快照一致；
 - 不删除用户原有容器、Volume、数据库、账号或可复用依赖；
 - 记录实际 MySQL 版本、构建 SHA、状态前后值、命令退出码和清理结果；
 - 不在工单或 QA 文档粘贴 Secret。

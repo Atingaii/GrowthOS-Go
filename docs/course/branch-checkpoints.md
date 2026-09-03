@@ -2,13 +2,13 @@
 
 **状态：** 当前
 
-**更新日期：** 2026-08-31
+**更新日期：** 2026-09-03
 
 本页把课程章节与可检出的 Git 分支对应起来，方便在 `main` 保持原状的同时，逐节查看实现是怎样演进的。分支记录的是学习检查点，不替代[课程状态台账](status.csv)；章节只有具备正文、API 记录、实际 QA 证据并通过质量门禁后，才能在台账中标记“已完成”。从第 13 节开始，稳定分支还必须包含对应的第一性原理设计手记与面试问答；历史章节将按这一新增规范逐节回填。
 
 ## 当前检查点
 
-| 检查点 | 分支 | 起点 | 已确认提交 | 2026-08-31 可用位置 | 学习重点 |
+| 检查点 | 分支 | 起点 | 已确认提交 | 2026-09-03 可用位置 | 学习重点 |
 | --- | --- | --- | --- | --- | --- |
 | 第 9 节：仓库工程基线 | `codex/lesson-09-repository-baseline` | `main` | `e5516b1` | 本地与 `origin` | 单 Go module、目录职责、文档与统一质量门禁 |
 | 第 10 节：模块化单体 | `codex/lesson-10-modular-monolith` | 第 9 节 | `2a8f126` | 本地与 `origin` | 单进程边界、模块依赖规则与拆分条件 |
@@ -33,6 +33,7 @@
 | 第 29 节：实现规则决策引擎 | `codex/lesson-29-rule-decision-engine` | 第 28 节已验收 tip `90844c1` | 已推送产品/ADR `041dc30`、`27bd514`；共享 oracle/fact session `0ca25d2`、`51dbd61`；domain/application/停止线 `a173d8b`、`3863b06`、`ab056ba`；异构并发隔离 `515d776`；候选冻结 `e74037e`；完整章节以同名远端实际冻结 tip 为准 | 远端引用记录提交后再次对齐同名远端与累计分支 | exact graph 封闭 typed 求值、单一 graph/fact/as-of、完整 path、step/time/cancel budget、zero-decision 与未装配边界 |
 | 第 30 节：为什么 Strategy 不等于 Activity | `codex/lesson-30-strategy-vs-activity` | 第 29 节已验收 tip `1b7521e` | 产品/ADR `3dfc028`、`fe0c12e`；snapshot/Activity/schema/application/repository/验收 `7404f91`～`065da2f`；文档/当前态 `5d8b53a`～`cb7255f`；完成/冻结 `887754b`、`6504e91` | 本地与 `origin` | exact Strategy snapshot、Activity immutable publication、CAS/rollback/resolve、Lottery ACL、commit unknown 对账与 v11 证据 |
 | 第 31 节：统一访问控制模型与威胁边界 | `codex/lesson-31-access-control-model-threat-boundary` | 第 30 节已验收 tip `6504e91` | 产品/ADR `c7e5248`～`35c0420`；values/roles/policy/evaluator `34c3add`～`a054eb1`；停止线/威胁矩阵 `6cae442`、`ea98390`；术语/课程/设计/面试/QA `c606de1`～`06fedef`；最终冻结以同名远端实际 tip 为准 | 本地与 `origin` | Governance exact capability、角色模板上限、四种 scope、不可变 Policy、default deny/deny precedence、证据与无 session/runtime/UI 停止线 |
+| 第 32 节：真实会话认证 | `codex/lesson-32-real-session-authentication` | 第 31 节已验收 tip `d06f19a` | 产品/ADR/竞争准入 `e41c2af`～`5fee340`；Identity domain/application/schema/adapter/runtime `9af7613`～`75874b0`；运维、前端与章节文档从 `dafdd63` 起逐步追加；增强验收加固 `8a5e0ce`～`9fc4e06`；证据/产品/架构收口 `09991fa`～`20fdeb0`；最终登记以本行所在稳定 tip 为准 | 本地、`origin` 与累计快照指向同一冻结 tip | Workforce credential、Argon2id、MySQL server-side session、Cookie/CSRF、三方法 Session API、独立身份与无 RBAC/权限投影停止线 |
 
 第 11 节可运行实现固定在 `ade1fad`，配套课程和 QA 文档紧随其后提交。完整章节以 `origin/codex/lesson-11-gin-http-service` 的 tip 为准；这种“实现提交 + 验收文档提交”的顺序既能精确引用代码，也方便逐步比较。
 
@@ -72,15 +73,17 @@
 
 第 31 节从第 30 节已验收 tip `6504e91` 线性创建。前三个提交先冻结威胁边界与 Governance 所有权；随后以 values、role ceiling、immutable Policy、evaluator 四步形成纯内核，再由两轮架构/威胁矩阵和术语审查关闭子包逃逸、session 越界、capability 调包与 evidence 缺口。课程/API、设计、40 道逐题证据面试问答、QA 和模型审查手册继续拆成小提交。该分支没有 session、HTTP、DB、UI 或 runtime consumer；完整学习版本以同名远端最终实际冻结 tip 为准。
 
+第 32 节从第 31 节已验收 tip `d06f19a` 线性创建。提交按“产品/ADR 与竞争准入 → Identity domain/application → 三张追加式 Migration → Cookie/CSRF/Origin/MySQL adapter → 双 MySQL pool 与 composition → operations-only provision/maintenance → 严格浏览器 transport → `/login` 与 `/session` 体验 → API/Runbook/课程/设计/面试 → 增强验收与全局状态收口”顺序推进。独立 disposable MySQL 8.4.11、development HTTP wire、浏览器核心旅程、最终 Go/race/Web/doccheck/diff 门禁及任务资源精确清理均已实际通过。冻结提交不填写会改变自身的未知 hash；完整比较终点以 `origin/codex/lesson-32-real-session-authentication` 的稳定实际 tip 为准。
+
 ## 稳定章节分支与累计快照
 
-课程长期保留稳定章节分支与累计快照；第 28 节的实现与已推送学习提交已经形成，最终 QA/台账与冻结门禁以本节最终提交为准，累计分支随后只做 fast-forward，因此 Git 内容证据与远端引用移动分开记录：
+课程长期保留稳定章节分支与累计快照。截至第 32 节，同名稳定分支与 `codex/complete-implementation` 均指向本节已验收 tip。累计分支只在单节验收后 fast-forward，因此 Git 内容证据与远端引用移动分开记录：
 
 | 类型 | 分支规则 | 是否移动 | 当前事实 |
 | --- | --- | --- | --- |
-| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 28 节以包含最终 QA/台账的同名远端实际 tip 冻结；最终 SHA 由 Git 产生，不在提交前猜测 |
-| 本次冻结分支 | `codex/lesson-28-rule-tree-schema` | 验收后保持稳定 | 已推送学习小提交见当前检查点；完整章节以 push 后同名远端实际冻结 tip 为准 |
-| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 第 28 节冻结 push 验收后由根代理 fast-forward 到同一实际 tip；具体 SHA 以远端引用核查为准，不在提交前猜测 |
+| 单节稳定分支 | `codex/lesson-XX-...` | 一节验收结束后保持稳定 | 第 32 节同名本地/远端分支已冻结；实际 tip 由稳定 ref 定义，不在自身提交中预写 |
+| 最近冻结分支 | `codex/lesson-32-real-session-authentication` | 验收后保持稳定 | 本地与 `origin` 指向同一实际冻结 tip |
+| 最新累计快照 | `codex/complete-implementation` | 每节验收后快进 | 本地与 `origin` 已 fast-forward 到同一第 32 节实际冻结 tip |
 
 学习单节变化时使用对应稳定分支；想直接查看目前全部已验收实现时使用 `codex/complete-implementation`。累计分支只做 fast-forward，不替代每节固定检查点，也不能因为代码已合入工作树就提前代表“已验收”。
 
@@ -132,6 +135,7 @@ git switch codex/lesson-28-rule-tree-schema
 git switch codex/lesson-29-rule-decision-engine
 git switch codex/lesson-30-strategy-vs-activity
 git switch codex/lesson-31-access-control-model-threat-boundary
+git switch codex/lesson-32-real-session-authentication
 ```
 
 如果本地还没有某个**已经确认存在于远端**的课程分支，可从对应远端分支创建跟踪分支：
@@ -157,6 +161,7 @@ git switch --track origin/codex/lesson-28-rule-tree-schema
 git switch --track origin/codex/lesson-29-rule-decision-engine
 git switch --track origin/codex/lesson-30-strategy-vs-activity
 git switch --track origin/codex/lesson-31-access-control-model-threat-boundary
+git switch --track origin/codex/lesson-32-real-session-authentication
 ```
 
 每一节建议先看提交摘要，再比较与上一检查点的差异：
@@ -203,11 +208,13 @@ git diff --stat 1b7521e..codex/lesson-30-strategy-vs-activity
 git diff 1b7521e..codex/lesson-30-strategy-vs-activity
 git diff --stat 6504e91..codex/lesson-31-access-control-model-threat-boundary
 git diff 6504e91..codex/lesson-31-access-control-model-threat-boundary
+git diff --stat d06f19a..codex/lesson-32-real-session-authentication
+git diff d06f19a..codex/lesson-32-real-session-authentication
 ```
 
 第 11 节的直接起点是工程基线加固，而不是 `main`。这样比较只会显示本节新增的 HTTP 服务、测试和配套文档；若直接与 `main` 比较，还会混入第 9、10 节和工程加固的变化。
 
-第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23～29 节的需求、实现和停止线提交见当前检查点表。第 30 节从第 29 节最终 tip `1b7521e` 开始并冻结于 `6504e91`。第 31 节再从 `6504e91` 开始，按产品/ADR、values、roles、Policy、evaluator、威胁矩阵和六类文档顺序推进；完整章节以根代理推送包含最终 QA/台账的冻结提交后形成的同名远端实际 tip 为准，随后累计分支再 fast-forward 到该 tip。
+第 12 节直接基于第 11 节已验收 tip，完整验收 tip 为 `ac9ad0e`。第 13～22 节的直接起点和核心提交见上表与对应段落。第 23～29 节的需求、实现和停止线提交见当前检查点表。第 30 节从第 29 节最终 tip `1b7521e` 开始并冻结于 `6504e91`；第 31 节再从 `6504e91` 开始并冻结于 `d06f19a`。第 32 节从 `d06f19a` 线性创建并已冻结；第 33 节必须从核验后的第 32 节精确 tip 创建，不得从 `main` 或中途候选提交创建。
 
 ## 分支使用约束
 
@@ -216,7 +223,8 @@ git diff 6504e91..codex/lesson-31-access-control-model-threat-boundary
 3. 一个章节可有多个小提交，但最终必须有一个通过完整门禁的分支 tip；QA 记录对应的验证命令、环境和结果，设计手记记录推导与风险，面试问答记录可口述答案和来源边界。
 4. 不在 `main` 上提前合并后续实现。学习者可按需 cherry-pick、手工重做或比较差异。
 5. 分支已推送不等于章节已完成；以 `status.csv` 和 QA 实测证据为准。
+6. 当前章节的冻结提交不内嵌自身 SHA，以同名稳定 ref 定位；下一章节在“起点”栏记录上一章节的精确冻结 SHA，既避免自引用，也保留严格可复现的线性链。
 
 ## 后续登记模板
 
-新增章节分支时，在“当前检查点”追加一行，并记录：章节、完整分支名、直接起点、已验收提交或分支 tip、学习重点。若分支被重建或强制移动，必须同步更新本页和对应 QA，避免学习者比较到错误版本。
+新增章节分支时，在“当前检查点”追加一行，并记录：章节、完整分支名、上一章节精确冻结 SHA、已验收提交组或稳定分支 tip、学习重点。若分支被重建或强制移动，必须同步更新本页和对应 QA，避免学习者比较到错误版本。

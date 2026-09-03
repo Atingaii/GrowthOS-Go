@@ -18,13 +18,13 @@
 
 ### 1.2 90 秒版本
 
-> 我先把目标从“做登录页”改成“只有服务器已确认的 credential 与 Session 才能构造 trusted human Principal”。密码采用 Argon2id `m=19456KiB,t=2,p=1`，strict PHC parser先限制坏存量参数；unknown用户走dummy work，外围有MySQL login/source双维reservation和进程级默认2并发闸门。每次成功登录都生成32-byte随机opaque token，浏览器通过HttpOnly、SameSite Strict Cookie持有，MySQL只存SHA-256 digest。Session同时检查account enabled、captured epoch、revoke、15分钟idle和8小时absolute；60秒touch减少写放大，每账号最多5个，合法replacement优先，再按`last_seen_at, issued_at, session_ref`确定性淘汰。POST/DELETE要求exact Origin，logout再用绑定Session digest的HMAC CSRF。数据库身份分权，maintenance固定one-shot、session/throttle各250行且不自动重试commit unknown。实际证据已有focused Go/fuzz、独立MySQL、HEAD `9fc4e06` 的完整development Compose/Session wire、前端和浏览器核心旅程；raw 429、TE/Trailer、2049-byte body、exact Cookie/clear-Cookie、header单值矩阵与invalid-Host JSON 421均已实跑。仍PENDING的是raw Content-Length absent/zero/mismatch proxy变体、真实commit-unknown fault、production TLS/可信代理、浏览器storage/console与更广设备/辅助技术，以及最终冻结。
+> 我先把目标从“做登录页”改成“只有服务器已确认的 credential 与 Session 才能构造 trusted human Principal”。密码采用 Argon2id `m=19456KiB,t=2,p=1`，strict PHC parser先限制坏存量参数；unknown用户走dummy work，外围有MySQL login/source双维reservation和进程级默认2并发闸门。每次成功登录都生成32-byte随机opaque token，浏览器通过HttpOnly、SameSite Strict Cookie持有，MySQL只存SHA-256 digest。Session同时检查account enabled、captured epoch、revoke、15分钟idle和8小时absolute；60秒touch减少写放大，每账号最多5个，合法replacement优先，再按`last_seen_at, issued_at, session_ref`确定性淘汰。POST/DELETE要求exact Origin，logout再用绑定Session digest的HMAC CSRF。数据库身份分权，maintenance固定one-shot、session/throttle各250行且不自动重试commit unknown。第 32 节真实认证链已按 development DoD 完成；实际证据已有focused Go/fuzz、独立MySQL、HEAD `9fc4e06` 的development增强 Compose/Session wire、前端、浏览器核心旅程与最终代码/文档门禁；raw 429、TE/Trailer、2049-byte body、exact Cookie/clear-Cookie、header单值矩阵与invalid-Host JSON 421均已实跑。仍PENDING的是raw Content-Length absent/zero/mismatch proxy变体、真实commit-unknown fault、production TLS/可信代理，以及浏览器storage/console与更广设备/辅助技术。
 
 ## 2. 事实账本与停止线
 
 | 可以说 | 不能说 |
 | --- | --- |
-| 已建立真实认证候选链，focused Go、MySQL 与完整 development HTTP wire 已实跑 | 已经完整生产验收 |
+| 已按 development DoD 完成真实认证链，focused Go、MySQL 与 development 增强 HTTP wire 已实跑 | 已经完整生产验收 |
 | Session成功只返回 trusted human Principal | 登录成功即获得业务权限 |
 | browser adapter/UI 单元、类型、构建与核心旅程已通过 | 浏览器直接读取 HttpOnly store 或完整 CSRF/storage/device 矩阵已通过 |
 | Argon数据是 Apple M2 Pro 本地 baseline | 这是生产 SLO/吞吐承诺 |
@@ -438,7 +438,7 @@
 
 **回答：** 证据分层：纯Go/TS测试证明不变量；真实MySQL证明DDL、collation、lock、grants与driver；Compose证明image/user/mount/network/Secret；HTTP证明Nginx→Go→MySQL wire；browser证明Cookie jar、JS可见性、刷新/退出/交互；TLS证明Secure `__Host-`和`verify_identity`。每层不能互相代替。
 
-**追问：** 当前诚实状态？Identity 普通/race/shuffle×10、appconfig与四个binary count=10、九个fuzz target PASS；HEAD `4149576` 的独立MySQL 8.4.11 gate 19s/exit 0，终态`14:0`、Identity`0:0:0`。HEAD `9fc4e06` 的完整官方Compose在 project `growthosl24f6a5acf4d242695ad3e2df19` exit 0、无可信总耗时；除了完整Lottery/cache/performance门禁，还证明Session 201→200→replacement→204→replay、Cookie/CSRF/Origin/Fetch、同形401、五会话、MySQL 503/recovery、raw login/source 429、TE/Trailer、2049-byte body、错误零Set-Cookie、失效态exact clear-Cookie、安全header单值矩阵和invalid-Host JSON 421。清理前`disabled:2:10:31`，fixture cleanup`10:31:1`，三表及Docker/temp residue全零，长期资源不变且健康。浏览器另在1719×862、390×844、1280×720完成核心旅程与keyboard/focus/aria/reduced-motion核查。仍PENDING的是raw Content-Length absent/zero/mismatch proxy变体、真实issue/revoke commit-unknown fault、browser storage/console、更广设备/辅助技术、production TLS/可信代理、最终冻结；L33～L35也没有因此完成。
+**追问：** 当前诚实状态？Identity 普通/race/shuffle×10、appconfig与四个binary count=10、九个fuzz target PASS；HEAD `4149576` 的独立MySQL 8.4.11 gate 19s/exit 0，终态`14:0`、Identity`0:0:0`。HEAD `9fc4e06` 的官方 development 增强 Compose gate 在 project `growthosl24f6a5acf4d242695ad3e2df19` exit 0、无可信总耗时；除了完整Lottery/cache/performance门禁，还证明Session 201→200→replacement→204→replay、Cookie/CSRF/Origin/Fetch、同形401、五会话、MySQL 503/recovery、raw login/source 429、TE/Trailer、2049-byte body、错误零Set-Cookie、失效态exact clear-Cookie、安全header单值矩阵和invalid-Host JSON 421。清理前`disabled:2:10:31`，fixture cleanup`10:31:1`，三表及Docker/temp residue全零，长期资源不变且健康。浏览器另在1719×862、390×844、1280×720完成核心旅程与keyboard/focus/aria/reduced-motion核查，最终代码/文档门禁也已通过。仍PENDING的是raw Content-Length absent/zero/mismatch proxy变体、真实issue/revoke commit-unknown fault、browser storage/console、更广设备/辅助技术和production TLS/可信代理；L33～L35也没有因此完成。
 
 **追问：** 验收脚本自己失败怎么办？保留完整链而不是只展示最后绿灯。`8a5e0ce`上的工作树核心轮 302s PASS，但该commit本身未含Session gate，不能当冻结provenance；首个已提交增强 gate `903fd9f` 在 project `growthosl24c1bf7ce29e5efa417fae6932` 的Session前置门禁都PASS，随后因BSD awk把`index`当内建名而exit 2，完成清理但无可信总耗时。`51b52e0`修复后，project `growthosl240da11b08420700da0d07428f` 又在第二次重复backend build取Docker Hub OAuth token时遇到`EOF`，未进入Session且外部residue为零。`9fc4e06`把四个backend target合并为一次Bake，共享builder只执行一次，才在新project完整PASS。三个失败层分别是证据provenance、脚本可移植性和外部构建依赖，不能误报成产品Session失败，也不能靠盲目retry掩盖重复工作。
 
@@ -544,4 +544,4 @@ bearer被盗即可重放，所以要HTTPS、HttpOnly、SameSite、短idle/absolu
 
 ## 8. 最后的60秒收束
 
-> 这套实现最重要的不是用了Argon2或HttpOnly，而是认证链每一层都有唯一authority和失败边界：password hash参数与并发有界；Session bearer随机、digest-only、可撤销且双到期；throttle在hash前原子reservation；Origin、Fetch Metadata、SameSite和session-bound CSRF分层；数据库身份分离；提交不确定不盲重试；浏览器区分匿名与不可用。证据也分层，当前已通过focused Go/fuzz、独立MySQL、HEAD `9fc4e06`完整development Compose/Session wire、前端、provision、maintenance和浏览器核心旅程；raw 429、TE/Trailer、2049-byte body、exact Cookie/clear-Cookie、安全header单值矩阵与invalid-Host JSON 421均已实跑。仍PENDING的是raw Content-Length特定proxy变体、真实commit-unknown fault、production TLS/可信代理、browser storage/console与更广设备/辅助技术，以及最终冻结。最后我把trusted Principal作为本节终点，服务端RBAC、前端capability投影和完整越权E2E继续按33到35节推进。
+> 这套实现最重要的不是用了Argon2或HttpOnly，而是认证链每一层都有唯一authority和失败边界：password hash参数与并发有界；Session bearer随机、digest-only、可撤销且双到期；throttle在hash前原子reservation；Origin、Fetch Metadata、SameSite和session-bound CSRF分层；数据库身份分离；提交不确定不盲重试；浏览器区分匿名与不可用。证据也分层，第 32 节已按 development DoD 完成并通过focused Go/fuzz、独立MySQL、HEAD `9fc4e06` development增强 Compose/Session wire、前端、provision、maintenance、浏览器核心旅程和最终代码/文档门禁；raw 429、TE/Trailer、2049-byte body、exact Cookie/clear-Cookie、安全header单值矩阵与invalid-Host JSON 421均已实跑。仍PENDING的是raw Content-Length特定proxy变体、真实commit-unknown fault、production TLS/可信代理，以及browser storage/console与更广设备/辅助技术。最后我把trusted Principal作为本节终点，服务端RBAC、前端capability投影和完整越权E2E继续按33到35节推进。

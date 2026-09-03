@@ -10,7 +10,7 @@
 
 本地图基于第 5 节领域事件地图，明确当前业务语言边界、职责、事实所有权和上下文协作方式。它服务于后续建模和评审，不等于微服务图、数据库图、Go 包结构或最终组织架构。
 
-当前实现策略仍是 Modular Monolith。Lottery、Marketing、Participation 与 Governance 的既有所有权保持不变；第 32 节候选新增 Identity，上下文只拥有本地 workforce account/credential、server-side Session、authentication throttle 与 trusted human Principal 映射。Identity 已装配 Session HTTP，但不拥有 Role/Scope/Permission/Policy 或业务 Resource facts；Governance evaluator 仍未装配。共享 Go 进程和 MySQL 实例不会把两个上下文合并，也不会让“已登录”自动变成业务 allow。
+当前实现策略仍是 Modular Monolith。Lottery、Marketing、Participation 与 Governance 的既有所有权保持不变；第 32 节新增并验收 Identity，上下文只拥有本地 workforce account/credential、server-side Session、authentication throttle 与 trusted human Principal 映射。Identity 已装配 Session HTTP，但不拥有 Role/Scope/Permission/Policy 或业务 Resource facts；Governance evaluator 仍未装配。共享 Go 进程和 MySQL 实例不会把两个上下文合并，也不会让“已登录”自动变成业务 allow。
 
 ## 2. 划分依据
 
@@ -127,7 +127,7 @@ flowchart LR
 
 第 30 节的 <code>LotteryVerifier</code> 是 Marketing 消费方拥有的 ACL 端口，其 `lotteryconfig` adapter 只通过 Lottery application 的 exact graph/snapshot readers 工作。它验证 publication candidate 中的 graph identity、所有 terminal target 与 Strategy revision manifest 精确闭合，不读取 latest，也不允许 Marketing 绕过端口直连 Lottery SQL。`ApprovalVerifier` 同样只是 Marketing 消费 Governance 证据的窄端口；真实 Governance 实现尚未装配。
 
-第 31 节的 `internal/governance/domain` 只拥有纯 Policy language/evaluator。第 32 节 Identity 候选现在通过 credential verification 与有效 server-side Session 形成受信 `VerifiedSession` 和 authentication-layer human `PrincipalID` 证据；`POST/GET/DELETE /api/v1/session` 只做认证生命周期，公开 DTO 不含 Role/Scope/Permission。Identity 不调用 Policy，也不加载 Resource tenant/owner/object facts；第 33 节才把认证证据映射成 `governance.Principal`，由资源所有者在服务端装配事实并强制判定。
+第 31 节的 `internal/governance/domain` 只拥有纯 Policy language/evaluator。第 32 节 Identity 现在通过 credential verification 与有效 server-side Session 形成受信 `VerifiedSession` 和 authentication-layer human `PrincipalID` 证据；`POST/GET/DELETE /api/v1/session` 只做认证生命周期，公开 DTO 不含 Role/Scope/Permission。Identity 不调用 Policy，也不加载 Resource tenant/owner/object facts；第 33 节才把认证证据映射成 `governance.Principal`，由资源所有者在服务端装配事实并强制判定。
 
 ## 7. 统一语言
 
@@ -198,7 +198,7 @@ flowchart LR
 
 第 27 节没有把会员路由塞成 Participation 的第三个 gate，而是在 Lottery domain/application 内实现一个受限具体 router。外部 authority 只提供经构造校验的会员等级事实；Lottery policy 分别拥有 premium target 与 standard baseline/default target。服务在一次受控 UTC evaluated-at 下读取一次事实并校验主体、future 与 freshness，domain 再形成稳定 rule/branch/reason、Strategy ID、policy/fact provenance 和不可由调用方改写的一跳 path。两个 branch 即使暂时指向同一 Strategy ID 也保留不同证据；任何错误或取消都返回零决定。这个内核未装配，不加载 Strategy、不调用 <code>WeightedSelector</code>，没有会员 adapter、Migration、Redis、HTTP/React、权限、规则树或通用引擎，并且没有改变第 26 节 Participation 资格链。
 
-第 28～30 节把 exact graph evaluator、Strategy snapshot 与 Activity publication/CAS/rollback/gate/ACL 连起来，但仍未装配。第 31 节定义跨上下文授权语言；第 32 节候选再建立 Identity credential/session 到 trusted Principal，并追加 latest 14 三张表与真实 `/login`、`/session`。业务/Admin/MCP/Agent route 仍没有服务端 RBAC，导航/操作没有 capability projection，跨角色/对象/tenant/direct API 越权也未验收；任何隐藏菜单、会员 tier、Session 或构造出的 Resource 都不是授权证明。
+第 28～30 节把 exact graph evaluator、Strategy snapshot 与 Activity publication/CAS/rollback/gate/ACL 连起来，但仍未装配。第 31 节定义跨上下文授权语言；第 32 节再建立并验收 Identity credential/session 到 trusted Principal，追加 latest 14 三张表与真实 `/login`、`/session`。业务/Admin/MCP/Agent route 仍没有服务端 RBAC，导航/操作没有 capability projection，跨角色/对象/tenant/direct API 越权也未验收；任何隐藏菜单、会员 tier、Session 或构造出的 Resource 都不是授权证明。
 
 ## 8. 外部系统和防腐边界
 

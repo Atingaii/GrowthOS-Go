@@ -101,7 +101,7 @@ cmd/growth-api
 | `3aa28a6`、`4f59781` | one-shot maintenance 配置与命令 |
 | `267bdff` | 浏览器共享 transport 与 Session API adapter |
 
-这里的 commit 只是学习导航；是否通过仍以 [第 32 节 QA](../../qa/lessons/lesson-32.md) 中的实际证据为准。最终冻结前还会有文档、UI 和验收提交，因此不能把上表最后一个 hash 当最终 tip。
+这里的 commit 只是学习导航；是否通过仍以 [第 32 节 QA](../../qa/lessons/lesson-32.md) 中的实际证据为准。后续还有文档、UI、验收与冻结登记提交，因此不能把上表最后一个中间 hash 当最终 tip；完整终点由同名稳定分支的实际 tip 定义。
 
 ## 6. WorkforceAccount：只保存认证所需事实
 
@@ -352,7 +352,7 @@ make compose-identity-maintenance
 | provision prerequisite 回归 | `ACTUAL-PASS` | 真实运行发现 quick `exited:0` 被 `--wait` 误判；`af4245e` 改为 180s exact-state fail-closed 轮询 |
 | Identity focused Go | `ACTUAL-PASS` | `./internal/identity/...` 普通、race、shuffle×10 均 PASS；passwordhash count=10/race PASS；`internal/platform/appconfig` 与 `cmd/growth-api`、`cmd/growth-migrate`、`cmd/growth-identity-provision`、`cmd/growth-identity-maintenance` count=10 PASS |
 | Identity fuzz | `ACTUAL-PASS` | ParseEnvelope 1,485,248；WorkGate 625,627；PasswordBounds 255,368；DecodeLoginRequestStrict 25,908；五个 domain target 44,251 / 707,057 / 574,005 / 39,479 / 683,345 次执行；均为该轮机器观测 |
-| 冻结前 Go gate | `ACTUAL-PASS` | HEAD `4149576` + 当时工作树：全仓普通 23.2s、race 25.8s、vet、fmt-check PASS；冻结 tip 形成后仍须组合重跑 |
+| 冻结前 Go gate | `ACTUAL-PASS` | HEAD `4149576` + 当时工作树：全仓普通 23.2s、race 25.8s、vet、fmt-check PASS；最终登记工作树随后再次通过组合门禁 |
 | MySQL 8.4.11 integration | `ACTUAL-PASS` | HEAD `4149576`，19s/exit 0；schema、immutability/inventory、真实 `growth-migrate`、Repository 与 runtime grant；终态 `14:0`、`0:0:0`、probe 0，精确清理 |
 | maintenance Compose fixture | `ACTUAL-PASS` | project `growthosl2465e15560c550fd33fc6901bf`：`2/1/3`→`0/0/0`、active fingerprint 不变、residue `0:0:0`、精确清理 |
 | 浏览器认证旅程 | `ACTUAL-PASS` | 经 Nginx→Go→MySQL 完成 login、refresh current、logout、anonymous refresh、DB outage fail-closed、恢复重试与最终 logout |
@@ -360,7 +360,7 @@ make compose-identity-maintenance
 | development HTTP 增强 wire | `ACTUAL-PASS` | HEAD `9fc4e06fb55bd9be5fad6ff570b86b4c23446c7e`，project `growthosl24f6a5acf4d242695ad3e2df19`，exit 0、无可信总耗时；核心链、exact headers、invalid Host JSON 421、TE/Trailer、2049B、错误无 Set-Cookie、六类 401 clear-Cookie、login/source 429 与 exact cleanup 全部通过 |
 | HTTP 剩余 fault/framing | `PENDING` | raw `Content-Length` absent/0/mismatch 未全部经代理发送；issue/revoke COMMIT outcome-unknown 只有确定性 application/repository 测试，没有真实 Compose wire 注入 |
 | staging/production 与浏览器扩展 | `PENDING` | 需真实 HTTPS、Secure `__Host-` Cookie、`verify_identity`、可信代理 client source，以及浏览器 storage/console、更广设备/AT 证据 |
-| 最终 Go/全仓门禁 | `PENDING` | 文档、索引和全部实现冻结后统一执行 |
+| 最终 Go/全仓门禁 | `ACTUAL-PASS` | 完整代码、文档和索引工作树上 `make verify`、全仓 race、doccheck、shell 静态检查与 `git diff --check` 均通过；冻结提交只固化同一内容 |
 
 精确复现命令、预期与清理见 [QA](../../qa/lessons/lesson-32.md) 和 [运维手册](../../runbooks/identity-session-operations.md)。
 
@@ -400,10 +400,10 @@ make compose-identity-maintenance
 - [x] development HTTP 核心 wire/Cookie/CSRF/Origin/Fetch、401 同形、五会话与 MySQL outage/recovery 已通过；
 - [x] HEAD `9fc4e06` 的增强 Compose gate 已通过 exact security headers、invalid Host JSON 421、TE/Trailer、2049B、错误无 Set-Cookie、六类 401 clear-Cookie、login/source 429、精确数据库/外部资源清理；
 - [x] 冻结前一轮全仓 Go 普通、race、vet 与 fmt-check 已通过；
-- [ ] raw `Content-Length` absent/0/mismatch 的完整代理矩阵、真实 wire COMMIT outcome-unknown fault injection、staging/production TLS/可信代理与浏览器扩展矩阵 `PENDING`；
-- [ ] 冻结 tip 上的 Go/Web 组合重跑、doccheck、diff、全仓门禁和冻结 ref `PENDING`。
+- [ ] raw `Content-Length` absent/0/mismatch 的完整代理矩阵、真实 wire COMMIT outcome-unknown fault injection、staging/production TLS/可信代理与浏览器扩展矩阵 `PENDING`；这些是明确保留的后续环境/生产证据，不阻塞本节 development DoD；
+- [x] 完整代码、文档和索引工作树上的 Go/Web 组合重跑、doccheck、shell 静态检查、diff 与全仓门禁通过；冻结 ref 以同名稳定分支和累计快照共同指向的实际 tip 为准。
 
-未勾选项完成前，本节只能称为“实现候选持续验收中”，不能称为最终冻结或生产就绪。
+本节 development Definition of Done 已完成，可以冻结为第 32 节学习检查点；未勾选项继续证明它不是生产就绪认证，也不能替代第 33～35 节授权闭环。
 
 ## 23. 下一节留下的问题
 

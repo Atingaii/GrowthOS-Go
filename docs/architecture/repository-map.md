@@ -1,11 +1,11 @@
 # 仓库地图
 
 **状态：** 当前
-**更新日期：** 2026-09-02
+**更新日期：** 2026-09-03
 
 本文件描述当前仓库，而不是第 101 节的目标仓库。目录随需求演进，改动目录职责时必须同步更新本文件。
 
-第 9～31 节依次形成工程基线、Lottery/Marketing/Participation 切片，以及 Governance-owned 访问控制语言。第 32 节候选首次装配独立 `internal/identity`：credential verification、MySQL server-side Session、Cookie/CSRF 和三方法 HTTP route 已进入 `growth-api`，业务与 Identity pool/账号互不别名。认证成功只形成 trusted human Principal；Governance Policy 尚未被 runtime 调用，业务/Admin/MCP/Agent 没有第 33 节服务端 RBAC，第 34 节权限投影和第 35 节越权 E2E 也未完成。
+第 9～31 节依次形成工程基线、Lottery/Marketing/Participation 切片，以及 Governance-owned 访问控制语言。第 32 节已装配并完成开发验收的独立 `internal/identity`：credential verification、MySQL server-side Session、Cookie/CSRF 和三方法 HTTP route 已进入 `growth-api`，业务与 Identity pool/账号互不别名。认证成功只形成 trusted human Principal；Governance Policy 尚未被 runtime 调用，业务/Admin/MCP/Agent 没有第 33 节服务端 RBAC，第 34 节权限投影和第 35 节越权 E2E 也未完成。MySQL、完整 development Compose/Session wire、浏览器核心旅程及 Go/race/Web/doccheck 已通过；raw framing、真实 wire COMMIT 丢应答、production TLS/可信代理和更广设备/AT 仍未验收。
 
 | 路径 | 当前职责 | 引入产品代码的章节 |
 | --- | --- | --- |
@@ -54,13 +54,13 @@
 | `migrations/identity_schema_integration_test.go` | 在显式可丢弃 schema 验证 latest 14、三张 Identity 表的列/索引/FK/CHECK/collation、坏行拒绝、旧 v11 事实保持与精确测试权限 | 第 32 节 |
 | `scripts/generate-compose-secrets.sh` | 完整 Secret 集合生成/验证；除既有凭据外生成彼此不同的 Identity runtime/provisioner password、throttle HMAC 与 CSRF key，部分集合和旧 volume 缺凭据均失败关闭 | 第 16、32 节 |
 | `scripts/compose-smoke.sh` | 长期栈只读核对 latest 14、十三表、business/Identity/provisioner 精确 grant、Redis ACL、双 readiness、Session 匿名边界与端口隔离 | 第 16、18～19、21、24、28、30、32 节 |
-| `scripts/compose-lottery-api-acceptance.sh` | 随机 project/secret/volume/image 中回归 Lottery/cache/fault/M1，并扩展 Identity schema/grant/provision/session HTTP/maintenance/故障与精确清理；第 32 节 development HTTP wire 官方门禁已通过，精确范围仍以 QA 记录为准 | 第 21、24、28、30、32 节回归 |
+| `scripts/compose-lottery-api-acceptance.sh` | 随机 project/secret/volume/image 中回归 Lottery/cache/fault/M1，并扩展 Identity schema/grant/provision/session HTTP/maintenance/故障与精确清理；第 32 节完整 development Compose/Session wire 官方门禁已通过，精确范围仍以 QA 记录为准 | 第 21、24、28、30、32 节回归 |
 | `scripts/compose-identity-provision.sh` | 校验调用方私密 password snapshot，以 operations profile 运行单个 provisioner，接受 one-shot `exited:0` 并精确清理容器/快照 | 第 32 节 |
 | `scripts/compose-identity-maintenance.sh` | 以 operations profile 运行固定有界 maintenance，接受 one-shot `exited:0`，不把任意 cutoff/batch 暴露给值班命令 | 第 32 节 |
 | `scripts/lesson28-mysql-acceptance.sh` | 以随机 label/name、回环动态端口、tmpfs 数据和任务 Secret 启动一次性 MySQL 8.4.11，分别授予 legacy writer 旧两表与 graph repository 新三表 `SELECT, INSERT`，运行六组 Integration，并核对临时零残留和长期 `growthos` Docker 快照不变 | 第 28 节 |
 | `scripts/lesson30-mysql-acceptance.sh` | 以确认口令、随机 label/name、tmpfs MySQL 8.4.11 与隔离身份验证真实 v5 七行 FK 基线→v11、五张新表、snapshot/Marketing Repository、最小权限、dirty/restore 与精确清理 | 第 30 节 |
 | `scripts/lesson32-mysql-acceptance.sh` | 以确认口令、随机 name/label/回环端口和 tmpfs MySQL 8.4.11 验证 v11→v14、Identity schema/Repository/锁与会话上限、runtime grant allow/deny、migration inventory 和精确清理 | 第 32 节 |
-| `deploy/compose` | Web/API/MySQL/Redis 四常驻，Migrate/mysql-grants 两启动 one-shot，并增加 profile-scoped Identity provision/maintenance；latest 14 与双 pool/secret/grant 候选不装配 graph/snapshot/Marketing | 第 16、18～19、21、24、28、30、32 节 |
+| `deploy/compose` | Web/API/MySQL/Redis 四常驻，Migrate/mysql-grants 两启动 one-shot，并增加 profile-scoped Identity provision/maintenance；latest 14 与双 pool/secret/grant 已装配，graph/snapshot/Marketing 仍未装配 | 第 16、18～19、21、24、28、30、32 节 |
 | `deploy/compose/mysql/grants` | 只经 MySQL Unix socket、`network_mode: none` 精确收敛：`growthos_app` 两张业务表 SELECT，`growthos_identity` 三张 Identity 表所需 DML，`growthos_identity_provisioner` 仅 account INSERT；mandatory role 为空 | 第 18～19、21、28、30、32 节 |
 | `deploy/docker` | API/Migrator/Web/Redis 与 Identity operations 构建边界、受限 Go 编译、非 root/只读运行，以及限制 Host/framing/size/timeout/request ID 的 Nginx 同源网关 | 第 16、21、24、32 节 |
 | `web` | 统一 React 工作台，加上公共登录/当前会话体验；系统状态、ephemeral Lottery 与 Session 已有真实 API 消费，其余业务页面仍为有边界说明的 Mock/本地交互 | 第 14～15、22、32 节 |
@@ -97,7 +97,7 @@
 17. Governance domain 只允许经评审的纯标准库依赖；其他 production Go 文件在第 31 节不得导入它或未来子包。Principal/Resource 构造不是信任证明，Permission 不直接绑定 Principal，unknown capability/scope 和缺失 tenant/owner 均 fail closed；第 33 节只能在可信事实与明确 enforcement point 完成后修改停止线。
 18. Identity 只把 server-derived account/session 映射为 human Principal；HTTP 请求不得提交 Principal/Role/Scope/Permission。Session token 只以 digest 落库并由 HttpOnly Cookie 携带，CSRF 只驻留调用方内存；Identity 不读取 Policy 或业务资源。登录成功不能解锁业务/Admin/MCP/Agent，直到第 33 节服务端 enforcement 实际装配。
 
-第 11 节的 `/health` 仍是无外部依赖的进程 liveness，只证明 Gin 路由和 handler 能响应。第 32 节候选要求 API 在监听前分别打开并 Ping business 与 Identity pool，运行中 `/ready` 在同一预算内检查两个 authority；任一失败时 `/ready` 为 503 而 `/health` 仍可为 200。响应不披露是哪一池失败，两者也都不证明业务数据正确、Migration 最新或 SLO 达标。
+第 11 节的 `/health` 仍是无外部依赖的进程 liveness，只证明 Gin 路由和 handler 能响应。第 32 节已实现：API 在监听前分别打开并 Ping business 与 Identity pool，运行中 `/ready` 在同一预算内检查两个 authority；任一失败时 `/ready` 为 503 而 `/health` 仍可为 200。响应不披露是哪一池失败，两者也都不证明业务数据正确、Migration 最新或 SLO 达标。
 
 第 12 节保持 `request_id` 与未来 OpenTelemetry `trace_id` 分离；fault 平台层不导入 Gin/HTTP，只有 HTTP adapter 决定 status 和公开 error envelope。配置与隐私规则见[配置参考](../configuration.md)，长期边界见[ADR-0009](../decisions/ADR-0009-runtime-boundaries.md)。
 
@@ -123,6 +123,6 @@ Compose 默认只发布 `127.0.0.1:8088` 的 Nginx Web 入口；`GROWTHOS_COMPOS
 - React、TypeScript、Vite、Tailwind CSS、Lucide、Recharts 和 Zustand 在第 14 节接入；第 15 节接通系统探针，第 22 节接通 Lottery ephemeral selection，第 32 节再接通 `/login` 与 `/session`。业务工作台仍等待真实 API/RBAC，不以认证页、Mock 或本地交互冒充权限完成。
 - 第 16 节已引入 Compose 本地开发环境，第 24 节接入第一个业务 Redis 消费者和最小 ACL；它仍是单机开发拓扑：没有镜像 digest 固定、内部 TLS、生产资源配额、Secret Manager、Redis HA 或生产容量证明。
 - 第 19～29 节逐步建立 Strategy 仓储、无偏选择、ephemeral API/React、规则所有权、Redis 投影、Participation 资格、会员路由、routing graph 和 closed evaluator；第 30 节已验收 exact Strategy snapshot 与 Activity publication。以上新增内核仍未在线执行；正式 Draw/Result、幂等、库存与发奖必须由后续真实问题驱动，runtime 新表 grant、运行写权限和缓存失效总线不会被提前加入。
-- 公共访问控制策略模型已在第 31 节实现；第 32 节候选再实现登录认证与真实会话。Policy/assignment repository、租户/对象事实装配、服务端强制、前端 capability 投影、拒绝审计与完整越权 E2E 仍未实现；第 33～35 节继续闭环，第 36 节首个真实运营后台再复用它。
+- 公共访问控制策略模型已在第 31 节实现；第 32 节已实现并完成开发验收的登录认证与真实会话。Policy/assignment repository、租户/对象事实装配、服务端强制、前端 capability 投影、拒绝审计与完整越权 E2E 仍未实现；第 33～35 节后续继续闭环，第 36 节首个真实运营后台再复用它。
 - 服务拆分、RPC 和注册中心延迟至第 78 节以后。
 - 最终目录图和 ER 图延迟至第 101 节复盘。

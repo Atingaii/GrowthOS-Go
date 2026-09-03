@@ -102,3 +102,4 @@
 - [第 29 节：封闭类型化路由图求值、确定性证据与取消预算](lessons/lesson-29.md)
 - [第 30 节：Strategy 快照、Activity 不可变发布、CAS、回滚与跨上下文校验](lessons/lesson-30.md)
 - [第 31 节：统一访问控制模型、威胁边界与渐进式强制](lessons/lesson-31.md)
+- [第 32 节：真实会话认证、密码成本与浏览器安全边界](lessons/lesson-32.md)（已完成并验收）

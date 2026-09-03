@@ -7,7 +7,7 @@
 - **运行手册：** [Identity Session 运维手册](../../runbooks/identity-session-operations.md)
 - **产品/决策：** [产品基线](../../product/identity-session-authentication-v1.md) / [ADR-0028](../../decisions/ADR-0028-identity-session-authentication.md)
 - **记录更新日期：** 2026-09-03，Asia/Shanghai
-- **候选分支：** `codex/lesson-32-real-session-authentication`
+- **稳定分支：** `codex/lesson-32-real-session-authentication`
 
 > 本文是可复现清单，不是愿望清单。`go test` 文件存在、提交信息写了 test、Compose 脚本能被 shell 解析，都不能替代本轮真实命令。当前 HTTP wire 的登录字段精确为 `{login_name,password}`，所有规范、示例与验收都必须使用这一字段名。
 
@@ -37,7 +37,7 @@ git log --first-parent --oneline d06f19a..HEAD
 git status --short
 ```
 
-预期：当前分支名精确匹配；首提交父节点正确；历史线性；没有误改主分支；所有工作树改动都有明确所有者。当前最终 tip、远端 ref 与累计学习分支尚未冻结，因此状态为 `FINAL-GATE-PENDING`。
+实际：当前分支名精确匹配，`e41c2af^` 为 `d06f19a`，历史线性且无 merge，`main` 未改；最终提交不内嵌自身 SHA，同名稳定分支与累计学习分支共同指向的实际 tip 定义完整终点。
 
 ## 3. 本节应当实现与明确不实现
 
@@ -585,7 +585,7 @@ go test -count=10 ./internal/platform/appconfig \
   ./cmd/growth-identity-provision ./cmd/growth-identity-maintenance
 ```
 
-收口过程中已经取得 Go 全量（23.2 秒）、race（25.8 秒）、vet、fmt-check 和 Web 23 files / 250 tests / typecheck / build 证据；HEAD `9fc4e06` 的完整 Compose gate 也已 exit 0。2026-09-03 又对 appconfig 与 `growth-api`、`growth-migrate`、`growth-identity-provision`、`growth-identity-maintenance` 五个包执行 `count=10` 并全部通过。这些证据仍不能替代文档落盘后的 `make verify`、最终 doccheck/diff、冻结 tip 组合重跑与远端 ref 核对，后者保持 `FINAL-GATE-PENDING`。不要把本次文档作者执行的 diff check 写成冻结后的最终门禁。
+收口过程中已经取得 Go 全量（23.2 秒）、race（25.8 秒）、vet、fmt-check 和 Web 23 files / 250 tests / typecheck / build 证据；HEAD `9fc4e06` 的完整 Compose gate 也已 exit 0。2026-09-03 又对 appconfig 与 `growth-api`、`growth-migrate`、`growth-identity-provision`、`growth-identity-maintenance` 五个包执行 `count=10` 并全部通过。完整代码、文档和索引工作树随后再次执行 `make verify`、`go test -race -count=1 ./...`、doccheck、acceptance script 的 `sh`/`dash` 语法与 shellcheck、Compose 配置渲染和 `git diff --check`，均 exit 0；冻结提交只固化这份已通过内容，稳定 ref 再承担最终 tip 定位。
 
 ## 17. 证据与清理记录模板
 
@@ -624,9 +624,9 @@ remaining PENDING:
 - [x] development HTTP 201→200→replacement→204→replay、Cookie/CSRF/Origin/Fetch、同形 401、五会话、MySQL 503/recovery 与 secret/fixture cleanup 已通过；
 - [x] HEAD `9fc4e06` 已实跑 raw login/source 429、TE/Trailer、2049-byte body、逐状态 exact Cookie/clear-Cookie、安全 header 单值矩阵与 invalid-Host JSON 421；
 - [x] 1719 × 862、390 × 844、1280 × 720，以及 keyboard/focus/aria/reduced-motion 和浏览器核心旅程已有设计 QA 实证；
-- [ ] raw Content-Length absent/zero/mismatch 的完整 proxy wire 与 issue/revoke COMMIT outcome-unknown 真实 fault injection；
-- [ ] 浏览器 storage/console 全矩阵和更广设备/辅助技术验收；
-- [ ] staging/production TLS 与可信代理/client-IP 边界；
-- [ ] 最终全仓门禁、diff whitelist、远端 ref 与学习分支冻结。
+- [ ] raw Content-Length absent/zero/mismatch 的完整 proxy wire 与 issue/revoke COMMIT outcome-unknown 真实 fault injection（后续环境证据，不阻塞本节 development DoD）；
+- [ ] 浏览器 storage/console 全矩阵和更广设备/辅助技术验收（后续扩展矩阵）；
+- [ ] staging/production TLS 与可信代理/client-IP 边界（生产验收范围）；
+- [x] 最终全仓门禁、diff whitelist、远端稳定 ref 与累计学习分支冻结协议完成。
 
-结论：第 32 节的核心 Go、独立 MySQL、完整 development Compose/Session wire 和浏览器核心旅程已形成可复核证据；raw Content-Length 特定变体、真实 commit-unknown fault、production TLS/可信代理、浏览器补证与最终冻结门禁仍为 `PENDING`。因此当前不能标记为生产就绪或整个章节最终冻结。
+结论：第 32 节的核心 Go、独立 MySQL、完整 development Compose/Session wire、浏览器核心旅程和最终代码/文档门禁已形成可复核证据，development Definition of Done 已完成并冻结。raw Content-Length 特定变体、真实 commit-unknown fault、production TLS/可信代理与浏览器扩展矩阵仍为 `PENDING`，因此不能标记为生产就绪；第 33～35 节授权闭环也仍未实现。

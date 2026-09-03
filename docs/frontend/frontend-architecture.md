@@ -2,7 +2,7 @@
 
 ## 定位
 
-`web/` 是统一的 React 单页应用。第 14～22 节建立框架、系统探针、ephemeral Lottery 与共享 `WorkspaceShell`；第 31 节只定义权限语言，没有改 UI。第 32 节候选新增独立公共 `AuthLayout`、严格 `sessionApi`、`useSessionBoundary`，以及真实 `/login`、`/session`，把 anonymous/checking/authenticated/unavailable 分开呈现。该边界只负责认证体验，不包裹业务工作台，也不把 Role/Scope/Permission 放进浏览器状态。
+`web/` 是统一的 React 单页应用。第 14～22 节建立框架、系统探针、ephemeral Lottery 与共享 `WorkspaceShell`；第 31 节只定义权限语言，没有改 UI。第 32 节已新增并完成 development 验收的独立公共 `AuthLayout`、严格 `sessionApi`、`useSessionBoundary`，以及真实 `/login`、`/session`，把 anonymous/checking/authenticated/unavailable 分开呈现。该边界只负责认证体验，不包裹业务工作台，也不把 Role/Scope/Permission 放进浏览器状态。
 
 ## 工作台
 

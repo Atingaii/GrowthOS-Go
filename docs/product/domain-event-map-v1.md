@@ -1,6 +1,6 @@
 # 领域事件地图 v1
 
-**状态：** v1 分析基线；第 32 节 Identity 认证事实候选已登记，集成事件发布仍未决定
+**状态：** v1 分析基线；第 32 节 Identity 认证事实已验收登记，集成事件发布仍未决定
 
 **更新日期：** 2026-09-03
 
@@ -99,7 +99,7 @@ Feed 内容已曝光 → 用户已点击活动
 
 并发冲突、审批失败、Lottery 依赖失败、exact ref 缺失、terminal manifest 不闭合或时间窗不满足，都不能产生成功事实。`state_version` CAS 只是防止丢失更新的确认条件；它不替代 Governance 审批、访问授权、Outbox 或跨系统幂等。
 
-第 32 节虽新增了真实 Session 认证候选，但没有把 trusted Principal 接入上述 Marketing command handler；因此也没有追溯性地改变第 30 节证据。业务写操作仍需第 33 节先加载 exact Resource/Policy 并强制授权。
+第 32 节虽新增并验收了真实 Session 认证，但没有把 trusted Principal 接入上述 Marketing command handler；因此也没有追溯性地改变第 30 节证据。业务写操作仍需第 33 节先加载 exact Resource/Policy 并强制授权。
 
 ### 4.3 Identity 认证命令、事实与停止线
 
@@ -231,7 +231,7 @@ Feed 内容已曝光
 
 第 30 节也没有改变以上停止线：Activity transition 已在模块化单体源码、一次性 MySQL 与长期 Compose v11 验收，但仍无 durable domain-event/outbox 表、broker topic、delivery retry 或 consumer contract。COMMIT 应答丢失时，application-owned receipt 只能经 exact observation 对账为 committed/not_committed/indeterminate；它不等于集成事件已发布。第 32 节源码已前进到 latest 14 并新增 Session API，但同样没有把认证状态变成集成事件。后续必须把“聚合/Session 事务已确认”和“集成事件已可靠发布”作为两个可观察阶段。
 
-第 32 节实现候选的证据入口见[产品基线](identity-session-authentication-v1.md)、[课程](../course/part-04/lesson-32-real-session-authentication.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)、[设计手记](../design-thinking/lessons/lesson-32.md)、[面试问答](../interview/lessons/lesson-32.md)、[运维手册](../runbooks/identity-session-operations.md)与 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)。独立 MySQL 与 development HTTP wire 两项官方门禁已经通过；最终全仓门禁、远端 ref 对齐与冻结 tip 完成前，本地图只登记候选事实，不把第 32 节写成已完成。第 33 服务端 RBAC、第 34 前端 capability 裁剪和第 35 越权 E2E 仍未实现。
+第 32 节已验收实现的证据入口见[产品基线](identity-session-authentication-v1.md)、[课程](../course/part-04/lesson-32-real-session-authentication.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)、[设计手记](../design-thinking/lessons/lesson-32.md)、[面试问答](../interview/lessons/lesson-32.md)、[运维手册](../runbooks/identity-session-operations.md)与 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)。该完成声明只覆盖 development 认证链；raw framing、真实 wire COMMIT 丢应答、production TLS/可信代理与浏览器扩展矩阵仍未完成。第 33 节服务端 RBAC、第 34 节前端 capability 裁剪和第 35 节越权 E2E 也仍未实现。
 
 这些问题需要第 6 节的限界上下文分析、第 7 节的非功能目标以及后续真实业务实现共同验证。
 

@@ -37,6 +37,7 @@ QA 文档保存“如何知道这次交付成立”的证据，而不是复制�
 | [第 29 节验收](lessons/lesson-29.md) | exact Strategy 路由图封闭求值、单一 graph/fact/as-of、完整 path、step/time/cancel 预算、低披露错误与未装配停止线 | 通过 |
 | [第 30 节验收](lessons/lesson-30.md) | exact Strategy snapshot、Activity immutable publication、CAS、rollback、resolve gate、Lottery ACL、commit unknown 对账与 v11 schema/权限边界 | 通过 |
 | [第 31 节验收](lessons/lesson-31.md) | Governance exact capability/role/scope、不可变 Policy、default deny、deny precedence、zero Decision、证据与无 session/runtime/UI 的停止线 | 通过 |
+| [第 32 节验收](lessons/lesson-32.md) | Identity account/session/throttle、Argon2id、Cookie/CSRF、三方法 Session API、独立 MySQL 身份、运维 one-shot 与 React 会话体验 | 通过 |
 | [项目 README 规范化验收](readme-refresh-2026-08-09.md) | 项目入口、品牌视觉、内容真实性与秘密管理评审 | 通过 |
 | [项目 README 个人镜像验收](docsync-project-readme-2026-08-09.md) | 根 README 同步、路径隔离与个人笔记保护 | 通过 |
 | [GitHub Actions 质量门禁修复](ci-verify-fix-2026-08-09.md) | 干净 runner 依赖安装、质量门禁与环境差异验证 | 通过 |

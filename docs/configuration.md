@@ -1,6 +1,6 @@
 # GrowthOS-Go 配置参考
 
-**状态：** 第 32 节 Identity 双池运行时、Session HTTP、独立 provision/maintenance 配置与 Compose 安全注入已进入实现候选；最终冻结验收待完成
+**状态：** 第 32 节 Identity 双池运行时、Session HTTP、独立 provision/maintenance 配置与 Compose 安全注入已按 development Definition of Done 完成并验收；生产及扩展环境证据另行保留
 
 **更新日期：** 2026-09-02
 
@@ -472,6 +472,6 @@ GROWTHOS_TEST_MYSQL_ALLOW_REPOSITORY_WRITES=lesson-19-isolated-repository
 - 两个 disposable provision Compose 环境已经通过并完成精确清理；official maintenance fixture 已通过 `2/1/3` 后 `0/0/0` 收敛、active Session fingerprint 不变和零 fixture 残留；
 - development loopback 的真实浏览器已完成 Nginx → Go → MySQL login、reload/current、logout、MySQL outage unknown/unavailable 与恢复重核；该证据没有直接读取 HttpOnly Cookie/storage，也不证明 Set-Cookie wire 属性；
 - Argon2id 当前开发机 baseline 为 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单/双 profile 19/38 MiB；它不构成 production 容量结论；
-- 原始 Session HTTP wire、独立 MySQL 最终矩阵、staging/production TLS/可信代理和全仓冻结门禁仍为 `PENDING`；第 33～35 节权限执行与投影不属于本配置切片。
+- development Session HTTP 增强 wire 与独立 MySQL 8.4.11 schema/Repository/runtime-grant 矩阵已 `ACTUAL-PASS`；raw `Content-Length` absent/zero/mismatch 完整代理变体、真实 COMMIT acknowledgement-loss、staging/production TLS/可信代理及浏览器扩展矩阵仍为 `PENDING`；第 33～35 节权限执行与投影不属于本配置切片。
 
 第 24 节的配置决策与真实证据见[课程](course/part-03/lesson-24-redis-strategy-cache.md)、[API](api/lessons/lesson-24.md)、[QA](qa/lessons/lesson-24.md)、[设计手记](design-thinking/lessons/lesson-24.md)、[面试问答](interview/lessons/lesson-24.md)、[Redis 运维手册](runbooks/redis-strategy-cache.md)和 [ADR-0020](decisions/ADR-0020-lottery-strategy-cache-aside.md)。

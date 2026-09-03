@@ -1,6 +1,6 @@
 # ADR-0028：由 Identity 上下文拥有本地可替换的真实会话认证
 
-- 状态：已接受（实现候选已落地；第 32 节最终冻结验收待完成）
+- 状态：已接受并实现（第 32 节已验收）
 - 日期：2026-09-01（实现证据校准至 2026-09-03）
 - 关联章节：第 32 节“真实会话认证”
 - 前置决策：[ADR-0027：由 Governance 拥有统一、默认拒绝的访问控制模型](ADR-0027-governance-access-control-model.md)
@@ -182,7 +182,7 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 
 本节是对已接受决定的实现记录，不改变上述规范性结论：
 
-- Migration `000012`～`000014` 已分别实现 workforce account、Session 与 authentication throttle 三张表，当前源码 latest 为 14；Identity domain/application、Argon2id、MySQL Repository、Session HTTP、浏览器 transport、双 pool composition 与 readiness 已进入候选分支；
+- Migration `000012`～`000014` 已分别实现 workforce account、Session 与 authentication throttle 三张表，当前源码 latest 为 14；Identity domain/application、Argon2id、MySQL Repository、Session HTTP、浏览器 transport、双 pool composition 与 readiness 已在第 32 节完成基线落地并通过相应开发验收；
 - `growth-api`、`growth-identity-provision`、`growth-identity-maintenance` 分别使用 runtime、INSERT-only provisioner、固定 maintenance 边界，`growth-migrate` 继续拥有迁移入口；Compose operations profile、八份本地 Secret 和最小挂载已经落地；
 - Argon2id 在 Apple M2 Pro 的本地基线为 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单/双 profile 为 19/38 MiB；该结果只校准开发机参数，不证明 production p99、容器 memory limit 或抗 DoS 容量；
 - `FuzzWorkGateCapacityAndCancellation` 发现 available slot 与 1ms timer 同时 ready 时旧 `select` 可能随机误报 unavailable；这是资源准入时序/错误 503 缺陷，不是 credential 绕过。提交 `5af29e2` 先走 nonblocking available fast-path，只在满槽时启动 timer，并加入 `(capacity=2, occupied=1, cancel=false)` seed；修复后的 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过。Identity 普通/race/shuffle×10，`internal/platform/appconfig` 与 `cmd/growth-api`、`cmd/growth-migrate`、`cmd/growth-identity-provision`、`cmd/growth-identity-maintenance` 的 count=10，以及其余八个列明 fuzz target 也已实际通过；
@@ -194,7 +194,7 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 - core gate 的早期采集器曾因 macOS BSD awk 不接受 Cookie header/jar 断言中的跨行条件而失败；改成 POSIX awk 并用代表性输入逐段验证后才得到上述 core PASS。增强 gate 在 `903fd9f` 又真实失败：project `growthosl24c1bf7ce29e5efa417fae6932` 的 Session 前置门禁均通过，但 BSD awk 把循环变量 `index` 解析为内建函数，脚本 exit 2；该项目完成精确清理，且没有可信总耗时。`51b52e0` 修复该变量、invalid-Host JSON/headers 与 Cookie tuple，但该 tip 的重跑在第二次重复 backend build 获取 Docker Hub OAuth token 时以 `EOF` 中止，Session 断言尚未开始，不能记为最终结果；
 - `9fc4e06fb55bd9be5fad6ff570b86b4c23446c7e` 把 `api`、`migrate`、`identity-provision`、`identity-maintenance` 四个 Compose target 合并到一次 BuildKit/Bake 调用。official project `growthosl24f6a5acf4d242695ad3e2df19` 随后 exit 0；没有可信总耗时，故不记录时长。该轮实际通过 login/current/logout/replacement/replay、五会话上限、MySQL outage/recovery、逐响应 exact canonical security headers、invalid Host JSON 421、Transfer-Encoding/Trailer 拒绝、2049-byte body、错误响应无 Set-Cookie、invalid/replaced/logged-out/expired/epoch/disabled 六类 401 exact clear-Cookie，以及 login 5/6 次节流状态 `2:10:0:1`、source 30/31 次节流状态 `31:30:1:60:0:1`；清理前状态 `disabled:2:10:31`，HTTP fixture cleanup `10:31:1`，最终数据库 residue `0:0:0`；
 - 同一 `9fc4e06` official run 的外部清理复核显示本项目 containers、volumes、networks、images、builder、临时目录均为 0；长期 `growthos` 资源前后不变且健康。它把增强 development wire gate 标为实际通过，但没有把 staging/production 或浏览器全矩阵外推为通过；
-- 已有确定性 application/repository 测试覆盖 issue/revoke COMMIT outcome-unknown 分类，但没有在真实 Compose wire 上注入 COMMIT acknowledgement loss；raw `Content-Length` absent/0/mismatch 变体也没有全部经代理实际发送。此前全仓 Go 普通（23.2s）、race（25.8s）、vet 与 fmt-check 已通过，但最终 tip 仍须组合重跑；staging/production HTTPS + `__Host-` Cookie、可信代理 client IP、浏览器 storage/console、更广设备/AT 与最终冻结门禁仍为 `PENDING`；
+- 已有确定性 application/repository 测试覆盖 issue/revoke COMMIT outcome-unknown 分类，但没有在真实 Compose wire 上注入 COMMIT acknowledgement loss；raw `Content-Length` absent/0/mismatch 变体也没有全部经代理实际发送。全仓 Go 普通/race、vet、Web、doccheck 与最终组合门禁均已通过；staging/production HTTPS + `__Host-` Cookie、可信代理 client IP、浏览器 storage/console 与更广设备/AT 仍为 `PENDING`，这些生产/扩展证据不阻塞第 32 节 development DoD，也不能由现有 PASS 外推；
 - 第 33 节服务端 RBAC、第 34 节 capability UI 投影、第 35 节越权 E2E 仍未实现，不得由本节认证证据推导。
 
 ## 备选方案与否决理由

@@ -1,14 +1,14 @@
 # GrowthOS Identity 与真实会话认证基线 v1
 
-> **状态：第 32 节实现候选；development 增强 wire gate 已实际通过，最终冻结与跨环境验收尚未完成。**
+> **状态：第 32 节 development Definition of Done 已完成并验收；development 增强 wire gate 与最终代码/文档门禁已实际通过，跨环境与扩展验收尚未完成。**
 >
-> 本文冻结第 32 节“真实会话认证”的产品语义、信任边界、安全不变量和验收口径。当前分支已经实现 Identity 三表、领域/应用/适配器、双连接池、Session HTTP、浏览器会话体验与两个 operations-only one-shot；focused Go、独立 MySQL 8.4.11 和 development 增强 Session wire 已有实际证据。raw `Content-Length` 特定变体、真实 wire COMMIT acknowledgement-loss、staging/production TLS、可信代理、浏览器广泛环境矩阵和最终冻结门禁仍未完成。下文分别标记“源码事实”“已执行证据”与 `PENDING`，不得由其中一层外推另一层。
+> 本文冻结第 32 节“真实会话认证”的产品语义、信任边界、安全不变量和验收口径。当前分支已经实现 Identity 三表、领域/应用/适配器、双连接池、Session HTTP、浏览器会话体验与两个 operations-only one-shot；focused Go、独立 MySQL 8.4.11、development 增强 Session wire、浏览器核心旅程和最终 Go/race/Web/doccheck 门禁已有实际证据。raw `Content-Length` 特定变体、真实 wire COMMIT acknowledgement-loss、staging/production TLS、可信代理与浏览器广泛环境矩阵仍未完成。下文分别标记“源码事实”“已执行证据”与 `PENDING`，不得由其中一层外推另一层。
 
 - **章节：** 第 32 节“真实会话认证”
 - **上游：** 第 31 节 Governance 访问控制模型与威胁边界
 - **下游：** 第 33 节服务端 RBAC 强制、第 34 节前端权限投影、第 35 节越权与浏览器端到端验收
 - **设计日期：** 2026-09-01
-- **实现校准日期：** 2026-09-02
+- **实现校准日期：** 2026-09-03
 - **主要消费者：** GrowthOS workforce Web、后续可信服务端授权层
 - **非消费者：** 当前 ephemeral Lottery route、外部消费者身份主数据、数据库基础设施账号
 
@@ -915,7 +915,7 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 
 ### 17.7 当前实现与证据台账（2026-09-03）
 
-以下“已实现”只表示当前候选分支存在可追溯源码；“实际通过”只覆盖紧邻描述的执行范围：
+以下“已实现”表示第 32 节完成基线存在可追溯源码；“实际通过”只覆盖紧邻描述的执行范围：
 
 | 范围 | 当前状态 | 可宣称的证据边界 |
 | --- | --- | --- |
@@ -931,8 +931,8 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 | HTTP 剩余 fault/framing | `PENDING` | raw `Content-Length` absent/0/mismatch 未全部经代理发送；issue/revoke COMMIT outcome-unknown 仅有确定性 application/repository 测试，没有真实 Compose wire 注入 |
 | staging/production 与浏览器扩展 | `PENDING` | 配置已强制 HTTPS、MySQL `verify_identity` 与 Secure `__Host-` Cookie；真实 TLS、可信代理 client IP、storage/console、广泛设备与 AT 尚未验收 |
 | 后续权限系统 | 不属于第 32 节 | 第 33 节服务端 RBAC、第 34 节 capability 驱动 UI 裁剪、第 35 节越权 E2E 均未实现 |
-| 冻结前 Go gate | 已有实际通过、最终 tip 重跑待定 | HEAD `4149576` + 当时工作树：全仓普通 23.2s、race 25.8s、vet、fmt-check PASS；最终 tip 的 Web/doccheck/make verify/diff 与组合重跑仍待收口 |
-| 最终冻结 | `PENDING` | 最终 tip 上的组合门禁、Web、doccheck、diff、远端 ref、累计学习分支与临时材料清理仍须统一确认 |
+| 全仓质量门禁 | `ACTUAL-PASS` | HEAD `4149576` + 当时工作树的全仓普通 23.2s、race 25.8s、vet、fmt-check PASS；完整代码/文档/索引工作树随后再次通过 `make verify`、全仓 race、doccheck、shell 静态检查、Compose 配置渲染与 diff check |
+| 最终冻结 | `ACTUAL-PASS` | 冻结提交只固化已通过内容；同名稳定分支、累计学习分支与临时材料清理按 QA 的最终协议核对，不在自身提交内嵌自引用 SHA |
 
 真实长驻账号 provision 还暴露了一个有价值的部署缺陷：`docker compose up --wait` 会把已经快速成功并进入 `exited:0` 的 `mysql-grants` 当作等待失败。提交 `af4245e` 把 provision/maintenance wrapper 改为最长 180 秒的显式状态轮询：唯一合法 container 的 `exited:0` 才成功，`created:0`、`running:0`、`restarting:0` 继续等待，非零退出、歧义 ID、意外状态或超时全部失败关闭。该修复证明“one-shot 成功完成”与“长期 service healthy”必须采用不同验收语义。
 
@@ -961,11 +961,11 @@ ADR-0028 已把实现不得默默决定的项目收敛为：
 11. development 仅 loopback origin 可关闭 Secure，staging/production 强制 HTTPS + `__Host-`；
 12. 本地 AccountID 到 PrincipalID 由服务端稳定映射，未来企业 IAM 另立映射切片。
 
-这些参数已经进入第 32 节实现候选，但“进入源码”不等于所有环境均已执行。当前 Argon2 benchmark/fuzz、focused Go、两轮 provision、official maintenance、development 浏览器核心旅程、增强 HTTP wire 与独立 MySQL 8.4.11 矩阵已有上述范围内证据；仍待真实验收的是 raw `Content-Length` absent/0/mismatch 的完整代理矩阵、COMMIT acknowledgement-loss 的真实 wire fault injection、生产代理来源、TLS Cookie、浏览器 storage/console、更广设备/AT 与最终冻结。若改变 MySQL 唯一事实、opaque token、server-side revoke、session-bound CSRF、固定绝对过期、五会话上限、独立 Identity/DB identity 或第 33～35 节停止线，必须同步修改产品基线与 ADR 并解释原因。
+这些参数已经进入第 32 节完成基线，但“进入源码”不等于所有环境均已执行。当前 Argon2 benchmark/fuzz、focused Go、两轮 provision、official maintenance、development 浏览器核心旅程、增强 HTTP wire、独立 MySQL 8.4.11 矩阵与最终代码/文档门禁已有上述范围内证据；仍待真实验收的是 raw `Content-Length` absent/0/mismatch 的完整代理矩阵、COMMIT acknowledgement-loss 的真实 wire fault injection、生产代理来源、TLS Cookie、浏览器 storage/console 与更广设备/AT。这些后续/生产证据不阻塞本节 development DoD。若改变 MySQL 唯一事实、opaque token、server-side revoke、session-bound CSRF、固定绝对过期、五会话上限、独立 Identity/DB identity 或第 33～35 节停止线，必须同步修改产品基线与 ADR 并解释原因。
 
-## 19. 本节完成后能与不能宣称什么
+## 19. 当前完成态能与不能宣称什么
 
-只有全部实现和实际验收完成后，才可以宣称：
+基于已完成的 development Definition of Done，当前可以宣称：
 
 - GrowthOS 有一个可替换的本地 workforce identity provider；
 - 真实 password credential 可以换取 MySQL-backed server-side session；
@@ -974,7 +974,7 @@ ADR-0028 已把实现不得默默决定的项目收敛为：
 - unsafe session mutation 受到 Origin、Fetch Metadata 与 session-bound HMAC CSRF 保护；
 - 一个有效 session 可以产生 trusted human Principal。
 
-即使完成也不能宣称：
+即使本节已经按 development DoD 完成，也不能宣称：
 
 - 业务 API 已受 RBAC 保护；
 - 登录用户拥有任何 Role、Scope 或 Permission；

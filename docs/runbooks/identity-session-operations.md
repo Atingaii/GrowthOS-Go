@@ -6,7 +6,7 @@
 - **HTTP 契约：** [第 32 节 API 记录](../api/lessons/lesson-32.md)
 - **配置总表：** [配置、日志与错误体系](../configuration.md)
 - **记录日期：** 2026-09-03
-- **证据状态：** 运维入口与安全边界已进入源码；provision、maintenance、浏览器核心旅程、development HTTP 增强 wire 矩阵与独立 MySQL 8.4.11 已有实际证据，剩余 raw Content-Length 变体、TLS/可信代理、真实 COMMIT outcome-unknown 故障注入、浏览器扩展矩阵与最终冻结门禁仍为 `PENDING`
+- **证据状态：** 第 32 节 development DoD 已完成；provision、maintenance、浏览器核心旅程、development HTTP 增强 wire、独立 MySQL 8.4.11 与最终代码/文档门禁已有实际证据，剩余 raw Content-Length 变体、TLS/可信代理、真实 COMMIT outcome-unknown 故障注入与浏览器扩展矩阵仍为 `PENDING`
 
 > 本手册用于本地/受控环境的账号 enrollment、Session 生命周期核查和有界历史清理。
 > 示例从不把 password、Cookie、CSRF 或数据库 Secret 放进命令行、URL、环境变量、终端输出或版本库。
@@ -606,6 +606,8 @@ reset 是破坏性数据操作，不是 Session logout 或普通验收清理手�
 构建缓存、依赖和交付文档属于可复用资产，不因本手册执行而删除；只清理本次生成的临时证据与明确授权的隔离环境。
 
 ## 14. 证据与交接模板
+
+第 32 节 development Definition of Done 的整体状态为 `COMPLETE`。下表的 `PARTIAL-ACTUAL` / `PENDING` 是额外运维演练或跨环境补证，不是章节完成阻塞项。
 
 每项只记录脱敏事实，不粘贴 secret-bearing 原始输出：
 

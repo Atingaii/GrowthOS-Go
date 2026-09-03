@@ -35,7 +35,7 @@
 
 ## 当前进度
 
-当前已完成第 1～31 节，共 31 节。第 30 节在 exact graph/evaluator 之后新增 Lottery create-only Strategy snapshot，以及 Marketing-owned Activity publication/CAS/rollback/resolve gate。第 31 节再由 Governance 建立未装配、默认拒绝的访问控制策略内核：16 个 exact capability、5 个角色模板上限、4 种 ScopeKind、allow/deny RoleBinding、不可变 Policy revision、确定性 evidence 与 zero Decision + error 已通过威胁矩阵、race、fuzz 和架构停止线验证。Principal 构造仍不是认证证明，任何现有 HTTP/UI 都没有因此获得运行时保护；第 32～35 节依次补会话、服务端强制、前端投影和越权 E2E。
+当前已完成第 1～32 节，共 32 节。第 32 节“真实会话认证”已经增加 Identity account/session/throttle、Argon2id、独立 MySQL authority、Cookie/Origin/CSRF 防线、`POST/GET/DELETE /api/v1/session`，以及 React `/login` 与 `/session`，并通过分层 development 验收。它只把 credential/session 转成 trusted human Principal，不授予 Role、Scope、Permission 或业务访问；第 33～35 节仍须依次完成服务端强制、前端投影和越权 E2E。
 
 - [第 1 节：为什么要做 AI 原生大营销增长平台](part-01/lesson-01-why-ai-native-growth-platform.md) 已完成。
 - [第 2 节：梳理完整用户增长旅程](part-01/lesson-02-user-growth-journey.md) 已完成。
@@ -68,10 +68,11 @@
 - [第 29 节：实现规则决策引擎](part-04/lesson-29-rule-decision-engine.md) 已完成并验收；配套[路由图求值基线](../product/lottery-strategy-routing-evaluation-v1.md)、[API](../api/lessons/lesson-29.md)、[QA](../qa/lessons/lesson-29.md)、[设计手记](../design-thinking/lessons/lesson-29.md)、[面试问答](../interview/lessons/lesson-29.md)、[运维/验收手册](../runbooks/strategy-routing-graph-evaluation.md)和 [ADR-0025](../decisions/ADR-0025-lottery-strategy-routing-graph-evaluation.md)已登记。
 - [第 30 节：为什么 Strategy 不等于 Activity](part-04/lesson-30-strategy-vs-activity.md) 已完成并验收；配套[发布绑定基线](../product/activity-publication-binding-v1.md)、[API](../api/lessons/lesson-30.md)、[QA](../qa/lessons/lesson-30.md)、[设计手记](../design-thinking/lessons/lesson-30.md)、[面试问答](../interview/lessons/lesson-30.md)、[运维/验收手册](../runbooks/activity-publication.md)和 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)已登记。
 - [第 31 节：统一访问控制模型与威胁边界](part-04/lesson-31-access-control-model-threat-boundary.md) 已完成并验收；配套[产品基线](../product/access-control-model-threat-boundary-v1.md)、[API](../api/lessons/lesson-31.md)、[QA](../qa/lessons/lesson-31.md)、[设计手记](../design-thinking/lessons/lesson-31.md)、[面试问答](../interview/lessons/lesson-31.md)、[模型审查手册](../runbooks/access-control-model-review.md)和 [ADR-0027](../decisions/ADR-0027-governance-access-control-model.md)已登记。
+- [第 32 节：真实会话认证](part-04/lesson-32-real-session-authentication.md) 已完成并验收；配套[产品基线](../product/identity-session-authentication-v1.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)、[设计手记](../design-thinking/lessons/lesson-32.md)、[面试问答](../interview/lessons/lesson-32.md)、[运维手册](../runbooks/identity-session-operations.md)、[设计 QA](../../design-qa.md)和 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)已登记。完整终点由同名稳定分支与累计快照共同指向的实际 Git tip 定义，不在冻结提交内嵌自引用 SHA。
 - 第 11～23 节依次建立 Go/MySQL/React/Compose 基线、Lottery 领域/仓储/选择/API/React 纵向链和规则所有权停止线；第 24 节只在 application-owned `StrategyReader` 外增加 Lottery cache-aside decorator。MySQL 仍是唯一事实源，Redis value 经严格 v1 codec 与领域恢复；2 MiB/1000 Award、TTL≤5m+jitter、同 key fill、poison 修复、fail-open、最小 ACL 与低基数观测分别由适合它们的单元/边界测试或隔离 Compose 证据覆盖。服务器实际剩余 TTL、真实 2 MiB Redis value 和 Redis/MySQL 同时停止未被冒充为已执行场景，精确边界见第 24 节 QA。
-- 当前真实 Lottery API 及其 React 消费者仍只产生并展示不持久化的 ephemeral selection；`reward` 只是奖励候选，`no_reward` 是正常候选结果。Redis 不缓存资格、权限、会员事实、路由决定、Strategy snapshot、Activity publication、随机选择或 Draw/Result，也不进入 API readiness。第 25～31 节的新内核仍未进入同一线上编排；访问 Policy 能在纯 Go 中求值不等于已有会话、受保护 endpoint、权限后台或多租户运行隔离。幂等、Activity 次数等完整资格、库存、积分扣减和发奖也均未实现；INV-03 仍未满足。
+- 当前真实 Lottery API 及其 React 消费者仍只产生并展示不持久化的 ephemeral selection；`reward` 只是奖励候选，`no_reward` 是正常候选结果。Redis 不缓存资格、权限、会员事实、路由决定、Strategy snapshot、Activity publication、随机选择、Session 或 Draw/Result，也不成为 Identity fallback。第 32 节会话 route 与登录页已经实现并验收，但现有 Lottery/Admin/MCP/Agent route 没有服务端 RBAC，页面导航也未按 capability 裁剪；幂等、Activity 次数等完整资格、库存、积分扣减和发奖仍未实现，INV-03 仍未满足。
 - M0 健康探针基线与 M1 Strategy 缓存本地基线均已形成。M1 三组 50 RPS×10s 均 500/500 成功：warm-cache MySQL prepared execute 为 0，cache-disabled 与 Redis-down 均为 1000；它只证明当前本机的命中/直连/fail-open 路径，不外推为业务 SLO、生产容量或通用缓存收益。第 45、61、77、85、93、101 节继续形成后续里程碑。
-- 下一节是第 32 节“真实会话认证”。第 31 节已经完成公共模型；第 32～35 节继续按“会话 → 服务端强制 → 前端感知 → 越权验收”演进，并在第 36 节首个真实运营后台复用。后续章节不能把浏览器 Principal/role/scope 声明当可信事实。
+- 下一节是第 33 节“服务端 RBAC 强制执行”。第 33～35 节继续按“服务端强制 → 前端感知 → 越权验收”演进，并在第 36 节首个真实运营后台复用。任何章节都不能把浏览器 Principal/role/scope 声明、隐藏导航或登录成功当成授权事实。
 - Go 完整版本结束后，才以稳定 Specification 为输入另行制定 Java 第二轮计划。
 
 ## 课程演进规则
@@ -86,7 +87,7 @@
 
 前端不是最终阶段补上的展示层。React + TypeScript 在第 14 节初始化，第 15 节完成首次 API 联调；抽奖页、运营后台、活动详情、积分/优惠券中心、Growth Feed、数据大盘、MCP 控制台和 AI Operator 依次在对应业务章节交付。
 
-数据库同样不是预制终态。第 13 节先建立连接、账号隔离、readiness 与前向 Migration 机制；第 18 节以 `000001` / `000002` 创建旧两表，第 28 节以 `000003`～`000005` 创建 graph 三表；第 30 节再以 `000006`～`000010` 新增 snapshot/Marketing 五表，由 `000011` 追加 Marketing 内部 active-publication FK，latest 为 11、总业务表数为 10。真实 v5→v11 Migration 已证明旧表结构/数据哈希保持、五张新表局部约束与跨上下文零 FK，长期 `growthos_app` 仍只保留旧两表 `SELECT` 并真实拒绝其余八表。每个版本仍只包含一条 MySQL DDL；已执行的 Migration 只追加，不回写历史。
+数据库同样不是预制终态。第 13 节先建立连接、账号隔离、readiness 与前向 Migration 机制；第 18 节以 `000001` / `000002` 创建旧两表，第 28 节以 `000003`～`000005` 创建 graph 三表；第 30 节再以 `000006`～`000010` 新增 snapshot/Marketing 五表，由 `000011` 追加 Marketing 内部 active-publication FK，当时 latest 为 11、业务表数为 10。该节真实 v5→v11 Migration、结构/数据哈希与 `growthos_app` 八表拒绝继续作为历史证据。第 32 节以 `000012`～`000014` 依次追加 workforce account、server-side Session 与 authentication throttle，当前源码 latest 为 14、共十三张应用表；business/Identity 使用独立 pool，Identity runtime、INSERT-only provisioner 与 migrator 也各守权限边界。每个版本仍只包含一条 MySQL DDL；已执行的 Migration 只追加，不回写历史。
 
 ## 可部署里程碑
 
