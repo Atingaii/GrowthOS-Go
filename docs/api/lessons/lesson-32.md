@@ -5,11 +5,11 @@
 - **架构决策：** [ADR-0028](../../decisions/ADR-0028-identity-session-authentication.md)
 - **运行手册：** [Identity Session 运维手册](../../runbooks/identity-session-operations.md)
 - **记录日期：** 2026-09-02
-- **实现状态：** Session handler 与浏览器 adapter 已进入源码；真实 Compose、HTTP 与浏览器证据仍为 `PENDING`
+- **实现状态：** 已实现并完成第 32 节 development 验收；生产 TLS、可信代理来源与第 35 节跨角色越权 E2E 仍不在本节证明范围
 
 > 本文以当前实现为准，区分“源码 contract”和“已执行证据”。产品基线与 ADR 中早期使用的
 > `{login,password}` 是设计期简写；已实现且唯一允许的 HTTP 字段名是
-> `{login_name,password}`。在真实 Nginx → Go → MySQL 与浏览器验收完成前，不得把本页写成上线或生产安全证明。
+> `{login_name,password}`。当前 Nginx → Go → MySQL development wire、一次性 MySQL 8.4.11 与核心浏览器旅程已经实际通过；这些结果仍不是 staging/production TLS、可信代理 client IP、真实 COMMIT 应答丢失或完整越权防护证明。
 
 ## 1. 本节新增的唯一公开 surface
 
@@ -314,7 +314,7 @@ DELETE 只显式加入 `X-CSRF-Token`，没有 body 或 payload framing header�
 | kind | 语义 |
 | --- | --- |
 | `http` | 后端返回非 2xx 且公开 JSON error envelope 可验证 |
-| `gateway` | `502/503/504` 且响应不是 JSON，典型为代理 HTML/text 故障页 |
+| `gateway` | 外层或非本仓库代理返回非 JSON 的 `502/503/504`；当前仓库 Nginx 自身的 `502/504` 使用关联 request ID 的 JSON error contract |
 | `contract` | 本地输入/配置非法，或成功/错误响应不符合上述 contract |
 | `timeout` | adapter 自己的有界 timer 触发取消 |
 | `cancelled` | caller signal 或 request controller 已取消 |
@@ -347,22 +347,24 @@ untrusted login_name + password
 
 ## 10. 证据台账
 
-`implemented` 表示源码/自动化 contract 存在，不表示本机、Compose、浏览器或生产环境已经跑通。
+`ACTUAL-PASS` 表示列出的命令或真实入口已经执行；它只证明该行范围。当前最终 development Compose 运行来自冻结前代码 tip `9fc4e06`，project 为 `growthosl24f6a5acf4d242695ad3e2df19`，退出码为 0；运行没有保留可信总时长，因此本文不补造耗时。
 
 | 证据 | 当前状态 | 冻结前必须保留的材料 |
 | --- | --- | --- |
-| Go Session handler、Cookie、Origin/CSRF、application/repository unit contract | implemented in source | focused、repeat、shuffle、race、vet 与 diff-check 输出 |
-| TypeScript Session adapter 与共享 transport unit contract | implemented in source | test、typecheck、format/build 输出 |
-| clean MySQL 8.4.11 Migration 12～14 与 exact grants | `PENDING` 本轮真实证据 | 一次性 schema、grant allow/deny、清理记录 |
-| Compose one-shot provision 成功与 duplicate failure | `PENDING` | 命令、退出码、低披露日志、账号去留说明 |
-| Nginx → Go → MySQL login/current/logout/replay | `PENDING` | 201/200/204/401、header/body/cookie jar 私密证据摘要 |
-| throttle、DB unavailable、commit-unknown HTTP 故障矩阵 | `PENDING` | 429/503、零 Cookie/零 Principal、无盲重试证明 |
-| maintenance session/throttle fixture | `PENDING` | fixed clock eligibility、250+250 上限、重复执行决策 |
-| 浏览器 HttpOnly、reload current、CSRF、logout/replay | `PENDING` | 隔离 browser profile、Network/Application/console/storage 证据 |
+| Go Session handler、Cookie、Origin/CSRF、application/repository contract | `ACTUAL-PASS` | focused、repeat、shuffle、race、fuzz、全仓普通/race、vet 与 diff-check 已通过 |
+| TypeScript Session adapter 与共享 transport contract | `ACTUAL-PASS` | 23 个 Vitest 文件、250 个测试、typecheck、format 与 production build 已通过 |
+| clean MySQL 8.4.11 Migration 12～14 与 exact grants | `ACTUAL-PASS`（`4149576` 历史基线） | 一次性 MySQL 8.4.11 运行 19 秒、exit 0；schema/Repository/allow-deny/mandatory-role/清理均通过，Identity 终态 `0:0:0` |
+| Compose one-shot provision 与最小权限 | `ACTUAL-PASS`（`9fc4e06`） | INSERT-only provisioner 创建唯一 HTTP credential；runtime/provisioner/migrator 能力与禁止项均经真实 MySQL 验证 |
+| Nginx → Go → MySQL login/current/logout/replacement/replay | `ACTUAL-PASS`（`9fc4e06`） | 201→200→replacement→204→replay、五会话上限、同形 401、MySQL unavailable/recovery、exact Set/Clear-Cookie 均通过 |
+| throttle 与 wire 安全矩阵 | `ACTUAL-PASS`（`9fc4e06`） | 登录第 6 次和分布式来源第 31 次分别精确 429；TE/Trailer、2049-byte body、错误无 Cookie、canonical headers 与 invalid-Host JSON 421 均通过 |
+| issue/revoke COMMIT outcome unknown | 确定性测试通过；真实 wire 故障注入 `PENDING` | 当前只证明 application/repository 的 outcome 分类与禁止盲重试，不冒充真实网络断点 |
+| maintenance session/throttle fixture | `ACTUAL-PASS`（`9fc4e06`） | 首轮只删 2 个 eligible Session 和 1 个 expired throttle，第二轮收敛为 0，active Session 与业务表保持不变 |
+| 浏览器 login/current/reload/unavailable/recovery/logout | `ACTUAL-PASS`（核心旅程） | 1719×862、390×844、1280×720，以及 keyboard/focus/ARIA/reduced-motion 已核查；直接 storage/console 与更广设备/辅助技术认证仍待后续 |
+| raw `Content-Length` absent/0/mismatch 的全部代理变体 | `PENDING` | handler/race/fuzz 已覆盖相邻边界；本轮 raw proxy 只实际发送已记录的 framing/size 场景 |
 | staging HTTPS `__Host-` Cookie | `PENDING` | 真实 TLS origin 与浏览器 Cookie 属性 |
 | production proxy client address | `PENDING` | proxy allowlist、header 清洗、真实 client-IP 测试 |
 
-在所有本节必需 evidence 完成、临时资料精确清理并更新课程 registry 前，第 32 节不得标为“已完成”。
+本轮 HTTP fixture cleanup 为 `10:31:1`，外部复核 project containers/volumes/networks/images/builder/tempdirs 均为 0；长期 `growthos` 资源身份未改变且保持 healthy。表中仍为 `PENDING` 的项目是明确延期的生产或更强故障/设备证明，不得被本节 PASS 吞并，也不阻碍按本节 development Definition of Done 冻结。
 
 ## 11. 来源分层
 
@@ -381,5 +383,5 @@ untrusted login_name + password
 
 面试题型只用于训练表达，不能改变 wire contract：为什么不用 JWT/Redis session、如何防 fixation 与账号枚举、
 SameSite 为什么不能单独替代 CSRF、COMMIT unknown 为什么不能重试、为什么 UI 隐藏不是授权。
-本文没有把任何未核验的牛客帖子当技术权威，也不伪造“真实面经”链接；具体帖子 URL、发布日期、访问日期与可复述结论
-应在未来 `docs/interview/lessons/lesson-32.md` 中单独核验。目前该面试来源证据为 `PENDING`。
+本文没有把任何牛客帖子当技术权威，也不伪造“真实面经”原题。已核验的帖子 URL、访问日期、可复述主题与证据限制
+记录在[第 32 节面试问答](../../interview/lessons/lesson-32.md)；技术结论仍以本节实现、测试以及上面的官方资料为准。
