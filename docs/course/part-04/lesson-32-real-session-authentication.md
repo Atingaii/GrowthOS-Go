@@ -135,6 +135,8 @@ unknown login 仍验证服务端持有的 dummy envelope；unknown、wrong passw
 
 Argon2 外围还有 process-wide semaphore：默认并发 2、允许 1～4；默认最多等待 250ms、允许 1ms～1s。资源饱和归为 `503 authentication_unavailable`，不是错误密码，也不无限排队。
 
+本轮 fuzz 让这个简单闸门暴露了真实时序缺陷：旧实现把“可用 slot”与“1ms timer 已到期”放进同一个 `select`，两者同时 ready 时 Go 可以随机选 timer，把仍有容量的请求误报为 503。`5af29e2` 在 context 预检查后先走 nonblocking slot fast-path，只对确实满槽的请求创建 timer，并加入 `(capacity=2, occupied=1, cancel=false)` 回归 seed。它是错误拒绝服务的资源准入 bug，不是 credential 或权限绕过。
+
 ### 7.2 已取得的本地 benchmark
 
 在 Apple M2 Pro 上对当前 profile 执行 10 次基线：
@@ -149,15 +151,15 @@ Argon2 外围还有 process-wide semaphore：默认并发 2、允许 1～4；默
 
 [login application](../../../internal/identity/application/login.go)把一次尝试拆成：
 
-1. 规范化并 HMAC 摘要 login/source；
+1. 严格校验已是 canonical 的 `LoginName`（不 trim、lowercase 或 Unicode normalize），规范化受信 socket source，再对两维分别做 domain-separated HMAC 摘要；
 2. 在 MySQL 按固定顺序锁住两条 throttle row，先 reservation；
 3. 释放事务和连接后竞争 Argon2 gate；
 4. 查 account，真实或 dummy 验证；
 5. 用不可伪造 receipt 对两维 reservation 做一次 finalize；
-6. 成功后重新锁 account，复核 status、credential version 与 epoch；
-7. 撤销替换 hint 或确定性最旧 Session，生成全新 token/CSRF；
-8. 插入 Session 并确认 COMMIT；
-9. 只有 COMMIT 已确认才向 HTTP 层交付 Cookie 与 snapshot。
+6. 成功后生成全新的 raw token、SessionRef、OperationRef 与候选 Session；
+7. repository 锁 account，复核 status、完整 credential snapshot 与 epoch，先处理合法 replacement hint，再在需要时撤销确定性最旧 Session；
+8. 插入 Session 并确认 COMMIT；只有 token digest 碰撞可以换候选并在最多三次预算内重试；
+9. 只有 COMMIT 已确认，HTTP 层才基于新 token 签发 session-bound CSRF、构造 Cookie 并交付 snapshot。
 
 昂贵 hash 期间不持有数据库事务。密码正确并不保证签发成功：账户可能在验证期间被 disabled、credential version 改变或 epoch 前进，事务内复核必须失败关闭。
 
@@ -195,7 +197,7 @@ login/source 原值不入表，使用独立 HMAC key 的 domain-separated digest
 
 Session 在 `now >= idle_expires_at` 或 `now >= absolute_expires_at` 时失效。touch 只能延长 idle 且不能越过 absolute。account status、captured epoch、revoked state、两种 expiry 必须同时有效才产生 trusted Principal。
 
-第六次并发登录在锁住 account 后按 `last_seen_at, issued_at, session_id` 撤销确定性最旧 Session。account-wide 安全响应可通过递增 `AuthenticationEpoch` 使旧 epoch Session 全部失效；公开 Session API 本节不暴露 logout-all 或密码重置。
+签发事务先证明当前 active Session 没有超过五个。若旧 Cookie 是同一 account、当前 epoch 且仍 active 的 replacement hint，先精确撤销它；扣除该 hint 后仍有五个，才按 `last_seen_at, issued_at, session_ref` 撤销确定性最旧 Session，然后插入新 Session。account-wide 安全响应可通过未来受控用例递增 `AuthenticationEpoch` 使旧 epoch Session 全部失效；本节的公开 Session API 并未实现 logout-all 或密码重置。
 
 ## 12. Cookie policy 为什么按环境分名
 
@@ -218,7 +220,7 @@ SameSite Strict 能减少跨站 Cookie 携带，但不是完整 CSRF 策略。�
 4. login 使用严格 JSON、exact Origin、双维 throttle；
 5. source 只取当前 socket `RemoteAddr`，忽略所有 forwarding header。
 
-[CSRF adapter](../../../internal/identity/adapter/csrf/csrf.go)生成 `v1.<key-id>.<nonce>.<mac>`，nonce/MAC 各 32 bytes，HMAC-SHA-256 绑定 Session digest。active key 签发；active 与至多一个 previous key 验证，previous 窗口不超过 8 小时。CSRF token 只在组件内存和 `X-CSRF-Token` 中短暂存在，不进 URL、Cookie 或 localStorage。
+[CSRF adapter](../../../internal/identity/adapter/csrf/csrf.go)生成 `v1.<key-id>.<nonce>.<mac>`，nonce/MAC 各 32 bytes。HMAC-SHA-256 的输入依次是 domain label `growthos-csrf-v1`、`key-id`、Session token digest 和 nonce，每段都带独立 4-byte big-endian 长度前缀，不是无边界字节串拼接。active key 签发；active 与至多一个 previous key 验证，previous 窗口不超过 8 小时。CSRF token 只在组件内存和 `X-CSRF-Token` 中短暂存在，不进 URL、Cookie 或 localStorage。
 
 生产若经过反向代理，必须先定义可信 proxy allowlist 和 canonical client source 规则；在此之前只能宣称当前 loopback Compose 拓扑，而不能把 socket peer 当成互联网最终客户端 IP。
 
@@ -253,7 +255,7 @@ identity_authentication_throttle
 | GET | `/api/v1/session` | `200` |
 | DELETE | `/api/v1/session` | `204` |
 
-POST 的当前实现 contract 是 exact JSON `{login_name,password}`。产品/ADR 早期出现的 `{login,password}` 只是设计期简写，不能拿来调用实现。三个方法都拒绝 query 和伪造身份 header；POST 还要求 exact `application/json`、已知 `Content-Length 1..2048`、无 transfer encoding/trailer、无 unknown/duplicate/missing/trailing 字段。
+POST 的当前实现 contract 是 exact JSON `{login_name,password}`，所有规范、示例与验收都使用这一字段名。三个方法都拒绝 query 和伪造身份 header；POST 还要求 exact `application/json`、已知 `Content-Length 1..2048`、无 transfer encoding/trailer、无 unknown/duplicate/missing/trailing 字段。
 
 成功 snapshot 只返回：
 
@@ -348,17 +350,29 @@ make compose-identity-maintenance
 | Argon2 本机 baseline | `ACTUAL-PASS` | 第 7.2 节精确数值；提交 `71553fe` |
 | provision disposable Compose | `ACTUAL-PASS` | 两轮 project/port 与 exact cleanup；提交 `3867584` |
 | provision prerequisite 回归 | `ACTUAL-PASS` | 真实运行发现 quick `exited:0` 被 `--wait` 误判；`af4245e` 改为 180s exact-state fail-closed 轮询 |
-| Go 各包测试源码 | `IMPLEMENTED-SURFACE` | domain/application/adapters/config/CLI 均有定向测试；本页不把“测试存在”写成最终执行 |
-| MySQL 8.4 integration 最终重跑 | `PENDING` | 需执行真实 `TestRepositoryMySQL84Acceptance` 等目标并保留环境证据 |
+| Identity focused Go | `ACTUAL-PASS` | `./internal/identity/...` 普通、race、shuffle×10 均 PASS；passwordhash count=10/race PASS；`internal/platform/appconfig` 与 `cmd/growth-api`、`cmd/growth-migrate`、`cmd/growth-identity-provision`、`cmd/growth-identity-maintenance` count=10 PASS |
+| Identity fuzz | `ACTUAL-PASS` | ParseEnvelope 1,485,248；WorkGate 625,627；PasswordBounds 255,368；DecodeLoginRequestStrict 25,908；五个 domain target 44,251 / 707,057 / 574,005 / 39,479 / 683,345 次执行；均为该轮机器观测 |
+| 冻结前 Go gate | `ACTUAL-PASS` | HEAD `4149576` + 当时工作树：全仓普通 23.2s、race 25.8s、vet、fmt-check PASS；冻结 tip 形成后仍须组合重跑 |
+| MySQL 8.4.11 integration | `ACTUAL-PASS` | HEAD `4149576`，19s/exit 0；schema、immutability/inventory、真实 `growth-migrate`、Repository 与 runtime grant；终态 `14:0`、`0:0:0`、probe 0，精确清理 |
 | maintenance Compose fixture | `ACTUAL-PASS` | project `growthosl2465e15560c550fd33fc6901bf`：`2/1/3`→`0/0/0`、active fingerprint 不变、residue `0:0:0`、精确清理 |
 | 浏览器认证旅程 | `ACTUAL-PASS` | 经 Nginx→Go→MySQL 完成 login、refresh current、logout、anonymous refresh、DB outage fail-closed、恢复重试与最终 logout |
-| HTTP wire/Cookie 属性 | `PENDING` | 仍需协议级验证状态、headers、Set-Cookie tuple、旧 bearer replay 与负向 framing；浏览器页面现象不替代 wire 证据 |
-| staging/production TLS | `PENDING` | 需真实 HTTPS、Secure `__Host-` Cookie 与 `verify_identity` 证据 |
+| development HTTP 核心 wire | `ACTUAL-PASS`（历史工作树、provenance 受限） | 从 HEAD `8a5e0ce`、code baseline `5af29e2` 的工作树运行，project `growthosl24d2103fd496568ceac960d315`，302s/exit 0；201→200→replacement→204→replay、Cookie/CSRF/Origin/Fetch、同形 401、五会话与 MySQL 503/recovery；`8a5e0ce` commit 自身的脚本尚无 Session gate |
+| development HTTP 增强 wire | `ACTUAL-PASS` | HEAD `9fc4e06fb55bd9be5fad6ff570b86b4c23446c7e`，project `growthosl24f6a5acf4d242695ad3e2df19`，exit 0、无可信总耗时；核心链、exact headers、invalid Host JSON 421、TE/Trailer、2049B、错误无 Set-Cookie、六类 401 clear-Cookie、login/source 429 与 exact cleanup 全部通过 |
+| HTTP 剩余 fault/framing | `PENDING` | raw `Content-Length` absent/0/mismatch 未全部经代理发送；issue/revoke COMMIT outcome-unknown 只有确定性 application/repository 测试，没有真实 Compose wire 注入 |
+| staging/production 与浏览器扩展 | `PENDING` | 需真实 HTTPS、Secure `__Host-` Cookie、`verify_identity`、可信代理 client source，以及浏览器 storage/console、更广设备/AT 证据 |
 | 最终 Go/全仓门禁 | `PENDING` | 文档、索引和全部实现冻结后统一执行 |
 
 精确复现命令、预期与清理见 [QA](../../qa/lessons/lesson-32.md) 和 [运维手册](../../runbooks/identity-session-operations.md)。
 
-浏览器证据的精确边界是：成功登录跳转 `/session` 且 Principal 精确；刷新恢复；logout 回 `/login` 且再次刷新仍匿名；有效 Session 时停止 MySQL，刷新仍保留 `/session` 并显示“暂时无法确认登录状态”，没有伪装匿名或泄露 Principal；MySQL 恢复后点击重试恢复同一 Principal，最后再次 logout。专用 E2E account 已清理 2 条 revoked Session、2 条本轮空闲 throttle 和 1 条 account，三类 residue 均为 0；私人 password file 先覆写再 unlink，父目录删除。覆写不等于在 SSD/COW 文件系统上证明物理擦除。
+浏览器证据的精确边界是：成功登录跳转 `/session` 且 Principal 精确；刷新恢复；logout 回 `/login` 且再次刷新仍匿名；有效 Session 时停止 MySQL，刷新仍保留 `/session` 并显示“暂时无法确认登录状态”，没有伪装匿名或泄露 Principal；MySQL 恢复后点击重试恢复同一 Principal，最后再次 logout。早先浏览器专用 account 清理为 2 Session、2 throttle、1 account，residue 为 `0:0:0`。该轮没有直接读取 HttpOnly store；storage/console、更广设备和辅助技术仍不能写成已验收。私人 password file 先覆写再 unlink，父目录删除；覆写不等于在 SSD/COW 文件系统上证明物理擦除。
+
+证据失败也必须保留。core gate 的早期采集器曾因 macOS BSD awk 不接受 Cookie header/jar 的跨行条件而失败；改为 POSIX awk 并对代表性输入逐段验证后，才得到表中的历史 core PASS。增强 gate 在 `903fd9f` 的 project `growthosl24c1bf7ce29e5efa417fae6932` 再次真实失败：Session 前置门禁通过，但 BSD awk 把循环变量 `index` 解释为内建函数，脚本 exit 2；项目精确清理，且没有可信总耗时。`51b52e0` 修复该变量、invalid Host JSON/headers 与 Cookie exact tuple，但这一 tip 的重跑在第二次重复 backend build 获取 Docker Hub OAuth token 时以 `EOF` 中止，Session 断言尚未开始，因此没有最终 PASS 结果。
+
+`9fc4e06` 将 `api`、`migrate`、`identity-provision`、`identity-maintenance` 四个 Compose target 合并成一次 BuildKit/Bake 调用后，official project `growthosl24f6a5acf4d242695ad3e2df19` exit 0。该轮没有可信总耗时，不补写估算值。除表中核心链外，它实际证明所有 Session 响应只有一组 canonical security headers、invalid Host 返回同一低披露 JSON 421、Transfer-Encoding/Trailer 被拒绝、2049-byte 普通 body 到达 Go 后返回 `400 invalid_request`、错误状态不设置 Cookie，以及 invalid/replaced/logged-out/expired/epoch/disabled 六类 401 使用 exact clear-Cookie tuple。
+
+持久 throttle 的可观测状态同样被核查：同 login 前 5 次失败后第 6 次为 429，状态 `2:10:0:1`；同 source 上 30 个不同 login 失败后第 31 个为 429，状态 `31:30:1:60:0:1`。清理前 account/session/throttle 状态为 `disabled:2:10:31`，HTTP fixture cleanup 为 `10:31:1`，最终数据库 residue `0:0:0`。外部复核中，该 project 的 containers、volumes、networks、images、builder、临时目录均为 0，长期 `growthos` 资源前后不变且健康。
+
+增强 PASS 仍有边界：raw `Content-Length` absent/0/mismatch 没有全部经代理实际发送；issue/revoke COMMIT outcome-unknown 目前只有确定性 application/repository 覆盖，不是 Compose wire 故障注入；staging/production TLS、可信代理 client source，以及浏览器 storage/console、更广设备/AT 仍属于后续环境验收。
 
 ## 21. 选型何时需要重评
 
@@ -382,8 +396,12 @@ make compose-identity-maintenance
 - [x] 浏览器单元/类型/构建/格式、strict transport、Argon benchmark 和 provision Compose 已取得上表实际证据；
 - [x] maintenance disposable acceptance 已证明 `2/1/3`→`0/0/0`、活跃数据不变、失败/grant 边界与精确清理；
 - [x] 真实浏览器经 Nginx→Go→MySQL 已完成 login/current refresh/logout、数据库中断不冒充匿名和恢复重试；
-- [ ] HTTP wire/Cookie 属性与 staging/production TLS `PENDING`；
-- [ ] 本章最终 Go、doccheck、diff、全仓门禁和冻结 ref `PENDING`。
+- [x] Identity focused/race/shuffle/count=10、九个 fuzz target 与独立 MySQL 8.4.11 gate 已取得真实证据；
+- [x] development HTTP 核心 wire/Cookie/CSRF/Origin/Fetch、401 同形、五会话与 MySQL outage/recovery 已通过；
+- [x] HEAD `9fc4e06` 的增强 Compose gate 已通过 exact security headers、invalid Host JSON 421、TE/Trailer、2049B、错误无 Set-Cookie、六类 401 clear-Cookie、login/source 429、精确数据库/外部资源清理；
+- [x] 冻结前一轮全仓 Go 普通、race、vet 与 fmt-check 已通过；
+- [ ] raw `Content-Length` absent/0/mismatch 的完整代理矩阵、真实 wire COMMIT outcome-unknown fault injection、staging/production TLS/可信代理与浏览器扩展矩阵 `PENDING`；
+- [ ] 冻结 tip 上的 Go/Web 组合重跑、doccheck、diff、全仓门禁和冻结 ref `PENDING`。
 
 未勾选项完成前，本节只能称为“实现候选持续验收中”，不能称为最终冻结或生产就绪。
 

@@ -1,8 +1,8 @@
 # GrowthOS Identity 与真实会话认证基线 v1
 
-> **状态：第 32 节实现候选；核心源码与部分真实证据已完成，最终冻结验收尚未完成。**
+> **状态：第 32 节实现候选；development 增强 wire gate 已实际通过，最终冻结与跨环境验收尚未完成。**
 >
-> 本文冻结第 32 节“真实会话认证”的产品语义、信任边界、安全不变量和验收口径。当前分支已经实现 Identity 三表、领域/应用/适配器、双连接池、Session HTTP、浏览器会话体验与两个 operations-only one-shot；但原始 HTTP wire 全矩阵、独立 MySQL 最终矩阵、staging/production TLS 和全仓冻结门禁仍未完成。下文分别标记“源码事实”“已执行证据”与 `PENDING`，不得由其中一层外推另一层。
+> 本文冻结第 32 节“真实会话认证”的产品语义、信任边界、安全不变量和验收口径。当前分支已经实现 Identity 三表、领域/应用/适配器、双连接池、Session HTTP、浏览器会话体验与两个 operations-only one-shot；focused Go、独立 MySQL 8.4.11 和 development 增强 Session wire 已有实际证据。raw `Content-Length` 特定变体、真实 wire COMMIT acknowledgement-loss、staging/production TLS、可信代理、浏览器广泛环境矩阵和最终冻结门禁仍未完成。下文分别标记“源码事实”“已执行证据”与 `PENDING`，不得由其中一层外推另一层。
 
 - **章节：** 第 32 节“真实会话认证”
 - **上游：** 第 31 节 Governance 访问控制模型与威胁边界
@@ -62,7 +62,7 @@ trusted Governance Principal
 
 ### 2.2 Identity 是独立上下文
 
-第 32 节新增独立 `Identity` 上下文，建议代码边界为：
+第 32 节新增独立 `Identity` 上下文，当前代码边界为：
 
 ```text
 internal/identity/domain
@@ -192,9 +192,9 @@ HTTP 层必须在执行昂贵 hash 前限制 body、login name 和 password 的 
 
 ### 4.3 VerifiedSession
 
-一个有效 session 至少绑定：
+一个有效 session 的绑定跨越 session row 与它所指向的 workforce account：session row 保存 AccountID 而不重复保存 PrincipalID；Repository 恢复同一 account 后，application 才从该 account 读取独立 PrincipalID，不能由 AccountID 字符串推导。组合后的有效 session 至少绑定：
 
-- server-generated `SessionID`；
+- server-generated、非秘密的 `SessionRef`；
 - `AccountID`；
 - exact `PrincipalID`；
 - 创建时的 `AuthenticationEpoch`；
@@ -234,11 +234,11 @@ AND now < absolute_expires_at
 | salt | 16 random bytes |
 | output | 32 bytes |
 
-这是第 32 节实现目标，不是已执行性能证据。实现前仍须通过 ADR-0028 记录选择依据，并在目标开发/Compose 环境实测单次和有界并发延迟、RSS 与取消边界；若实测证明该 profile 无法满足安全或资源预算，必须修改设计基线和 ADR，不能只在代码里静默降低参数。
+该 profile 已进入实现；Apple M2 Pro 的单次/并发 benchmark 与 RSS 证据见 17.7，但它只校准当前开发机，不证明目标容器或 production p99、memory limit 与抗 DoS 容量。部署规格改变后仍须在目标环境重测；若实测证明 profile 无法满足安全或资源预算，必须同步修改设计基线和 ADR，不能只在代码里静默降低参数。
 
 ### 5.2 严格 envelope
 
-建议采用自描述 envelope：
+当前实现采用自描述 envelope：
 
 ```text
 $argon2id$v=19$m=19456,t=2,p=1$<base64-salt>$<base64-output>
@@ -365,7 +365,7 @@ SHA-256 在这里用于高熵随机 token 的 lookup digest，不用于密码哈
 登录请求可能已经携带攻击者预置 Cookie。成功登录时必须：
 
 1. 不采用、不升级、不复用 incoming token；
-2. 总是生成全新 32-byte token 和 SessionID；
+2. 总是生成全新 32-byte token、SessionRef 与 issue OperationRef；
 3. 若 incoming token 对应旧 session，可以按策略撤销，但撤销失败不能让新 token 退化为旧 token；
 4. 响应只写入新 Cookie；
 5. 测试必须证明攻击者给出的 token 不会成为新 session digest。
@@ -383,7 +383,7 @@ v1 同时使用：
 - `now >= absolute_expires_at` 即失效；
 - authenticated request 可以把 idle expiry 延长到 `min(now+15m, absolute_expires_at)`；
 - absolute expiry 永不滑动；
-- safe session introspection 是否刷新 idle 必须在 ADR 中固定，v1 建议所有成功 authenticated request 统一刷新，避免页面轮询制造不同语义；
+- `GET /api/v1/session` 在距上次权威 touch 已满 60 秒时刷新 idle；60 秒内只读，写入失败则不产生 trusted Principal；
 - 失败、CSRF 拒绝、anonymous 请求和 technical error 不刷新；
 - 更新失败时本次请求不产生 trusted Principal，避免把数据库不可写伪装成会话正常。
 
@@ -400,8 +400,10 @@ v1 允许同一 account 在多个受信浏览器使用，但最多存在 **5 个
 ```text
 SELECT account ... FOR UPDATE
   -> 复核 enabled + exact authentication epoch
-  -> 查询该 account 未撤销且未过期 session，规范排序
-  -> 若新建后超过 5，按 issued_at ASC, session_id ASC 撤销最旧 session
+  -> 查询该 account 当前 epoch、未撤销且未过期的 session
+  -> 若持久化集合已超过 5，按坏存量失败关闭，replacement hint 不能掩盖溢出
+  -> 若 incoming Cookie 命中同 account 的 active session，优先作为 replacement hint 撤销
+  -> replacement 后仍有 5 个时，按 last_seen_at ASC, issued_at ASC, session_ref ASC 撤销最旧 session
   -> INSERT 新 session
   -> COMMIT
 ```
@@ -417,7 +419,7 @@ SELECT account ... FOR UPDATE
 - 必须先验证 session、Origin/Fetch Metadata 和 session-bound CSRF；
 - revoke 使用条件更新，重复执行不能恢复 session；
 - 成功、已撤销或已过期时都清除浏览器 Cookie；
-- 不能接受 body 中的任意 SessionID 作为删除目标。
+- 不能接受 body 中的任意 SessionRef 或 bearer 作为删除目标。
 
 本节不公开“列出全部 session”“注销其他设备”或管理员 revoke API，但 Repository 与领域原因必须能表达：
 
@@ -452,10 +454,14 @@ v1.<key_id>.<csrf_nonce_base64url>.<mac_base64url>
 
 mac = HMAC-SHA-256(
   server_csrf_key,
-  length_prefixed("growthos-csrf-v1", key_id, session_token_digest, csrf_nonce)
+  len32be("growthos-csrf-v1") || "growthos-csrf-v1" ||
+  len32be(key_id) || key_id ||
+  len32be(session_token_digest) || session_token_digest ||
+  len32be(csrf_nonce) || csrf_nonce
 )
 ```
 
+- `len32be` 是每段独立的 4-byte big-endian 长度前缀，用于消除拼接边界歧义；
 - `csrf_nonce` 使用独立 32 random bytes；
 - `key_id` 只用于选择受控 keyring 条目，不是 secret；
 - token 通过 session response body 返回给同源 JavaScript，不放入 session Cookie；
@@ -577,7 +583,7 @@ reservation deadline 取 `min(request deadline, admitted_at + 3s)`，必须晚�
 - 不因 unknown account 绕过预算；
 - 不持有数据库事务或 account row lock 执行 Argon2。
 
-限速窗口、次数、退避和 Argon2 最大并发的精确数值必须由 ADR 与本机/Compose 实测校准；本文不虚构已测阈值。没有精确阈值实现与证据时，第 32 节不能宣称在线猜测攻击已受控。
+限速窗口、次数、退避和 Argon2 最大并发已由 ADR 固定并进入实现；development 增强 Compose 已实际证明 login 5/6 与 source 30/31 的 429 边界。该证据只覆盖当前 socket-source 拓扑，不证明生产可信代理或分布式 credential stuffing 防护。
 
 ## 12. 最小 HTTP 契约
 
@@ -608,7 +614,7 @@ reservation deadline 取 `min(request deadline, admitted_at + 3s)`，必须晚�
 - throttled 返回统一 `429 authentication_throttled`，不披露 account；
 - dependency/entropy/commit indeterminate 不得设置 Cookie。
 
-成功 DTO 候选：
+成功 DTO：
 
 ```json
 {
@@ -620,7 +626,7 @@ reservation deadline 取 `min(request deadline, admitted_at + 3s)`，必须晚�
     },
     "idle_expires_at": "2026-09-01T00:15:00Z",
     "absolute_expires_at": "2026-09-01T08:00:00Z",
-    "csrf_token": "v1.<nonce>.<mac>"
+    "csrf_token": "v1.<key_id>.<nonce>.<mac>"
   }
 }
 ```
@@ -642,15 +648,15 @@ DTO 不含 AccountID、password envelope、session token、digest、Role、Permi
 用途：撤销当前 session。
 
 - 必须验证 exact Origin、Fetch Metadata、有效 Cookie 和 session-bound CSRF header；
-- 不接收 request body 或目标 SessionID；
+- 不接收 request body 或目标 SessionRef；
 - 已确认 revoke 后返回 `204 No Content` 并清 Cookie；
-- session 已到期/撤销时保持低披露、清 Cookie，具体 204/401 由 ADR 固化；
+- session 缺失、已到期或已撤销时统一返回 `401 unauthenticated` 并清 Cookie；
 - revoke COMMIT outcome unknown 时返回 `503 session_revocation_indeterminate`、清本地 Cookie，但明确不能证明服务端 token 已撤销；
 - 不记录 raw Cookie/CSRF token。
 
 ### 12.4 错误语义
 
-| 类别 | HTTP 候选 | 对外 code | 内部必须区分 |
+| 类别 | HTTP status | 对外 code | 内部必须区分 |
 | --- | ---: | --- | --- |
 | 请求结构非法 | 400 | `invalid_request` | body/framing/field/origin parser |
 | credential 不成立 | 401 | `authentication_failed` | unknown/wrong/disabled 仅受信诊断可区分 |
@@ -661,7 +667,7 @@ DTO 不含 AccountID、password envelope、session token、digest、Role、Permi
 | revoke 结果未知 | 503 | `session_revocation_indeterminate` | commit outcome unknown |
 | 未分类内部错误 | 500 | `internal_error` | 受控 cause，不对外直出 |
 
-本表是产品契约候选；最终 fault code、status 和 body shape 必须在实现 ADR/API 文档中精确冻结。
+本表已由实现、ADR 与 API 文档冻结；后续变更必须同步更新三者和负向验收，不能仅改 transport。
 
 ## 13. COMMIT outcome unknown 与部分失败
 
@@ -685,7 +691,7 @@ revoke 结果未知比创建更危险：浏览器 Cookie 可以被清除，但�
 - 清除当前浏览器 Cookie，减少继续使用；
 - 对外返回结果未知，不显示“已安全退出”；
 - 允许使用同一 session token 的条件 revoke 安全重试；
-- Runbook 指导在持续未知时递增 account epoch 或执行受控安全 revoke；
+- 持续未知升级为安全事件；account epoch 递增或批量安全 revoke 需要未来独立实现并验收，不能假定本节已有 API/CLI；
 - 在服务器确认前不能宣称 token 已失效。
 
 ### 13.3 其他失败优先级
@@ -721,9 +727,9 @@ caller cancellation
 - duration bucket；
 - environment 与 service；
 - 低基数 failure stage；
-- 经评审的 opaque AccountID/SessionID 关联值，仅限受保护安全日志。
+- 经评审的 opaque AccountID/SessionRef 关联值，仅限受保护安全日志。
 
-普通 metrics label 不使用 login name、PrincipalID、AccountID、SessionID、来源 IP、token digest 或 error cause，避免高基数和二次泄露。
+普通 metrics label 不使用 login name、PrincipalID、AccountID、SessionRef、来源 IP、token digest 或 error cause，避免高基数和二次泄露。
 
 ### 14.3 登录审计边界
 
@@ -765,7 +771,7 @@ caller cancellation
 - 不因 cleanup 故障放宽 resolve；
 - 保留期和执行方式由 ADR/Runbook 固化并在真实 MySQL 验证。
 
-在清理命令、索引与验收完成前，不能宣称 session 存储容量闭环已经完成。
+当前固定 one-shot maintenance、所需索引与 disposable MySQL/Compose 验收已经完成本地容量收敛闭环；它不等于生产调度、backlog SLO 或长期运行容量已经证明。
 
 ### 15.3 密钥恢复
 
@@ -773,7 +779,7 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 
 1. 停止 unsafe mutation 或 fail closed；
 2. 恢复受控 key version，或按批准流程轮换；
-3. 必要时递增 account epoch / 全局安全 epoch 使旧 session 失效；
+3. 若风险要求 account-wide 失效，先启用未来独立实现并验收的 epoch security-response 用例；第 32 节没有现成 epoch/global revoke API 或 CLI；
 4. 验证新登录、旧 session、logout 和错误日志；
 5. 不把 key 写进仓库或普通配置输出。
 
@@ -805,7 +811,7 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 
 ## 17. 验收矩阵
 
-以下全部是待执行门禁；设计文档完成不代表项目已通过。
+以下矩阵同时承担实现目标和验收索引；设计文字本身不代表通过，已执行范围与剩余项以 17.7 的证据台账为准。
 
 ### 17.1 Domain 与密码哈希
 
@@ -835,7 +841,7 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 | epoch | account epoch 改变后全部旧 session 失效 |
 | disabled | 既有 session 下一次 resolve 失效 |
 | concurrency cap | 64 个并发登录后 active session 永远不超过 5 |
-| eviction order | 同时刻按 SessionID tie-break 确定撤销最旧 |
+| eviction order | valid replacement hint 优先；否则按 `last_seen_at, issued_at, session_ref` 确定撤销最旧 |
 | logout/resolve race | 无数据竞争、无 session 复活、结果符合固定优先级 |
 | dependency/cancel | technical failure 不映射为 valid anonymous/Principal |
 | defensive evidence | 返回 DTO 不暴露可变内部 session/secret |
@@ -907,26 +913,36 @@ CSRF HMAC key 丢失会使既有 CSRF token 无法验证，但不应使 session 
 - `main` 不变，累计分支只在第 32 节冻结后 fast-forward；
 - coverage、`web/dist`、临时 schema/账号/Secret/浏览器 profile 全部精确清理。
 
-### 17.7 当前实现与证据台账（2026-09-02）
+### 17.7 当前实现与证据台账（2026-09-03）
 
 以下“已实现”只表示当前候选分支存在可追溯源码；“实际通过”只覆盖紧邻描述的执行范围：
 
 | 范围 | 当前状态 | 可宣称的证据边界 |
 | --- | --- | --- |
-| Identity schema 与持久化 | 已实现 | `000012`～`000014` 依次建立 `identity_workforce_account`、`identity_session`、`identity_authentication_throttle`，当前 Migration latest 为 14；独立 disposable MySQL 最终迁移/Repository/授权全矩阵仍 `PENDING` |
+| Identity schema 与持久化 | 已实现且独立 MySQL 实际通过 | `000012`～`000014` 建立三张 Identity 表；HEAD `4149576` 的 disposable MySQL 8.4.11 gate 19s/exit 0，覆盖 schema、immutability/inventory、真实 `growth-migrate`、Repository/runtime grant，终态 `14:0`、`0:0:0`、reserved probe 0 |
 | API runtime | 已实现 | `growthos_app` 与 `growthos_identity` 使用独立 credential/pool；Session route、Argon2id、双维 throttle、opaque token、CSRF/Origin/Cookie 与双 pool readiness 已装配 |
 | 账号 provisioning | 已实现且两轮 disposable Compose 实际通过 | `growth-identity-provision` 使用独立 `growthos_identity_provisioner` 的 workforce-account `INSERT`-only 权限；调用方密码文件经私有快照传入，命令不 readback、不 upsert |
 | 历史 maintenance | 已实现且 official disposable fixture 实际通过 | `growth-identity-maintenance run` 复用 runtime Identity credential、固定一个 clock snapshot 与 Session/throttle 各 250 行预算；实测 `2/1/3` 后第二轮精确 `0/0/0`，active Session fingerprint 不变，fixture 零残留 |
 | Argon2id 资源基线 | 本地实际通过 | Apple M2 Pro 上 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单 profile 19 MiB、双 profile 最大 38 MiB；这不是 production p99、容器限额或 DoS 容量结论 |
-| 浏览器核心旅程 | development loopback 实际通过 | 真实 Nginx → Go → MySQL 完成 login、reload/current、logout；MySQL 中断时保持 unknown/unavailable 而不伪装 anonymous，恢复后可重新核查同一 Principal；该证据没有直接读取浏览器 HttpOnly Cookie，也不替代 wire 属性、旧 bearer replay或 TLS 验收 |
-| 原始 Session HTTP wire | `PENDING` | 仍须冻结 201→200→204→401、严格 framing/header/body、Cookie tuple、旧 bearer replay、429/503 与日志 sentinel 全矩阵 |
-| staging/production | `PENDING` | 配置已强制 HTTPS、MySQL `verify_identity` 与 Secure `__Host-` Cookie；真实 TLS、可信代理 client IP 与浏览器属性尚未验收 |
+| Identity Go/fuzz | 实际通过 | Identity 普通/race/shuffle×10、passwordhash count=10/race；`internal/platform/appconfig` 与 `cmd/growth-api`、`cmd/growth-migrate`、`cmd/growth-identity-provision`、`cmd/growth-identity-maintenance` count=10；九个 fuzz target 已执行，次数只作为本轮机器观测 |
+| 浏览器核心旅程 | development loopback 实际通过 | 真实 Nginx → Go → MySQL 完成 login、reload/current、logout；MySQL 中断时保持 unknown/unavailable 而不伪装 anonymous，恢复后可重新核查同一 Principal；未直接读取浏览器 HttpOnly store，storage/console、更广设备与辅助技术仍待补证 |
+| Session HTTP core 历史 wire | 有 provenance 限制的工作树 PASS | 从 HEAD `8a5e0ce`、code baseline `5af29e2` 的工作树执行，project `growthosl24d2103fd496568ceac960d315`，302s/exit 0；201→200→replacement→204→replay、Cookie/CSRF/Origin/Fetch、同形 401、五会话、MySQL 503/recovery 与 cleanup `10:3:1`；`8a5e0ce` commit 自身的脚本尚无 Session gate |
+| Session HTTP 增强 wire | development loopback `ACTUAL-PASS` | HEAD `9fc4e06fb55bd9be5fad6ff570b86b4c23446c7e`，project `growthosl24f6a5acf4d242695ad3e2df19`，exit 0、无可信总耗时；核心旅程、exact headers、invalid Host JSON 421、TE/Trailer、2049B、错误无 Set-Cookie、六类 401 exact clear-Cookie、login/source 429、MySQL outage/recovery 与精确清理全部通过 |
+| HTTP 剩余 fault/framing | `PENDING` | raw `Content-Length` absent/0/mismatch 未全部经代理发送；issue/revoke COMMIT outcome-unknown 仅有确定性 application/repository 测试，没有真实 Compose wire 注入 |
+| staging/production 与浏览器扩展 | `PENDING` | 配置已强制 HTTPS、MySQL `verify_identity` 与 Secure `__Host-` Cookie；真实 TLS、可信代理 client IP、storage/console、广泛设备与 AT 尚未验收 |
 | 后续权限系统 | 不属于第 32 节 | 第 33 节服务端 RBAC、第 34 节 capability 驱动 UI 裁剪、第 35 节越权 E2E 均未实现 |
-| 最终冻结 | `PENDING` | 全仓 Go/race/vet/fuzz/repeat、Web、doccheck、Compose、diff、远端 ref、累计学习分支与临时材料清理仍须由最终门禁统一确认 |
+| 冻结前 Go gate | 已有实际通过、最终 tip 重跑待定 | HEAD `4149576` + 当时工作树：全仓普通 23.2s、race 25.8s、vet、fmt-check PASS；最终 tip 的 Web/doccheck/make verify/diff 与组合重跑仍待收口 |
+| 最终冻结 | `PENDING` | 最终 tip 上的组合门禁、Web、doccheck、diff、远端 ref、累计学习分支与临时材料清理仍须统一确认 |
 
 真实长驻账号 provision 还暴露了一个有价值的部署缺陷：`docker compose up --wait` 会把已经快速成功并进入 `exited:0` 的 `mysql-grants` 当作等待失败。提交 `af4245e` 把 provision/maintenance wrapper 改为最长 180 秒的显式状态轮询：唯一合法 container 的 `exited:0` 才成功，`created:0`、`running:0`、`restarting:0` 继续等待，非零退出、歧义 ID、意外状态或超时全部失败关闭。该修复证明“one-shot 成功完成”与“长期 service healthy”必须采用不同验收语义。
 
-Argon2 fuzz 还发现一条资源准入时序缺陷：当 gate 有可用 slot、同时 1ms timer 也 ready 时，原 `select` 可能随机选择 timeout 并误报 503 unavailable；这不是 credential 绕过或权限漏洞，但会把可服务请求错误降级。提交 `5af29e2` 在 context 预检查后先执行 nonblocking available fast-path，只在槽位确实已满时启动 timer，并把 `(capacity=2, occupied=1, cancel=false)` 加入 fuzz seed。修复后 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过；其他 Identity fuzz targets 与全仓最终重跑仍属于冻结门禁。
+Argon2 fuzz 还发现一条资源准入时序缺陷：当 gate 有可用 slot、同时 1ms timer 也 ready 时，原 `select` 可能随机选择 timeout 并误报 503 unavailable；这不是 credential 绕过或权限漏洞，但会把可服务请求错误降级。提交 `5af29e2` 在 context 预检查后先执行 nonblocking available fast-path，只在槽位确实已满时启动 timer，并把 `(capacity=2, occupied=1, cancel=false)` 加入 fuzz seed。修复后 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过。其他实测 fuzz 为 ParseEnvelope 1,485,248、PasswordBounds 255,368、DecodeLoginRequestStrict 25,908、TokenDigest 44,251、PrincipalID 707,057、LoginName 574,005、ThrottleDigest 39,479、ThrottleAggregateCount 683,345 次执行；次数只属于该轮机器与时长，不是性能承诺。
+
+core gate 的早期采集器曾因 macOS BSD awk 不接受 Cookie header/jar 断言中的跨行条件而失败；改成 POSIX awk 并用代表性输入逐段验证后才得到上述 core PASS。后续增强证据链没有抹去失败：`903fd9f` 在 project `growthosl24c1bf7ce29e5efa417fae6932` 真实运行时，Session 前置门禁已通过，但 BSD awk 把循环变量 `index` 当成内建函数，脚本 exit 2；该项目精确清理，没有可信总耗时。`51b52e0` 修复循环变量、invalid Host JSON/headers 和 Cookie exact tuple，但该 tip 的重跑在第二次重复 backend build 获取 Docker Hub OAuth token 时以 `EOF` 中止，尚未进入 Session 断言，因此仍不能标 PASS。
+
+`9fc4e06` 将 `api`、`migrate`、`identity-provision`、`identity-maintenance` 合为一次 BuildKit/Bake 构建后，official project `growthosl24f6a5acf4d242695ad3e2df19` 最终 exit 0。该轮没有可信总耗时，不补写估算值；实际通过 Session login/current/logout/replacement/replay、五会话上限、MySQL outage/recovery、每个 Session 响应的 exact canonical security headers、invalid Host 的 JSON 421、Transfer-Encoding/Trailer 拒绝、2049-byte 普通 body、错误状态无 Set-Cookie，以及 invalid/replaced/logged-out/expired/epoch/disabled 六类 401 的 exact clear-Cookie。login 维第 5 次失败后第 6 次为 429，持久状态 `2:10:0:1`；source 维 30 个不同 login 失败后第 31 个为 429，持久状态 `31:30:1:60:0:1`。清理前状态是 `disabled:2:10:31`，HTTP fixture cleanup 为 `10:31:1`，最终数据库 residue `0:0:0`。
+
+外部复核显示该 project 的 containers、volumes、networks、images、builder 与临时目录均为 0；长期 `growthos` 资源前后不变且健康。该结果关闭了此前 header 所有权、raw 429、TE/Trailer、2049-byte 与 clear-Cookie 待项，但不外推未执行场景：raw `Content-Length` absent/0/mismatch 没有全部经代理发送；issue/revoke COMMIT outcome-unknown 只有确定性 application/repository 测试，没有真实 Compose wire fault injection；production TLS、可信代理 client source、浏览器 storage/console、更广设备与辅助技术仍待真实验收。
 
 ## 18. ADR-0028 已具体化的编码参数
 
@@ -945,7 +961,7 @@ ADR-0028 已把实现不得默默决定的项目收敛为：
 11. development 仅 loopback origin 可关闭 Secure，staging/production 强制 HTTPS + `__Host-`；
 12. 本地 AccountID 到 PrincipalID 由服务端稳定映射，未来企业 IAM 另立映射切片。
 
-这些参数已经进入第 32 节实现候选，但“进入源码”不等于所有环境均已执行。当前 Argon2 开发机 benchmark、两轮 provision、official maintenance fixture 与 development 浏览器核心旅程已有上述范围内证据；独立 MySQL 最终矩阵、原始 HTTP wire、生产代理来源、TLS Cookie 和全仓冻结仍必须真实验收。若改变 MySQL 唯一事实、opaque token、server-side revoke、session-bound CSRF、固定绝对过期、五会话上限、独立 Identity/DB identity 或第 33～35 节停止线，必须同步修改产品基线与 ADR 并解释原因。
+这些参数已经进入第 32 节实现候选，但“进入源码”不等于所有环境均已执行。当前 Argon2 benchmark/fuzz、focused Go、两轮 provision、official maintenance、development 浏览器核心旅程、增强 HTTP wire 与独立 MySQL 8.4.11 矩阵已有上述范围内证据；仍待真实验收的是 raw `Content-Length` absent/0/mismatch 的完整代理矩阵、COMMIT acknowledgement-loss 的真实 wire fault injection、生产代理来源、TLS Cookie、浏览器 storage/console、更广设备/AT 与最终冻结。若改变 MySQL 唯一事实、opaque token、server-side revoke、session-bound CSRF、固定绝对过期、五会话上限、独立 Identity/DB identity 或第 33～35 节停止线，必须同步修改产品基线与 ADR 并解释原因。
 
 ## 19. 本节完成后能与不能宣称什么
 
@@ -991,7 +1007,7 @@ ADR-0028 已把实现不得默默决定的项目收敛为：
 ```text
 AuthenticatedRequestContext {
   Principal: governance.Principal{kind: human, id: ...},
-  SessionID: opaque server correlation only,
+  SessionRef: non-secret server correlation only,
   AuthenticatedAt / Session expiry,
   Request correlation
 }

@@ -1,7 +1,7 @@
 # ADR-0028：由 Identity 上下文拥有本地可替换的真实会话认证
 
 - 状态：已接受（实现候选已落地；第 32 节最终冻结验收待完成）
-- 日期：2026-09-01
+- 日期：2026-09-01（实现证据校准至 2026-09-03）
 - 关联章节：第 32 节“真实会话认证”
 - 前置决策：[ADR-0027：由 Governance 拥有统一、默认拒绝的访问控制模型](ADR-0027-governance-access-control-model.md)
 
@@ -16,7 +16,7 @@ GrowthOS 需要先形成一条独立、可撤销、可过期、可审计的认�
 ## 驱动因素
 
 1. 浏览器声明不得直接构造可信 Principal；
-2. 登录、解析、续期、退出、全量撤权必须具有明确 authority 和失败语义；
+2. 登录、解析、续期、当前会话退出和账户级 epoch 失效语义必须具有明确 authority 与失败边界；公开 revoke-all 用例留给后续章节；
 3. session 必须支持 idle/absolute expiry、单会话撤销、账户级 epoch 撤销和并发上限；
 4. 密码验证的 CPU/内存成本必须有上限，未知账户不能形成明显枚举旁路；
 5. Cookie 认证必须同时处理 fixation、CSRF、跨站请求和低披露错误；
@@ -32,21 +32,21 @@ GrowthOS 需要先形成一条独立、可撤销、可过期、可审计的认�
 
 认证属于 `internal/identity`，不属于 Governance、业务上下文或 `internal/platform`：
 
-- domain 拥有 WorkforceAccount、LocalCredential、Session 和 AuthenticationThrottle 的不变量；
-- application 拥有 authenticate、create/resolve/revoke session、revoke all 和 credential rehash 用例；
+- domain 拥有 WorkforceAccount、PasswordEnvelope、Session、AuthenticationThrottle 与强类型标识的不变量；
+- application 当前拥有 admission/login、session issue/resolve/current-session revoke 与 maintenance 编排；没有 revoke-all 或 credential rehash 写用例，旧 profile 只产生内部 `NeedsRehash` 信号；
 - adapter 实现 MySQL repository、Argon2id、随机 token 与 HTTP Cookie；未来 OIDC 必须另立切片；
 - composition root 装配依赖、路由、独立连接池和生命周期；
 - infrastructure 只可承载通用 HTTP context plumbing，不可验证密码或决定账户状态。
 
-Identity application 输出不可伪造的 `VerifiedSession`，由受限构造路径携带 server-derived human Principal。Principal ID 来自稳定、opaque AccountID；login name、email、provider subject、role、tenant 和 scope 都不是 Principal ID，也不进入客户端可写输入。
+Identity application 输出不可伪造的 `VerifiedSession`，由受限构造路径携带 server-derived human Principal。`AccountID` 与 `PrincipalID` 是两个独立的稳定标识：服务端从已恢复的 WorkforceAccount 执行 `AccountID -> PrincipalID` 映射，绝不从 AccountID 字符串推导 PrincipalID。login name、email、provider subject、role、tenant 和 scope 都不是 Principal ID，也不进入客户端可写输入。
 
-本节的本地 workforce provider 是可替换的认证边界，不是永久身份协议。`CredentialAuthenticator` 端口返回已验证的 AccountID 和 credential version。未来 OIDC adapter 必须在独立章节定义 issuer/subject 映射与协议校验；第 32 节不预建一张没有 consumer 的 external identity 表。业务模块和 Governance 不感知本地密码或未来 OIDC 差异，未经显式绑定的外部 subject 永不自动创建账户。
+本节的本地 workforce provider 是可替换的认证边界，不是永久身份协议。当前 application 通过 `CredentialReader` 读取完整 WorkforceAccount，再由 `PasswordVerifier` 完成有界的真实或 dummy Argon2id 验证；只有验证成功且账户 enabled，后续私有构造路径才读取该 account 的 AccountID、credential version、epoch 与 PrincipalID。未来 OIDC adapter 必须在独立章节定义 issuer/subject 映射与协议校验；第 32 节不预建一张没有 consumer 的 external identity 表。业务模块和 Governance 不感知本地密码或未来 OIDC 差异，未经显式绑定的外部 subject 永不自动创建账户。
 
 ### 2. MySQL 是 account/session 唯一事实源
 
 MySQL 权威保存：
 
-- `identity_workforce_account`：AccountID、规范化 login lookup、Argon2id envelope、credential version、状态、单调 `authentication_epoch` 与审计时间；
+- `identity_workforce_account`：AccountID、未经转换且符合 exact ASCII grammar 的 LoginName、独立 PrincipalID、Argon2id envelope、credential version、状态、单调 `authentication_epoch` 与审计时间；
 - `identity_session`：非秘密 SessionRef、token digest、AccountID、captured epoch、issued/last-seen/idle/absolute expiry、revoked time 和原因；
 - `identity_authentication_throttle`：`login|source` dimension、HMAC subject digest、window、failure count、blocked-until 与更新时间。
 
@@ -101,8 +101,9 @@ Cookie 约束为 HttpOnly、Path `/`、SameSite=Strict、无 Domain；production
 1. `SELECT ... FOR UPDATE` 锁定 account；
 2. 重新检查 account state、credential version 和 epoch；
 3. 清理/忽略已失效记录并计算有效会话；
-4. 若已有五个，按 `last_seen_at, issued_at, session_id` 的确定顺序撤销最旧会话；
-5. 插入捕获当前 epoch 的新 session，再 COMMIT。
+4. 若请求携带的旧 Cookie 对应同 account、当前 epoch 且仍 active 的 session，先把它作为 replacement hint 精确撤销并从 active 集合扣除；跨 account、无效或过期 hint 不影响别的 session；
+5. replacement 后若仍有五个，按 `last_seen_at, issued_at, session_ref` 的确定顺序撤销最旧会话；
+6. 插入捕获当前 epoch 的新 session，再 COMMIT。
 
 因此并发登录在提交点仍最多五个；不能用“先 count 后 insert”的非事务检查。单会话 logout 设置 revoked time；未来 logout-all/password reset/security response 在锁定 account 后递增 `authentication_epoch`，旧 epoch 会话立即失效。epoch 溢出必须拒绝操作并告警，不得回绕；第 32 节公开 HTTP 不提前暴露这些未来管理操作。
 
@@ -114,7 +115,7 @@ Cookie 约束为 HttpOnly、Path `/`、SameSite=Strict、无 Domain；production
 - 返回 503 且绝不发送 Cookie，即使随后观察到行存在也不把本次响应升级为成功；
 - 未下发 raw token 的孤儿 session 对客户端不可用，但仍占容量，按 absolute expiry 与有界 cleanup 收敛；
 - observer 仅记录无秘密的 operation/outcome-unknown/session-ref，不记录 token digest；
-- 对撤权类操作 outcome unknown 清理浏览器 Cookie、返回 503，并允许同一 token 的条件 revoke 重试或由 Runbook 递增 epoch；
+- 对当前会话 revoke 的 outcome unknown 清理浏览器 Cookie、返回 503，并保留同一 token 的条件重试语义；持续不确定必须升级为安全事件，但本节没有可直接调用的 epoch 递增或批量撤权 API/CLI；
 - `database/sql` 的 COMMIT error 不能被解释为 rollback 已确认。
 
 这一路径必须有故障注入测试，不能把 `database/sql` 的 COMMIT error 等同于 rollback 已发生。
@@ -123,7 +124,7 @@ Cookie 约束为 HttpOnly、Path `/`、SameSite=Strict、无 Domain；production
 
 同源 Cookie 认证的 unsafe 请求采用三层防护：
 
-1. 服务端返回 `v1 + key-id + random nonce + HMAC-SHA-256(dedicated-key, key-id || session-token-digest || nonce)` 的 session-bound CSRF token；
+1. 服务端返回 `v1.<key-id>.<nonce>.<mac>`；`mac` 为 dedicated key 上的 HMAC-SHA-256，其输入依次是 domain label `growthos-csrf-v1`、key-id、session-token digest 与 nonce，四段分别使用 4-byte big-endian length prefix；
 2. 浏览器把 token 仅保存在内存并通过 `X-CSRF-Token` 回传，服务端 constant-time 校验并重新确认 session；
 3. `POST/PUT/PATCH/DELETE` 必须有与配置 public origin 精确一致的 Origin；若 `Sec-Fetch-Site` 存在，只接受 `same-origin`，明确拒绝 `cross-site`/`same-site`。
 
@@ -133,7 +134,7 @@ CSRF HMAC 使用独立 keyring，不复用 session token、password 或 rate-lim
 
 ### 9. 限速与账户枚举防护
 
-登录限速以 MySQL `identity_authentication_throttle` 为多实例一致真相，同时按受信来源和 HMAC 后的规范化 login key 建行；raw IP/login 不入表、不进入 metric label。限速发生在 Argon2 前，但 unknown 与 known account 使用相同 key 与公开响应。
+登录限速以 MySQL `identity_authentication_throttle` 为多实例一致真相，同时按 canonical socket source 和 HMAC 后的 exact LoginName 建行；LoginName 已在进入 digester 前按严格 grammar 验证，digester 不做 trim、case-fold 或 Unicode normalize。raw IP/login 不入表、不进入 metric label。限速发生在 Argon2 前，但 unknown 与 known account 使用相同 key 与公开响应。
 
 v1 使用 15 分钟 observation window：login dimension 前 5 次失败可进入密码验证，source dimension 前 30 次失败可进入密码验证；越过阈值后从 30 秒开始指数退避，按后续实际失败翻倍并封顶 15 分钟。blocked 请求不执行 Argon2，也不增加 failure count；窗口无新失败 15 分钟后重置。成功仅重置 login dimension，不清除 source dimension，避免用已知正确账号冲洗来源预算。该策略不是持久账户锁死：它有明确上限和自动恢复，且错误统一为 `429 authentication_throttled`。
 
@@ -177,18 +178,23 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 
 `/health` 仍只表示进程存活。Argon2 semaphore 饱和、单次 rate limit 和无效登录不令 readiness 失败。Redis 可丢弃 cache 的故障语义保持原样，不能影响 Identity 判断。
 
-## 当前实现校准与证据边界（2026-09-02）
+## 当前实现校准与证据边界（2026-09-03）
 
 本节是对已接受决定的实现记录，不改变上述规范性结论：
 
 - Migration `000012`～`000014` 已分别实现 workforce account、Session 与 authentication throttle 三张表，当前源码 latest 为 14；Identity domain/application、Argon2id、MySQL Repository、Session HTTP、浏览器 transport、双 pool composition 与 readiness 已进入候选分支；
-- `growth-api`、`growth-identity-provision`、`growth-identity-maintenance` 分别使用 runtime、INSERT-only provisioner、固定 maintenance 边界；Compose operations profile、八份本地 Secret 和最小挂载已经落地；
+- `growth-api`、`growth-identity-provision`、`growth-identity-maintenance` 分别使用 runtime、INSERT-only provisioner、固定 maintenance 边界，`growth-migrate` 继续拥有迁移入口；Compose operations profile、八份本地 Secret 和最小挂载已经落地；
 - Argon2id 在 Apple M2 Pro 的本地基线为 serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`，单/双 profile 为 19/38 MiB；该结果只校准开发机参数，不证明 production p99、容器 memory limit 或抗 DoS 容量；
-- `FuzzWorkGateCapacityAndCancellation` 发现 available slot 与 1ms timer 同时 ready 时旧 `select` 可能随机误报 unavailable；这是资源准入时序/错误 503 缺陷，不是 credential 绕过。提交 `5af29e2` 先走 nonblocking available fast-path，只在满槽时启动 timer，并加入 `(capacity=2, occupied=1, cancel=false)` seed；修复后的 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过；
+- `FuzzWorkGateCapacityAndCancellation` 发现 available slot 与 1ms timer 同时 ready 时旧 `select` 可能随机误报 unavailable；这是资源准入时序/错误 503 缺陷，不是 credential 绕过。提交 `5af29e2` 先走 nonblocking available fast-path，只在满槽时启动 timer，并加入 `(capacity=2, occupied=1, cancel=false)` seed；修复后的 passwordhash `count=10`、race 与 10 秒 fuzz（625,627 次执行）通过。Identity 普通/race/shuffle×10，`internal/platform/appconfig` 与 `cmd/growth-api`、`cmd/growth-migrate`、`cmd/growth-identity-provision`、`cmd/growth-identity-maintenance` 的 count=10，以及其余八个列明 fuzz target 也已实际通过；
 - provision 已在两个 disposable Compose 环境真实通过并精确清理；official maintenance fixture 已实测 `2/1/3` 删除、第二轮 `0/0/0`、active Session fingerprint 不变与 fixture 零残留；
-- development loopback 的真实浏览器已通过 Nginx → Go → MySQL login、reload/current、logout，以及 MySQL outage 下 unknown/unavailable 呈现和恢复重核。该执行没有直接读取 HttpOnly Cookie store，不证明原始 Set-Cookie 属性、旧 bearer wire replay 或 staging/production TLS；
+- development loopback 的真实浏览器已通过 Nginx → Go → MySQL login、reload/current、logout，以及 MySQL outage 下 unknown/unavailable 呈现和恢复重核；该证据没有直接读取浏览器 HttpOnly store，更广泛的 storage/console 检查、设备矩阵与辅助技术验收仍属于后续证据；
+- 历史 core wire 是从 HEAD `8a5e0ce`、认证代码 baseline `5af29e2` 的工作树执行：project `growthosl24d2103fd496568ceac960d315`，302 秒、exit 0，证明 201→200→replacement→204→replay、development Cookie、CSRF/Origin/Fetch、同形 401、五会话与 MySQL 503/recovery，fixture cleanup `10:3:1`、residue `0:0:0`。`8a5e0ce` 提交中的脚本本身尚未包含 Session gate，因此这是有明确 provenance 限制的历史工作树证据，不能描述成该 commit 独立可复现；
+- HEAD `4149576` 的独立 MySQL 8.4.11 gate 运行 19 秒 exit 0：schema/immutability/inventory、真实 `growth-migrate up/status`、Repository 与 runtime direct-grant allow/deny 全部通过，终态 `14:0`、Identity 行 `0:0:0`、reserved probe 0；随机 container/label/Secret 清零且长期 `growthos` 资源前后不变；
 - 长驻 provision 实跑发现 `docker compose up --wait` 会误判快速完成的 `mysql-grants` `exited:0`。提交 `af4245e` 已让 provision/maintenance wrapper 最长 180 秒显式轮询 exact one-shot state，只接受唯一合法 container 的 `exited:0`，对非零退出、歧义、意外状态和超时失败关闭；
-- 原始 Session HTTP wire 全矩阵、独立 MySQL 最终 migration/Repository/grant 矩阵、staging/production HTTPS + `__Host-` Cookie、可信代理 client IP 与最终全仓冻结门禁仍为 `PENDING`；
+- core gate 的早期采集器曾因 macOS BSD awk 不接受 Cookie header/jar 断言中的跨行条件而失败；改成 POSIX awk 并用代表性输入逐段验证后才得到上述 core PASS。增强 gate 在 `903fd9f` 又真实失败：project `growthosl24c1bf7ce29e5efa417fae6932` 的 Session 前置门禁均通过，但 BSD awk 把循环变量 `index` 解析为内建函数，脚本 exit 2；该项目完成精确清理，且没有可信总耗时。`51b52e0` 修复该变量、invalid-Host JSON/headers 与 Cookie tuple，但该 tip 的重跑在第二次重复 backend build 获取 Docker Hub OAuth token 时以 `EOF` 中止，Session 断言尚未开始，不能记为最终结果；
+- `9fc4e06fb55bd9be5fad6ff570b86b4c23446c7e` 把 `api`、`migrate`、`identity-provision`、`identity-maintenance` 四个 Compose target 合并到一次 BuildKit/Bake 调用。official project `growthosl24f6a5acf4d242695ad3e2df19` 随后 exit 0；没有可信总耗时，故不记录时长。该轮实际通过 login/current/logout/replacement/replay、五会话上限、MySQL outage/recovery、逐响应 exact canonical security headers、invalid Host JSON 421、Transfer-Encoding/Trailer 拒绝、2049-byte body、错误响应无 Set-Cookie、invalid/replaced/logged-out/expired/epoch/disabled 六类 401 exact clear-Cookie，以及 login 5/6 次节流状态 `2:10:0:1`、source 30/31 次节流状态 `31:30:1:60:0:1`；清理前状态 `disabled:2:10:31`，HTTP fixture cleanup `10:31:1`，最终数据库 residue `0:0:0`；
+- 同一 `9fc4e06` official run 的外部清理复核显示本项目 containers、volumes、networks、images、builder、临时目录均为 0；长期 `growthos` 资源前后不变且健康。它把增强 development wire gate 标为实际通过，但没有把 staging/production 或浏览器全矩阵外推为通过；
+- 已有确定性 application/repository 测试覆盖 issue/revoke COMMIT outcome-unknown 分类，但没有在真实 Compose wire 上注入 COMMIT acknowledgement loss；raw `Content-Length` absent/0/mismatch 变体也没有全部经代理实际发送。此前全仓 Go 普通（23.2s）、race（25.8s）、vet 与 fmt-check 已通过，但最终 tip 仍须组合重跑；staging/production HTTPS + `__Host-` Cookie、可信代理 client IP、浏览器 storage/console、更广设备/AT 与最终冻结门禁仍为 `PENDING`；
 - 第 33 节服务端 RBAC、第 34 节 capability UI 投影、第 35 节越权 E2E 仍未实现，不得由本节认证证据推导。
 
 ## 备选方案与否决理由
@@ -243,7 +249,7 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 6. 完成 MySQL、HTTP、Compose、浏览器和日志验收后才把第 32 节标记完成；
 7. 第 33 节再逐个把业务用例接到 VerifiedSession + Governance enforcement。
 
-应用回滚使用上一镜像，保留 additive tables 和数据，不执行破坏性 down migration。可关闭新认证路由并撤销 `growthos_identity` 凭证；已创建 session 因尚未接入第 33 节业务 enforcement 不会变成授权旁路。若 token/CSRF secret 事故，轮换 key、递增账户 epoch 或批量撤销 session；若 schema 错误，通过新的 forward repair migration 修复。
+应用回滚使用上一镜像，保留 additive tables 和数据，不执行破坏性 down migration。可关闭新认证路由并撤销 `growthos_identity` 凭证；已创建 session 因尚未接入第 33 节业务 enforcement 不会变成授权旁路。CSRF key 事故可按受控 keyring 流程轮换；若需要 account-wide epoch 递增或批量撤销，必须先实现并验收独立的 security-response 用例，不能假定第 32 节已有该能力。若 schema 错误，通过新的 forward repair migration 修复。
 
 ## 安全不变量
 
@@ -261,8 +267,8 @@ Identity 是认证路由的 required dependency。进程启动时必须验证 co
 
 ## 验收
 
-- domain/application：状态、双 expiry 边界、epoch、单/全量 revoke、Clock、defensive copy 和错误分类；
-- Argon2：envelope malformed/参数上下限、dummy hash、rehash CAS、semaphore 超时、benchmark 和容器内存峰值；
+- domain/application：状态、双 expiry 边界、epoch mismatch、当前 session revoke、Clock、defensive copy 和错误分类；公开 revoke-all 尚不是当前用例；
+- Argon2：envelope malformed/参数上下限、dummy hash、内部 rehash signal、semaphore 超时、benchmark 和容器内存峰值；credential rehash CAS 属于未来 lifecycle，不作为第 32 节现有能力；
 - token/Cookie：随机源失败、digest-only、唯一冲突、fixation、重复 Cookie、production Secure/`__Host-` 和精确删除；
 - concurrency：并发登录始终最多五个，resolve/touch/revoke race 不复活 session，`go test -race` 通过；
 - commit fault injection：已提交、未提交、无法判定三条路径均不盲重放；任何 COMMIT error 都不下发 token；
