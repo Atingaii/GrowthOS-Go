@@ -28,7 +28,7 @@
 </p>
 
 > [!IMPORTANT]
-> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成并验收第 1～31 节，共 31 节。第 30 节建立 Lottery Strategy snapshot 与 Marketing Activity publication；第 31 节再建立 Governance-owned 的纯访问控制策略内核：16 个 exact capability、5 个角色模板上限、4 种 ScopeKind、不可变 Policy revision、default deny、deny precedence、确定性 evidence 与 zero Decision + error 已形成。它没有 session、Policy repository、HTTP enforcement、React projection 或浏览器 E2E，任何现有 endpoint 都没有因此自动受保护。第 32～35 节继续真实会话、服务端强制、前端裁剪与越权验收；正式 Draw/Result、幂等、在线资格门控、库存和发奖同样未实现。
+> GrowthOS-Go 正在按 101 节演进式路线持续建设。当前已完成并验收第 1～31 节，共 31 节；第 32 节“真实会话认证”已有可运行候选，独立 disposable MySQL 8.4.11 与 development HTTP wire 两项官方门禁已实际通过，最终全仓门禁、远端 ref 对齐与冻结 tip 仍待完成。候选以 Identity-owned account/session/throttle、Argon2id、HttpOnly Cookie、Origin/CSRF 和三方法 Session API 把 credential 转成 trusted human Principal，React 也提供真实 `/login` 与 `/session`。这仍不等于 RBAC：业务、Admin、MCP、Agent 路由尚未由第 33 节服务端强制，导航/操作尚未由第 34 节裁剪，第 35 节越权 E2E 也未完成。
 
 ## 项目简介
 
@@ -94,9 +94,9 @@ AI 不直接修改数据库，也不拥有超级权限。自然语言负责表�
 
 ### Go HTTP 与 MySQL 运行时
 
-第 11～13 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的产品进程：提供 `GET /health` liveness、`GET /ready` MySQL readiness、信号驱动的优雅关闭、`GROWTHOS_` 类型化配置、`slog`、`X-Request-ID`、统一错误和有界 `sqlx` 连接池。
+第 11～13 节已经建立基于 Go 1.26.6 与 Gin v1.12.0 的产品进程；第 32 节候选进一步让它同时拥有互不别名的 business 与 Identity `sqlx` pool。进程提供 `GET /health` liveness、`GET /ready` 双 MySQL authority readiness、信号驱动的优雅关闭、`GROWTHOS_` 类型化配置、`slog`、`X-Request-ID` 和统一错误。
 
-从第 13 节起，公开默认值不再等于完整可启动配置。管理员需要先创建权限隔离的 `growthos_app` / `growthos_migrator` 账号，并通过未跟踪环境或 Secret 注入对应密码；示例文件有意不包含密码。注入 API Secret 后运行：
+从第 13 节起，公开默认值不再等于完整可启动配置。管理员需要使用隔离的 `growthos_app`、`growthos_identity`、`growthos_identity_provisioner` 与 `growthos_migrator` 账号，并通过未跟踪环境或 Secret 注入各自密码和 Identity protocol keys；示例文件有意不包含秘密。注入 API Secret 后运行：
 
 ```bash
 make api-run
@@ -111,7 +111,7 @@ curl -i http://127.0.0.1:8080/missing
 curl -i -X POST http://127.0.0.1:8080/ready
 ```
 
-`/health` 不查询外部依赖，只证明进程和 handler 可响应；API 启动前已经执行一次有界 MySQL Ping，运行中 `/ready` 每次有界 Ping，失败返回 503 `dependency_unavailable`。这让平台能区分“进程崩溃”和“依赖故障”。
+`/health` 不查询外部依赖，只证明进程和 handler 可响应；API 启动前分别打开并 Ping business/Identity pool，运行中 `/ready` 在共同响应预算内检查两个 authority，任一失败都返回 503 `dependency_unavailable`。这让平台能区分“进程崩溃”和“至少一个权威依赖故障”，但不泄露具体失败的数据库身份。
 
 Migration 使用独立账号、配置和命令，不在 API 启动时自动执行：
 
@@ -120,7 +120,7 @@ make db-status
 make db-migrate
 ```
 
-当前源码内嵌 Migration latest 为 `11`：`000001` / `000002` 创建 Strategy/Award，`000003`～`000005` 创建 routing graph/node/edge，`000006` / `000007` 创建 Lottery Strategy snapshot/award snapshot，`000008`～`000010` 创建 Marketing Activity/publication/publication-strategy，`000011` 只追加 Marketing 内部 active-publication 反向外键。一次性 MySQL 8.4.11 已从含 7 条非空 FK 基线行的真实 v5 前向到 v11，证明旧五表结构与数据哈希不变、重复迁移 `no_change`、dirty/restore 可恢复，以及五张新表、6 个 `RESTRICT` FK、20 个 CHECK、binary collation 和 Marketing→Lottery 外键数为 0。长期 `growthos` Compose 也已从 v5 原地升级 v11，MySQL/Redis/Web/网络/卷身份、旧表零行与 checksum 均保持，新表为空；`growthos_app` 仍只有旧两表 `SELECT`，对其余八表的读取真实返回 1142。完整变量见[配置参考](docs/configuration.md)，当前仍为零新增公开 API；发布与故障处置见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
+当前源码内嵌 Migration latest 为 `14`：历史 `000001`～`000011` 原样保留；`000012` 创建 workforce account，`000013` 创建 digest-only server-side session，`000014` 创建 login/source 双维度 authentication throttle，总计十张既有业务表加三张 Identity 表。第 30 节一次性 MySQL 8.4.11 的 v5→v11 结构、数据哈希、dirty/restore、权限与旧长期栈证据仍是受保护的历史基线；第 32 节只在其后追加 schema。`growthos_app` 继续只读旧 Strategy/Award，`growthos_identity` 只访问三张 Identity 表，`growthos_identity_provisioner` 只可向 account 表 `INSERT`，DDL 仍只属于 migrator。完整变量见[配置参考](docs/configuration.md)，Migration 操作见 [MySQL Migration 运维手册](docs/runbooks/mysql-migrations.md)。
 
 第 28 节还提供独立的真实 MySQL 引擎门禁：
 
@@ -129,6 +129,14 @@ make lesson28-mysql-acceptance
 ```
 
 它使用一次性 `mysql:8.4.11`、随机回环端口、tmpfs 数据目录和任务专用身份，保留第 28 节 historical latest 5、旧两表与 graph 三表 Repository 证据；第 30 节另由 `make lesson30-mysql-acceptance` 完成 v5→v11、snapshot/Marketing Repository、最小权限与清理验收。两个门禁都不会连接或修改长期 `growthos` Compose 数据，隔离测试写能力也不能据此扩宽运行账号。
+
+### Identity 真实会话认证候选
+
+第 32 节在独立 `internal/identity` 上下文中实现本地 workforce provider。账号只能经受控 one-shot provisioner 创建；密码使用固定、严格解析的 Argon2id envelope，昂贵验证受进程级并发与等待预算约束。成功登录每次生成新的 256-bit opaque token，MySQL 只保存 SHA-256 digest；Session 同时受 idle/absolute expiry、账号状态、authentication epoch、显式 revoke 和并发上限约束。Redis 不保存或兜底 Session。
+
+浏览器只调用同源单数资源：`POST /api/v1/session` 创建、`GET /api/v1/session` 解析、`DELETE /api/v1/session` 注销。原始 token 只进入 host-only、`HttpOnly`、`SameSite=Strict` Cookie；CSRF token 绑定 Session 并只保留在 React 组件内存，unsafe 请求还要通过 exact Origin/Fetch Metadata 检查。公开 DTO 只返回 authenticated、human Principal、到期时间与 CSRF，不返回 account、login name、Role、Scope、Permission、Policy 或 token digest。
+
+这条实现仍处于章节验收候选。完整契约和操作边界见[产品基线](docs/product/identity-session-authentication-v1.md)、[API](docs/api/lessons/lesson-32.md)、[运维手册](docs/runbooks/identity-session-operations.md)、[课程](docs/course/part-04/lesson-32-real-session-authentication.md)、[QA](docs/qa/lessons/lesson-32.md)、[设计手记](docs/design-thinking/lessons/lesson-32.md)、[面试问答](docs/interview/lessons/lesson-32.md)与[设计 QA](design-qa.md)。独立 MySQL 与 development HTTP wire 两项官方门禁已经通过；最终全仓门禁、远端 ref 对齐和冻结 tip 完成前，仍不把第 32 节写成已完成。
 
 ### Lottery/Marketing 领域、十表源码结构与未装配发布切片
 
@@ -155,7 +163,7 @@ curl --request POST \
 
 完整 `uint64` ID 在 path 和 JSON 中使用规范十进制字符串；成功与应用 JSON 错误均为 `no-store` 并可用 `X-Request-ID` 关联。路由默认关闭，只允许 development/test 显式打开；它读取 Strategy 快照并返回配置内 Award，不创建 Draw，也不支持幂等重放。当前 Compose 运行身份已进一步收敛为两张业务表 `SELECT`，不能 INSERT、UPDATE、DELETE、执行 DDL 或访问 `schema_migrations`；需要写 fixture 的第 19 节隔离集成测试继续使用专门的测试身份与可丢弃 schema，而不是扩宽运行账号。
 
-边缘入口限制本地 Host、请求 framing、16 KiB 资源上限和 timeout。非法 Host 的 421 是 Nginx server-level 非 JSON 响应；经 API location 识别的空 chunked 和非空 Trailer 声明返回 JSON 400，HTTP parser 更早拒绝的不支持 Transfer-Encoding 仍可能是非 JSON。真实隔离验收共发起 64 个多 Award 请求、最大并行度 16；这只是并发正确性证据，不是 64 并发、64 RPS 或生产压测。
+边缘入口限制本地 Host、请求 framing、16 KiB 资源上限和 timeout。任意未接受 Host（包括 Session API）都会转入 `@misdirected_request`，返回 correlated、`no-store` 且带 canonical API security headers 的 JSON 421；经 API location 识别的空 chunked 和非空 Trailer 声明返回 JSON 400。只有 Nginx/HTTP parser 在进入这些命名/API location 之前更早拒绝的非法 framing，才可能不是 JSON。真实隔离验收共发起 64 个多 Award 请求、最大并行度 16；这只是并发正确性证据，不是 64 并发、64 RPS 或生产压测。
 
 第 21 节学习资料：[课程正文](docs/course/part-03/lesson-21-lottery-api.md)、[API 契约](docs/api/lessons/lesson-21.md)、[QA 证据](docs/qa/lessons/lesson-21.md)、[第一性原理手记](docs/design-thinking/lessons/lesson-21.md)、[面试问答](docs/interview/lessons/lesson-21.md)与 [ADR-0018](docs/decisions/ADR-0018-ephemeral-lottery-selection-api.md)。
 
@@ -181,7 +189,9 @@ curl --request POST \
 
 ### React 前端框架
 
-`web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛桌面侧栏、移动抽屉、顶栏、搜索、主题、通知样例、内容宽度和可访问交互，并重构为高密度、扁平的工作台信息架构。真实前端链路目前只有两类：`/system/status` 消费 Go 的 `GET /health` 与 `GET /ready`；`/lottery` 通过 `lotteryApi`、运行时 decoder 和请求状态 Hook 消费 development/test ephemeral selection API。活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用带时间标签的 Mock 快照或浏览器内本地状态，不是实时后端数据。工作台分组也不是身份或权限系统；当前没有登录认证、RBAC、租户/对象级数据范围或服务端授权强制。
+`web/` 已提供统一的用户端、运营后台、MCP 控制台和 AI Operator 页面框架。第 22 节以共享 `WorkspaceShell` 收敛工作台信息架构；第 32 节候选新增独立公共 `AuthLayout`、`/login` 与 `/session`，通过严格 `sessionApi` 真实执行登录、reload 后 current、技术不可用重试和注销。Session Cookie 不可被 JavaScript 读取，CSRF/Principal 只驻留当前 React 会话状态，不写 localStorage/sessionStorage。
+
+真实前端链路现在包括系统探针、ephemeral Lottery 与会话认证；其余活动、Feed、积分、优惠券、个人资料、Admin、MCP 与 Agent 页面仍使用演示快照或浏览器本地状态。第 32 节只在 `/login` 与 `/session` 之间建立认证体验边界，没有隐藏 `/admin/*`、`/mcp/*`、`/agent/*` 或业务导航，也没有为这些页面增加 route guard/操作权限。这些统一 capability projection 属于第 34 节；第 33 节服务端拒绝才是授权边界。
 
 ```bash
 git clone git@github.com:Atingaii/GrowthOS-Go.git
@@ -203,13 +213,13 @@ make compose-up
 make compose-smoke
 ```
 
-访问 `http://127.0.0.1:8088/system/status` 查看实际运行实例状态。启动门仍为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，不进入 API readiness。长期栈已达到 Migration clean latest 11，`compose-status` 与 `compose-smoke` 通过；`growthos_app` 只有旧两表 `SELECT`，对 graph/snapshot/Marketing 八张未装配表的真实读取被拒绝。独立 Lottery/cache acceptance 也已在 v11 schema 上通过并完成随机 project、卷、网络、镜像、builder、Secret 与响应清理，长期资源 identity 不变：
+默认访问 `http://127.0.0.1:8088/system/status` 查看实际运行实例状态；`GROWTHOS_COMPOSE_WEB_PORT` 可改宿主端口，但发布地址始终只绑定回环。启动门仍为 `mysql → migrate → mysql-grants → api`；Redis 独立启动，不进入 API readiness。第 30 节长期栈 clean latest 11、`growthos_app` 两表 `SELECT`、八表拒绝与 Lottery/cache acceptance 证据继续保留。第 32 节候选把同一前向链推进到 latest 14，并增加独立 Identity pool、精确 Identity/provisioner grant、operations-only provision/maintenance 与 Session route；最终综合 acceptance 仍以第 32 节 QA 为准：
 
 ```bash
 make compose-lottery-api-acceptance
 ```
 
-该 acceptance 不写长期 `growthos` 数据；它在 latest 11 上回归权限负证、ACL、poison 修复、Redis/MySQL warm/cold 故障恢复、并发与既有 M1 路径，并完成精确清理。既有 M1 数字仍只属于本机短窗口，不是正式 Draw SLO 或生产容量。完整 M0 门禁仍执行健康探针 100 RPS×5 分钟以及 readiness 20 RPS×30 秒：
+该 acceptance 使用隔离 project/数据和受控 fixture，回归历史 Lottery/cache 路径并验证 Identity schema、最小权限和 Session HTTP；不应写长期 `growthos` 业务数据。既有 M1 数字仍只属于本机短窗口，不是正式 Draw SLO、登录容量或生产容量。完整 M0 门禁仍执行健康探针 100 RPS×5 分钟以及 readiness 20 RPS×30 秒：
 
 ```bash
 make compose-m0
@@ -239,12 +249,12 @@ make verify
 
 | 领域 | 当前基线 | 演进目标 |
 | --- | --- | --- |
-| 后端 | Go 1.26.6、Gin v1.12.0、MySQL/Redis 工程基线；Lottery/Participation/Marketing 未装配切片；Governance exact capability/role/scope/Policy/evaluator 纯内核 | 真实会话、Policy/assignment repository、服务端 enforcement、事实 adapter、正式 Draw、幂等、gRPC + Protobuf、OpenTelemetry |
-| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts、共享 `WorkspaceShell`；系统状态页和 ephemeral Lottery 页面已真实联调；当前无权限 projection | 第 32～35 节依次建立会话、服务端强制、前端权限感知和越权验收 |
-| 数据 | MySQL 8.4、API/Migrator 身份隔离；源码 latest 11、十张业务表：旧 Strategy/Award、graph 三表、Strategy snapshot 两表、Marketing Activity publication 三表。跨上下文只存 exact refs、不建 FK；长期运行身份仍仅旧两表 `SELECT`，对八张未装配表零权限已在 v11 真实验证。Redis 只保存旧版 Strategy 读取投影 | Draw/Result、库存与发奖事实、运行装配、精准缓存失效、ClickHouse、OpenSearch |
+| 后端 | Go 1.26.6、Gin v1.12.0、MySQL/Redis 工程基线；Identity credential/session HTTP 候选；Lottery/Participation/Marketing 未装配切片；Governance exact capability/role/scope/Policy/evaluator 纯内核 | Policy/assignment repository、服务端 RBAC enforcement、事实 adapter、正式 Draw、幂等、gRPC + Protobuf、OpenTelemetry |
+| 前端 | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand、Recharts；系统状态、ephemeral Lottery、`/login` 与 `/session` 已真实接 API；当前无 capability projection | 第 34 节统一裁剪导航/路由/操作，第 35 节完成越权浏览器验收 |
+| 数据 | MySQL 8.4；源码 latest 14，保留十张既有业务表并追加三张 Identity 表。业务、Identity runtime、Identity provisioner 与 migrator 权限分离；API 内 business/Identity pool 不得别名。Redis 只保存旧版 Strategy 读取投影，不保存 Session | Draw/Result、库存与发奖事实、运行装配、精准缓存失效、ClickHouse、OpenSearch |
 | 消息与治理 | 尚未接入 | RocketMQ、Nacos、Sentinel-Go、任务补偿 |
 | AI | 产品工作流与风险边界 | MCP、LLM Provider、Tool Calling、Agent、RAG、人工审批 |
-| 交付 | 本地质量门禁、隔离 Compose 开发栈、smoke、故障演练与 M0 定速负载门禁 | GitHub Actions、Kubernetes、可观测体系 |
+| 交付 | 本地质量门禁、GitHub Actions `make verify`、隔离 Compose 开发栈、smoke、故障演练与 M0 定速负载门禁 | Kubernetes、生产发布/回滚与可观测门禁 |
 
 > 技术路线代表计划，不代表当前仓库已经实现对应中间件。
 
@@ -257,7 +267,7 @@ make verify
 | 1 | 1～8 | 产品需求与系统分析 | 已完成 |
 | 2 | 9～16 | Go + React 从零搭建 | 已完成：M0 Compose 工程联调已验收 |
 | 3 | 17～24 | 从两张表开始做抽奖 | 已完成：Strategy/Award、两表、仓储、选择、API/React、规则边界与 Redis 读取投影/M1 均已验收 |
-| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～31 节已验收；下一节第 32 节建立真实会话，第 33～35 节再完成服务端强制、前端裁剪与越权验收 |
+| 4 | 25～37 | 规则系统、公共访问控制与营销活动 | 进行中：第 25～31 节已验收；第 32 节真实会话候选正在最终验收，第 33～35 节再完成服务端强制、前端裁剪与越权验收 |
 | 5 | 38～45 | 活动账户、订单与库存 | 计划中 |
 | 6 | 46～53 | MQ、最终一致性与补偿 | 计划中 |
 | 7 | 54～61 | 积分、优惠券、返利与权益中心 | 计划中 |
@@ -267,7 +277,7 @@ make verify
 | 11 | 86～93 | AI MCP Gateway | 计划中 |
 | 12 | 94～101 | AI Agent、可观测、压测与上线 | 计划中 |
 
-> 访问控制不是看到 UI 后临时补菜单判断。第 31 节已经完成公共权限模型与威胁边界；第 32～35 节仍需真实会话、服务端 RBAC 强制、前端按权限裁剪和越权端到端验收，再由第 36 节首个真实运营后台复用。当前四类工作台仍只是信息架构分区，没有认证或授权证据。
+> 访问控制不是看到 UI 后临时补菜单判断。第 31 节已经完成公共权限模型与威胁边界，第 32 节候选只建立真实会话；第 33～35 节仍需服务端 RBAC、前端按权限裁剪和越权端到端验收，再由第 36 节首个真实运营后台复用。当前能登录不等于四类工作台已获授权。
 
 ### 可部署里程碑
 
@@ -284,10 +294,10 @@ M0 工程联调 → M1 Lottery 读取/临时选择基线 → M2 营销活动 MVP
 ```text
 GrowthOS-Go/
 ├── cmd/             # Go 可执行程序与项目工具
-├── internal/        # 私有领域与基础设施模块；含 Lottery/Participation/Marketing 切片及未装配 Governance Policy evaluator
+├── internal/        # 私有领域与基础设施模块；含 Identity 会话候选、业务切片及未装配 Governance Policy evaluator
 ├── pkg/             # 少量稳定的公共 Go 包
 ├── configs/         # 可版本化且不包含秘密的配置示例
-├── migrations/      # 嵌入式前向 SQL Migration；当前源码 000001～000011、latest 11，共十张业务表
+├── migrations/      # 嵌入式前向 SQL Migration；当前源码 000001～000014、latest 14，共十张业务表加三张 Identity 表
 ├── deploy/          # Compose 拓扑、容器镜像入口、网关配置与本地秘密挂载约定
 ├── scripts/         # Secret 生成、Compose smoke、隔离 Lottery API 与 Lesson 28 MySQL acceptance 等自动化
 ├── docs/            # 产品、架构、ADR、API、QA、设计推导、面试与课程事实源
@@ -310,6 +320,7 @@ GrowthOS-Go/
 | [Lottery 规则需求基线](docs/product/lottery-rule-requirements-v1.md) | 规则阶段、权威事实、失败语义、版本边界与渐进实现停止线 |
 | [Strategy Routing Graph 求值基线](docs/product/lottery-strategy-routing-evaluation-v1.md) | exact revision、封闭 operator、完整 path、执行预算与 zero-decision 协议 |
 | [Activity Publication 绑定基线](docs/product/activity-publication-binding-v1.md) | exact Strategy snapshot、不可变发布版本、CAS、回滚、时间窗、resolve gate 与跨上下文边界 |
+| [Identity 与真实会话认证基线](docs/product/identity-session-authentication-v1.md) | workforce credential、MySQL server-side session、Cookie/CSRF 与授权停止线 |
 | [非功能需求基线](docs/product/non-functional-requirements-v1.md) | 容量、延迟、一致性、恢复与降级目标 |
 | [前端架构](docs/frontend/frontend-architecture.md) | 页面边界、路由、Mock 和运行方式 |
 | [运行配置](docs/configuration.md) | `GROWTHOS_` 变量、默认值、校验和秘密边界 |
@@ -317,11 +328,13 @@ GrowthOS-Go/
 | [Docker Compose 运维手册](docs/runbooks/local-compose.md) | 本地 Secret、启停、M0 验收、故障定位与数据重置 |
 | [路由图求值验收与故障分诊](docs/runbooks/strategy-routing-graph-evaluation.md) | 内部验证、caller/internal/provider 优先级、低披露分诊与装配停止条件 |
 | [Activity Publication 运维与验收](docs/runbooks/activity-publication.md) | v11 schema、exact publication、回滚、CAS、resolve 与未装配停止条件 |
+| [Identity Session 运维手册](docs/runbooks/identity-session-operations.md) | 账号创建、会话清理、HTTP/浏览器验收、故障恢复与秘密边界 |
 | [章节 API 台账](docs/api/lessons/README.md) | 每节新增或调整的前端调用契约 |
 | [第一性原理设计手记](docs/design-thinking/README.md) | 每章的事实、推导链、备选矩阵、失败模型与重决策条件 |
 | [章节面试问答](docs/interview/README.md) | 每章核心问题、追问、项目证据与选型边界 |
 | [ADR 索引](docs/decisions/README.md) | 长期架构决策及其取舍 |
 | [QA 索引](docs/qa/README.md) | 验收证据、已知风险与未覆盖项 |
+| [当前设计 QA](design-qa.md) | 第 32 节登录/会话界面的参考对照、响应式与交互验收 |
 
 仓库 `docs/` 是唯一事实源；个人 Obsidian 目录只接收镜像同步，不回写、不提交：
 
