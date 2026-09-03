@@ -6,9 +6,9 @@
 - **面试问答：** [第 32 节面试问答](../../interview/lessons/lesson-32.md)
 - **运行手册：** [Identity Session 运维手册](../../runbooks/identity-session-operations.md)
 - **决策：** [ADR-0028](../../decisions/ADR-0028-identity-session-authentication.md)
-- **记录日期：** 2026-09-02
+- **记录更新日期：** 2026-09-03
 
-> 这不是“最后代码长什么样”的倒序说明，而是一个设计者如何从资产、信任、失败和证据逐步收敛到当前实现。源码存在不等于真实环境已验收；当前 maintenance disposable acceptance 与浏览器核心旅程已取得实际证据，但原始 HTTP wire/Cookie 属性、staging/production TLS 和最终全量门禁仍保持 `PENDING`。
+> 这不是“最后代码长什么样”的倒序说明，而是一个设计者如何从资产、信任、失败和证据逐步收敛到当前实现。源码存在不等于真实环境已验收；当前 focused Go、独立 MySQL 8.4.11、HEAD `9fc4e06` 的完整 development Compose/Session wire、maintenance 与浏览器核心旅程已有实际证据。仍保持 `PENDING` 的是 raw Content-Length absent/zero/mismatch 的 proxy 变体、真实 issue/revoke COMMIT outcome-unknown fault、staging/production TLS与可信代理，以及浏览器 storage/console、更广设备/辅助技术和最终冻结门禁。
 
 ## 1. 真正的问题不是“做一个登录页”
 
@@ -109,6 +109,8 @@ unknown account 若立即返回，known account 才做 Argon2，会产生明显�
 
 Apple M2 Pro 的 10 次 baseline：serial `26.638354ms/op`、parallel capacity=2 `14.179475ms/op`；profile memory 分别 19/38 MiB，进程 max RSS `107,823,104` bytes。这只能证明本机当前版本的回归点，不能直接外推 production p99 或吞吐。
 
+这里还有一条由 fuzz 反推实现顺序的真实教训：旧代码把 slot receive 与 timer channel 放在同一个 `select`；capacity=2、occupied=1 时若 1ms timer 同时 ready，调度可以随机返回 timeout，制造错误 503。`5af29e2` 改为先检查 context，再 nonblocking 获取现有 slot，只有满槽才创建 timer，并把 `(2,1,false)` 变成 seed。修复后 passwordhash count=10/race 与 10 秒 WorkGate fuzz（625,627 executions）通过。这是资源准入时序缺陷，不是安全绕过。
+
 ## 6. 从“需要即时撤权”推导 server-side Session
 
 当前需求包含单会话 logout、account epoch 撤权、每账户最多五个 Session、disabled 立即失效和 deterministic eviction。若使用自包含 JWT，服务器仍需要 denylist/epoch lookup 才能即时撤权；此时“无状态”已经消失，却多了 claims 过期、signing key rollover 和浏览器 token 存储复杂度。
@@ -147,7 +149,7 @@ token digest unique collision 的因果明确：换一个随机 candidate 即可
 
 ## 10. 从多设备与安全响应推导五会话上限和 epoch
 
-每 account 最多五个当前 epoch 的有效 Session。新登录事务锁 account，再按确定排序撤销一个最旧 Session，保证并发登录不能通过“先 count 后 insert”同时越界。确定排序还让测试、审计和事故复盘可重现。
+每 account 最多五个当前 epoch 的有效 Session。新登录事务先锁 account、重新验证 credential/epoch，再读取并锁定最多六个 active Session；若已经超过五个，立即 fail closed，不能让 replacement hint 把坏存量伪装成可修复状态。合法、同 account 且仍 active 的 replacement hint 优先按 `security_response` 撤销；移除 hint 后若仍恰有五个，才按 `last_seen_at, issued_at, session_ref` 撤销唯一确定性最旧值，然后 insert/commit。这个顺序既避免“替换本设备却误踢另一设备”，也保证并发登录不能通过事务外 count 同时越界。
 
 单会话 revoke 适合用户退出；`AuthenticationEpoch` 适合密码泄漏、禁用或安全响应时让全部旧 Session 失效。Session 捕获创建时 exact epoch；resolve 时不匹配立即失败。epoch 必须 non-zero、单调且不回绕。
 
@@ -438,14 +440,20 @@ Migration、constraint、collation、lock、affected rows、grants和 driver行�
 
 - Compose：image、user、mount、network、service依赖、真实 MySQL/Redis/Nginx装配；
 - HTTP：wire grammar、status/header/Cookie/重放与故障；
-- browser：Cookie policy、JS可见性、导航/刷新/交互/可访问性；
+- browser：导航/刷新/交互、故障状态、focus/语义与响应式呈现；Cookie wire 属性仍由 HTTP gate 证明，浏览器脚本不能读取 HttpOnly bearer 来制造证据；
 - TLS：Secure `__Host-` 与 MySQL `verify_identity` 的部署事实。
 
-当前已取得 strict frontend、当前前端全量、Argon本机 baseline、两轮 provision Compose、maintenance disposable acceptance和真实浏览器核心旅程。浏览器经Nginx→Go→MySQL完成登录、刷新恢复、退出后刷新仍匿名；有效Session期间停止MySQL，刷新保留`/session`并显示“暂时无法确认登录状态”，不伪装anonymous或泄露Principal；恢复MySQL并显式重试后Principal恢复，最后再次logout。
+当前证据分为互不替代的几层：Identity 普通/race/shuffle×10 与九个 fuzz target 均通过；HEAD `4149576` 的独立 MySQL 8.4.11 gate 在 19 秒内验证 schema、真实 migrator、Repository/runtime grants，终态 `14:0`、Identity `0:0:0`；浏览器在 1719 × 862、390 × 844 与 1280 × 720 三种状态/视口完成 login/current/logout、reload、MySQL outage/recovery、键盘顺序、focus、aria/live status 与 reduced-motion 核查。当前全仓 Go 普通 23.2 秒、race 25.8 秒、vet 与 fmt-check 也已通过，但冻结 tip 后仍需重跑最终组合门禁。
 
-这组浏览器证据不能证明浏览器内部Cookie属性或原始wire：它没有单独窥探`Secure/HttpOnly/SameSite/Domain/Path`、201/200/204 header、clear tuple和旧bearer replay。因此HTTP wire/Cookie、staging/production TLS与最终全量门禁仍 `PENDING`。详见 [QA 证据账本](../../qa/lessons/lesson-32.md)。
+HTTP 证据本身又经历了四个可区分的状态。start HEAD `8a5e0ce`、code baseline `5af29e2` 的工作树核心 gate 在 project `growthosl24d2103fd496568ceac960d315` 运行 302 秒 exit 0，证明 201→200→replacement→204→replay、development Cookie 必需属性、CSRF/Origin/Fetch、同形 401、五会话与 MySQL 503/recovery；但 `8a5e0ce` 提交自身尚未包含该 Session gate，所以它不是冻结 provenance。
 
-专用E2E清理也已形成证据：只删除2条revoked Session、2条本轮空闲throttle和1条account，三类residue均为0；私人password file先覆写再unlink，父目录删除。这里仍只声称应用层清理完成，不把SSD/COW上的覆写宣传成物理不可恢复。
+首个已提交增强 gate `903fd9f` 在 project `growthosl24c1bf7ce29e5efa417fae6932` 让 Session 之前的 Compose/Lottery/cache/performance/grant/maintenance 全部通过，却因 macOS BSD awk 把循环变量 `index` 视为内建名而 exit 2，尚未进入 Session 断言；它完成清理，但没有可信总耗时。在此前已统一 security-header owner 的基础上，`51b52e0` 随后修复 awk、invalid-Host JSON 421 和 exact Cookie 断言；project `growthosl240da11b08420700da0d07428f` 的复跑又在第二次相同 backend image build 获取 Docker Hub OAuth token 时遇到 `EOF`，仍未进入 Session，外部 residue 为零。失败层不同，结论也必须不同：前者是脚本可移植性，后者是构建外部依赖，都不是 Session 正负行为结果。
+
+`9fc4e06` 因而没有只“再试一次网络”，而是消除四次相同 backend build：API、migrate、provision、maintenance 合并进一次 Compose Bake，共享 Go builder 实际只执行一次，其余 target 命中 cache。project `growthosl24f6a5acf4d242695ad3e2df19` 最终 exit 0；没有可信总耗时，不能补算。它完整通过 Lottery/cache/performance 等既有门禁，并在 Session wire 上证明 raw login/source 429、TE/Trailer、2049-byte 普通 body、逐类错误零 Set-Cookie、失效态 exact clear-Cookie、每个状态 exact 单值安全 header，以及非法 Host 的 correlated JSON 421。第一性原则不是“失败后增加 retry”，而是先区分产品、验收程序、构建拓扑和外部 registry 的失败域，再移除可避免的重复工作。
+
+三条清理证据也不可混写：早先 browser E2E 删除 2 Session、2 throttle、1 account；历史核心 HTTP 工作树删除 `10:3:1`；HEAD `9fc4e06` 增强轮在终态 `disabled:2:10:31` 后删除 `10:31:1`。增强轮随后确认三表与 disposable Docker/temp residue 全零，长期 `growthos` 不变且健康。私人 password file 先覆写再 unlink，父目录删除；这里仍只声称应用层清理完成，不把 SSD/COW 上的覆写宣传成物理不可恢复。
+
+增强门禁现在已经关闭 raw 429、TE/Trailer、2049-byte body、clear-Cookie 与 header owner 的旧证据缺口。仍未关闭的是 raw Content-Length absent/zero/mismatch 的全部 proxy 变体和真实 issue/revoke COMMIT outcome-unknown 网络断提交；浏览器 storage/console、更广设备/辅助技术、staging/production TLS、可信代理与最终冻结门禁也仍 `PENDING`。详见 [QA 证据账本](../../qa/lessons/lesson-32.md)。
 
 ## 28. 真实架构师如何变更这一系统
 
@@ -504,4 +512,4 @@ Migration、constraint、collation、lock、affected rows、grants和 driver行�
 
 第 32 节的核心不是技术名词数量，而是每个选择都能回答：资产是什么、事实由谁拥有、输入哪里不可信、资源如何有界、失败是否可判定、最小权限能否被数据库和进程边界证明、真实证据来自哪一层，以及下一节必须在哪条停止线上继续。
 
-当前实现面已经覆盖完整认证候选链，maintenance disposable acceptance和浏览器核心旅程也已完成；原始HTTP wire/Cookie属性、staging/production TLS与最终全量门禁尚未完成。L33服务端RBAC、L34前端capability投影和L35完整越权E2E仍未实现。设计成熟度的一部分正是既升级已有真实证据，也拒绝用它替剩余待项提前背书。
+当前实现面已经覆盖完整认证候选链，focused Go、独立 MySQL、HEAD `9fc4e06` 的完整 development Compose/Session wire、maintenance 与浏览器核心旅程均已有实证；raw 429、TE/Trailer、2049-byte body、exact Cookie/clear-Cookie、安全 header 单值矩阵和 invalid-Host JSON 421 已不再是待项。尚未完成的是 raw Content-Length absent/zero/mismatch 的全部 proxy 变体、真实 commit-unknown fault、浏览器 storage/console 与更广设备/辅助技术、staging/production TLS与可信代理，以及最终冻结门禁。L33服务端RBAC、L34前端capability投影和L35完整越权E2E仍未实现。设计成熟度的一部分正是既升级已有真实证据，也拒绝用它替剩余待项提前背书。
