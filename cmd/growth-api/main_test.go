@@ -755,13 +755,15 @@ func TestMySQLRuntimeConfigMapsEveryValidatedSetting(t *testing.T) {
 	}
 }
 
-func TestRuntimeConfigPreservesBothMySQLAuthoritiesAndIdentityPolicy(t *testing.T) {
+func TestRuntimeConfigPreservesAllMySQLAuthoritiesAndIdentityPolicy(t *testing.T) {
 	config, err := appconfig.Load(mapLookup(runtimeVariables(map[string]string{
-		"GROWTHOS_ENVIRONMENT":                 "test",
-		"GROWTHOS_MYSQL_USER":                  "growthos_business_test",
-		"GROWTHOS_IDENTITY_MYSQL_USER":         "growthos_identity_test",
-		"GROWTHOS_MYSQL_PING_TIMEOUT":          "2s",
-		"GROWTHOS_IDENTITY_MYSQL_PING_TIMEOUT": "3s",
+		"GROWTHOS_ENVIRONMENT":                   "test",
+		"GROWTHOS_MYSQL_USER":                    "growthos_business_test",
+		"GROWTHOS_IDENTITY_MYSQL_USER":           "growthos_identity_test",
+		"GROWTHOS_GOVERNANCE_MYSQL_USER":         "growthos_governance_test",
+		"GROWTHOS_MYSQL_PING_TIMEOUT":            "2s",
+		"GROWTHOS_IDENTITY_MYSQL_PING_TIMEOUT":   "3s",
+		"GROWTHOS_GOVERNANCE_MYSQL_PING_TIMEOUT": "4s",
 	})))
 	if err != nil {
 		t.Fatalf("load validated runtime config: %v", err)
@@ -771,6 +773,7 @@ func TestRuntimeConfigPreservesBothMySQLAuthoritiesAndIdentityPolicy(t *testing.
 	if got.Environment != config.Environment ||
 		got.MySQL != config.MySQL ||
 		got.IdentityMySQL != config.IdentityMySQL ||
+		got.GovernanceMySQL != config.GovernanceMySQL ||
 		got.Identity != config.Identity ||
 		got.Redis != config.Redis ||
 		got.StrategyCache != config.Lottery.StrategyCache {
@@ -946,6 +949,7 @@ func runtimeVariables(overrides map[string]string) map[string]string {
 	values := map[string]string{
 		"GROWTHOS_MYSQL_PASSWORD":              "unit-test-password",
 		"GROWTHOS_IDENTITY_MYSQL_PASSWORD":     "unit-test-identity-password",
+		"GROWTHOS_GOVERNANCE_MYSQL_PASSWORD":   "unit-test-governance-password",
 		"GROWTHOS_IDENTITY_PUBLIC_ORIGIN":      "http://127.0.0.1:8080",
 		"GROWTHOS_IDENTITY_THROTTLE_HMAC_KEY":  "abcdefghijklmnopqrstuvwxyz123456",
 		"GROWTHOS_IDENTITY_CSRF_ACTIVE_KEY_ID": "active",

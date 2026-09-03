@@ -141,14 +141,15 @@ const (
 
 // Config is the validated configuration for the growth-api process.
 type Config struct {
-	Environment   Environment
-	HTTP          HTTPConfig
-	Lottery       LotteryConfig
-	Log           LogConfig
-	MySQL         MySQLConfig
-	IdentityMySQL MySQLConfig
-	Identity      IdentityConfig
-	Redis         RedisConfig
+	Environment     Environment
+	HTTP            HTTPConfig
+	Lottery         LotteryConfig
+	Log             LogConfig
+	MySQL           MySQLConfig
+	IdentityMySQL   MySQLConfig
+	GovernanceMySQL MySQLConfig
+	Identity        IdentityConfig
+	Redis           RedisConfig
 }
 
 // MigrationConfig is the validated configuration for the migration process.
@@ -185,8 +186,8 @@ type LogConfig struct {
 }
 
 // MySQLConnectionConfig contains the non-secret deployment settings shared by
-// business, Identity, and migration connections. Each runtime still owns a
-// distinct credential and pool.
+// business, Identity, Governance, and migration connections. Each runtime
+// still owns a distinct credential and pool.
 type MySQLConnectionConfig struct {
 	Address        string
 	Database       string
@@ -198,7 +199,8 @@ type MySQLConnectionConfig struct {
 }
 
 // MySQLConfig controls one API-owned least-privilege database account and
-// pool. Config keeps business and Identity values in separate instances.
+// pool. Config keeps business, Identity, and Governance values in separate
+// instances.
 type MySQLConfig struct {
 	MySQLConnectionConfig
 	User                  string
@@ -291,9 +293,10 @@ func Default() Config {
 			ConnectionMaxLifetime: defaultMySQLConnMaxLifetime,
 			ConnectionMaxIdleTime: defaultMySQLConnMaxIdleTime,
 		},
-		IdentityMySQL: defaultIdentityMySQLConfig(),
-		Identity:      defaultIdentityConfig(),
-		Redis:         defaultRedisConfig(),
+		IdentityMySQL:   defaultIdentityMySQLConfig(),
+		GovernanceMySQL: defaultGovernanceMySQLConfig(),
+		Identity:        defaultIdentityConfig(),
+		Redis:           defaultRedisConfig(),
 	}
 }
 
@@ -375,7 +378,7 @@ func Load(lookup LookupFunc) (Config, error) {
 	)
 
 	loadLog(lookup, &config.Log, &problems)
-	tlsModeValid, mysqlReadTimeoutValid, _ := loadMySQLConnection(
+	tlsModeValid, mysqlReadTimeoutValid, mysqlWriteTimeoutValid := loadMySQLConnection(
 		lookup,
 		&config.MySQL.MySQLConnectionConfig,
 		mysqlReadTimeoutVariable,
@@ -412,6 +415,29 @@ func Load(lookup LookupFunc) (Config, error) {
 			identityMySQLUserVariable,
 		))
 	}
+	governanceMySQLUserValid, governanceMySQLReadTimeoutValid := loadGovernanceMySQL(
+		lookup,
+		config.MySQL.MySQLConnectionConfig,
+		config.HTTP.WriteTimeout,
+		httpWriteTimeoutValid,
+		&config.GovernanceMySQL,
+		&problems,
+	)
+	if mysqlUserValid && governanceMySQLUserValid && config.MySQL.User == config.GovernanceMySQL.User {
+		problems = append(problems, fmt.Errorf(
+			"%s and %s must identify different runtime accounts",
+			mysqlUserVariable,
+			governanceMySQLUserVariable,
+		))
+	}
+	if identityMySQLUserValid && governanceMySQLUserValid &&
+		config.IdentityMySQL.User == config.GovernanceMySQL.User {
+		problems = append(problems, fmt.Errorf(
+			"%s and %s must identify different runtime accounts",
+			identityMySQLUserVariable,
+			governanceMySQLUserVariable,
+		))
+	}
 	loadIdentity(
 		lookup,
 		config.Environment,
@@ -431,6 +457,26 @@ func Load(lookup LookupFunc) (Config, error) {
 		(config.MySQL.ReadTimeout <= selectionDependencyBudget ||
 			config.Lottery.SelectionTimeout > config.MySQL.ReadTimeout-selectionDependencyBudget) {
 		problems = append(problems, fmt.Errorf("%s plus a %s dependency budget must be no greater than %s", lotterySelectionTimeoutVariable, selectionDependencyBudget, mysqlReadTimeoutVariable))
+	}
+	if governanceMySQLReadTimeoutValid && lotterySelectionTimeoutValid &&
+		(config.GovernanceMySQL.ReadTimeout <= selectionDependencyBudget ||
+			config.Lottery.SelectionTimeout > config.GovernanceMySQL.ReadTimeout-selectionDependencyBudget) {
+		problems = append(problems, fmt.Errorf(
+			"%s plus a %s dependency budget must be no greater than %s",
+			lotterySelectionTimeoutVariable,
+			selectionDependencyBudget,
+			governanceMySQLReadTimeoutVariable,
+		))
+	}
+	if mysqlWriteTimeoutValid && lotterySelectionTimeoutValid &&
+		(config.GovernanceMySQL.WriteTimeout <= selectionDependencyBudget ||
+			config.Lottery.SelectionTimeout > config.GovernanceMySQL.WriteTimeout-selectionDependencyBudget) {
+		problems = append(problems, fmt.Errorf(
+			"%s plus a %s dependency budget must be no greater than %s because authorization audit must commit before selection",
+			lotterySelectionTimeoutVariable,
+			selectionDependencyBudget,
+			mysqlWriteTimeoutVariable,
+		))
 	}
 	if environmentValid && lotteryEphemeralSelectionValid &&
 		config.Lottery.EphemeralSelectionEnabled &&

@@ -85,12 +85,13 @@ type runtimeComponents struct {
 }
 
 type runtimeConfiguration struct {
-	Environment   appconfig.Environment
-	MySQL         appconfig.MySQLConfig
-	IdentityMySQL appconfig.MySQLConfig
-	Identity      appconfig.IdentityConfig
-	Redis         appconfig.RedisConfig
-	StrategyCache appconfig.StrategyCacheConfig
+	Environment     appconfig.Environment
+	MySQL           appconfig.MySQLConfig
+	IdentityMySQL   appconfig.MySQLConfig
+	GovernanceMySQL appconfig.MySQLConfig
+	Identity        appconfig.IdentityConfig
+	Redis           appconfig.RedisConfig
+	StrategyCache   appconfig.StrategyCacheConfig
 }
 
 type runtimeDependencies struct {
@@ -214,12 +215,13 @@ func composeRuntime(
 
 func runtimeConfig(config appconfig.Config) runtimeConfiguration {
 	return runtimeConfiguration{
-		Environment:   config.Environment,
-		MySQL:         config.MySQL,
-		IdentityMySQL: config.IdentityMySQL,
-		Identity:      config.Identity,
-		Redis:         config.Redis,
-		StrategyCache: config.Lottery.StrategyCache,
+		Environment:     config.Environment,
+		MySQL:           config.MySQL,
+		IdentityMySQL:   config.IdentityMySQL,
+		GovernanceMySQL: config.GovernanceMySQL,
+		Identity:        config.Identity,
+		Redis:           config.Redis,
+		StrategyCache:   config.Lottery.StrategyCache,
 	}
 }
 
