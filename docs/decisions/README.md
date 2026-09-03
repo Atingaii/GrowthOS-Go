@@ -33,6 +33,7 @@ ADR 记录影响多个模块、需要长期维护或难以低成本撤销的决�
 | [ADR-0026](ADR-0026-activity-publication-binding.md) | 已接受 | 以 create-only Strategy snapshot、Activity 不可变 publication、exact 配置闭合集、CAS 与追加回滚建立 Marketing 发布边界 |
 | [ADR-0027](ADR-0027-governance-access-control-model.md) | 已接受 | 由 Governance 拥有统一、不可变、默认拒绝的访问控制模型，以精确 Role/Permission/Resource/Action/Scope 和可审计 Decision 约束后续安全演进 |
 | [ADR-0028](ADR-0028-identity-session-authentication.md) | 已接受并实现 | 由独立 Identity 上下文以 Argon2id、MySQL opaque session、受约束 Cookie/CSRF 与 runtime/provision/maintenance 最小权限边界产生可信 human Principal |
+| [ADR-0029](ADR-0029-server-rbac-enforcement.md) | 已接受，待实现与验收 | 在真实 Lottery simulate 用例内组合可信 Session、服务端 Resource facts、不可变 Policy revision 与同步授权审计，以默认拒绝建立服务端 RBAC 强制边界 |
 
 新 ADR 从 [模板](template.md) 创建。已接受的 ADR 不直接重写结论；新事实需要新 ADR，并将旧记录标记为被替代。
 
