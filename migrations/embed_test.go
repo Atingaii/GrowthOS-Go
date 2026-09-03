@@ -163,7 +163,45 @@ func TestIdentityMigrationsRemainImmutable(t *testing.T) {
 	}
 }
 
-func TestEmbeddedMigrationInventoryEndsAtVersionFourteen(t *testing.T) {
+func TestGovernanceMigrationsRemainImmutable(t *testing.T) {
+	t.Parallel()
+
+	immutable := map[string]string{
+		"sql/000015_create_governance_policy_revision.up.sql":           "1b0d7d73bb1d5f4caeb82993d0b1d8e18581f997c9c62992d9d3ff0255dbce73",
+		"sql/000016_create_governance_policy_role.up.sql":               "0190e3510cdb49a8b75281c614ff28a8283424523029b4d40580064d9a44cde5",
+		"sql/000017_create_governance_policy_role_permission.up.sql":    "37684956d15497b86a384c1676ddafcc9694d66f2b9ef0e72f0892aad8a2fc72",
+		"sql/000018_create_governance_policy_role_binding.up.sql":       "501ca439f160155a443a87e5d75af9ebbf829a781d18defc9cc8a2a17c8e2dae",
+		"sql/000019_create_governance_policy_activation.up.sql":         "64430c1b53ebfb3971d5607b50dffb3e258927678bf8ae62aa9f912c07e62e1b",
+		"sql/000020_create_governance_active_policy.up.sql":             "9da0d8bbca2fc9fdfbae5cd1daf6055fd24377fa1d99cc4fe52083905888c85d",
+		"sql/000021_create_governance_authorization_audit.up.sql":       "421e809166e6f0e8f6199f433e317a0d5721ec8352111b44ad59e31ba1a23a61",
+		"sql/000022_create_governance_authorization_audit_match.up.sql": "115e12f72232f697488622641dc06b46609ffba3c6acf16b50c27b382e9ed7a4",
+	}
+
+	for name, wantChecksum := range immutable {
+		name := name
+		wantChecksum := wantChecksum
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			contents, err := fs.ReadFile(Files, name)
+			if err != nil {
+				t.Fatalf("read embedded Governance migration: %v", err)
+			}
+			checksum := sha256.Sum256(contents)
+			if got := hex.EncodeToString(checksum[:]); got != wantChecksum {
+				t.Fatalf(
+					"checksum = %s, want immutable checksum %s; add a new migration instead of rewriting history",
+					got,
+					wantChecksum,
+				)
+			}
+			if got := strings.Count(string(contents), ";"); got != 1 {
+				t.Fatalf("statement terminators = %d, want one DDL statement per migration", got)
+			}
+		})
+	}
+}
+
+func TestEmbeddedMigrationInventoryEndsAtVersionTwentyTwo(t *testing.T) {
 	t.Parallel()
 
 	entries, err := fs.ReadDir(Files, "sql")
@@ -193,6 +231,14 @@ func TestEmbeddedMigrationInventoryEndsAtVersionFourteen(t *testing.T) {
 		"000012_create_identity_workforce_account.up.sql",
 		"000013_create_identity_session.up.sql",
 		"000014_create_identity_authentication_throttle.up.sql",
+		"000015_create_governance_policy_revision.up.sql",
+		"000016_create_governance_policy_role.up.sql",
+		"000017_create_governance_policy_role_permission.up.sql",
+		"000018_create_governance_policy_role_binding.up.sql",
+		"000019_create_governance_policy_activation.up.sql",
+		"000020_create_governance_active_policy.up.sql",
+		"000021_create_governance_authorization_audit.up.sql",
+		"000022_create_governance_authorization_audit_match.up.sql",
 	}
 	if strings.Join(names, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("embedded migrations = %q, want exact current inventory %q", names, want)
