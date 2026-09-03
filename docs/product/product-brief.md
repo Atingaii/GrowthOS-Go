@@ -1,8 +1,8 @@
 # 产品简述：GrowthOS-Go
 
-**状态：** v17 基线
-**更新日期：** 2026-08-31
-**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)、[第 25 节](../course/part-04/lesson-25-user-eligibility.md)、[第 26 节](../course/part-04/lesson-26-responsibility-chain.md)、[第 27 节](../course/part-04/lesson-27-responsibility-chain-limits.md)、[第 28 节](../course/part-04/lesson-28-rule-tree-schema.md)、[第 29 节](../course/part-04/lesson-29-rule-decision-engine.md)、[第 30 节](../course/part-04/lesson-30-strategy-vs-activity.md)、[第 31 节](../course/part-04/lesson-31-access-control-model-threat-boundary.md)
+**状态：** v18 候选基线
+**更新日期：** 2026-09-03
+**来源章节：** [第 1 节](../course/part-01/lesson-01-why-ai-native-growth-platform.md)、[第 2 节](../course/part-01/lesson-02-user-growth-journey.md)、[第 3 节](../course/part-01/lesson-03-operator-workflow.md)、[第 4 节](../course/part-01/lesson-04-ai-operator-workflow.md)、[第 5 节](../course/part-01/lesson-05-first-event-storm.md)、[第 6 节](../course/part-01/lesson-06-first-bounded-contexts.md)、[第 7 节](../course/part-01/lesson-07-non-functional-requirements.md)、[第 17 节](../course/part-03/lesson-17-lottery-domain-objects.md)、[第 18 节](../course/part-03/lesson-18-lottery-schema.md)、[第 19 节](../course/part-03/lesson-19-lottery-repository.md)、[第 20 节](../course/part-03/lesson-20-lottery-weighted-selection.md)、[第 21 节](../course/part-03/lesson-21-lottery-api.md)、[第 22 节](../course/part-03/lesson-22-react-lottery-page.md)、[第 23 节](../course/part-03/lesson-23-lottery-strategy-rule-requirements.md)、[第 24 节](../course/part-03/lesson-24-redis-strategy-cache.md)、[第 25 节](../course/part-04/lesson-25-user-eligibility.md)、[第 26 节](../course/part-04/lesson-26-responsibility-chain.md)、[第 27 节](../course/part-04/lesson-27-responsibility-chain-limits.md)、[第 28 节](../course/part-04/lesson-28-rule-tree-schema.md)、[第 29 节](../course/part-04/lesson-29-rule-decision-engine.md)、[第 30 节](../course/part-04/lesson-30-strategy-vs-activity.md)、[第 31 节](../course/part-04/lesson-31-access-control-model-threat-boundary.md)、[第 32 节](../course/part-04/lesson-32-real-session-authentication.md)
 
 ## 一句话定位
 
@@ -80,9 +80,9 @@ Domain evaluator 从显式 root 开始迭代走唯一实际 path，按 selected 
 
 数据库只承担它能可靠表达的子集。旧两表保护正 ID/权重、Strategy 内 AwardID 唯一、封闭 outcome、引用完整性与基础名称形态；它们仍不能保证至少一个 Award或跨行总权重不溢出。新三表保护 graph revision scope、node/edge 引用、局部 discriminated shape、branch 唯一与 default 字面值，却不能证明 root 类型、全可达、无环、深度或 decision 完整出边。两表的 `updated_at` 仍只是行级元数据；graph revision 则是 create-only 内容身份，不是 Activity version、schema version、应用版本或会员 fact revision。
 
-当前 Compose MySQL 运行身份仅可对旧两张业务表 `SELECT`，不能访问新三张 graph 表，也不能 INSERT、UPDATE、DELETE 或访问 `schema_migrations`；需要创建 fixture 的两个 Repository 集成测试分别使用可丢弃 schema 中、互不扩权的 legacy writer 与 graph writer。GrowthOS 已有可验证的 Lottery 领域、五张持久化表、两个内部 Repository、Strategy Redis 读取缓存、加权选择器、一个真实 ephemeral HTTP/React 消费链、尚未运行时装配的 Participation 两节点资格链、graph Repository 与 closed routing evaluator；但还没有 graph 发布/Activity 绑定、runtime/API 求值链、正式 Draw API、真实事实 adapter、认证、RBAC 或持久化结果。除系统状态页和 `/lottery` 外，其他工作台仍是明确 Mock 快照或浏览器本地交互。
+第 32 节没有扩宽 `growthos_app`：业务 pool 仍只读旧两张 Strategy/Award 表。认证运行链改用独立 `growthos_identity` pool，只访问 account/session/throttle；受控账号创建另用只可向 account 表 `INSERT` 的 `growthos_identity_provisioner`，DDL 仍归 migrator。源码 latest 14 在历史十张业务表后追加这三张 Identity 表。GrowthOS 因而已有真实 Session API 与 `/login`、`/session` 候选，但 graph/Activity 运行编排、正式 Draw、生产事实 adapter、Policy repository、RBAC 和持久结果仍不存在。
 
-尤其，ephemeral API 返回的 Award 仍是一次瞬时计算结果，不是带 DrawID、幂等键和持久化状态的一次用户抽奖最终事实；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。持久化 graph 只是合法配置，不表示已发布、已绑定 Activity 或已被在线 runtime 选中；第 29 节内部 evaluation 成功也只表示对显式指定 revision 形成一份可信 Strategy route，不表示调用者有权、用户有资格或抽奖已完成。当前没有认证、对象级授权、Activity/次数等完整 Participation 前置条件，也没有把资格链、graph Repository 或 evaluator 装配进 Lottery 运行链；Draw/Result、库存或发奖同样尚未实现，因此“一次抽奖只能有一个最终结果”仍是待验证的不变量。
+尤其，ephemeral API 返回的 Award 仍是一次瞬时计算结果，不是带 DrawID、幂等键和持久化状态的一次用户抽奖最终事实；`reward` 也不表示积分或优惠券已经进入 Benefit 发放生命周期。持久化 graph 只是合法配置，不表示已发布、已绑定 Activity 或已被在线 runtime 选中；第 29 节内部 evaluation 成功也只表示对显式指定 revision 形成一份可信 Strategy route。第 32 节认证成功同样不表示调用者有权、用户有资格或抽奖已完成；对象级授权、Activity/次数等完整 Participation 前置条件仍未装配，Draw/Result、库存和发奖也尚未实现，因此“一次抽奖只能有一个最终结果”仍是待验证不变量。
 
 第 21～23 节服务端、React 和规则边界分别见各自课程、QA、设计手记与 ADR。第 24 节缓存事实与取舍见[课程正文](../course/part-03/lesson-24-redis-strategy-cache.md)、[API](../api/lessons/lesson-24.md)、[QA](../qa/lessons/lesson-24.md)、[第一性原理手记](../design-thinking/lessons/lesson-24.md)、[面试问答](../interview/lessons/lesson-24.md)和 [ADR-0020](../decisions/ADR-0020-lottery-strategy-cache-aside.md)。隔离 acceptance 验证了缓存/直连/Redis-down 三组 50 RPS×10s 均 500/500 成功，warm-cache MySQL prepared execute 为 0，另两组为 1000；这只证明当次本地链路的 source-load 和短窗口延迟，不是生产容量、正式 Draw SLO 或通用缓存收益。调用前后两张 Lottery 业务表 fingerprint 不变也不等于“系统零副作用”。
 
@@ -94,7 +94,9 @@ Domain evaluator 从显式 root 开始迭代走唯一实际 path，按 selected 
 
 第 30 节把可执行 Strategy 与可运营 Activity 分开：Lottery create-only snapshot 固化 exact Strategy/Award 内容，Marketing 以 immutable publication、`state_version` CAS、追加式 rollback、retire、一次 Clock 的时间窗 resolve 和 Lottery ACL 管理 Activity；commit acknowledgement 丢失通过受信 receipt 与 exact read-back 形成三态对账。第 31 节再为这些高风险管理动作建立 Governance-owned 的访问语言：16 个 exact kind/type/action capability、5 个固定角色模板上限、`system/tenant/owned/resource` 四种 scope、allow/deny RoleBinding、不可变 Policy identity/revision、default deny、deny precedence 和有界 Decision evidence 均已成为纯 Go 可执行模型。
 
-第 31 节仍没有 credential/session、Policy repository、assignment、HTTP enforcement、401/403/404 映射、审计落库、React capability projection 或越权 E2E。Principal/Resource 构造只验证 shape，不能证明 caller 或 tenant/owner facts 可信；现有 endpoint 不导入 Governance domain。完整边界见[访问控制模型基线](access-control-model-threat-boundary-v1.md)、[ADR-0027](../decisions/ADR-0027-governance-access-control-model.md)、[课程](../course/part-04/lesson-31-access-control-model-threat-boundary.md)、[QA](../qa/lessons/lesson-31.md)和[模型审查手册](../runbooks/access-control-model-review.md)。
+第 32 节候选随后由 Identity 建立本地 workforce credential → server-side Session → trusted human Principal 的真实转换：Argon2id 验证、opaque token/digest、idle/absolute expiry、epoch/revoke/session cap、login/source throttle、Cookie/Origin/CSRF 与 `POST/GET/DELETE /api/v1/session` 已形成；React `/login` 与 `/session` 只呈现认证事实。账号、会话和 throttle 由三张追加表保存，business/Identity 两个 API pool 不得别名，provisioner 采用第三个最小权限运行身份，Redis 不成为 Session authority。
+
+认证仍没有提供 Policy repository、assignment、Resource tenant/owner facts、业务 HTTP enforcement、授权 401/403/404 低披露策略、审计落库、React capability projection 或完整越权 E2E。`/admin/*`、`/mcp/*`、`/agent/*` 与现有业务 route 不因登录成功自动受保护。完整边界见[Identity 基线](identity-session-authentication-v1.md)、[ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)与[运维手册](../runbooks/identity-session-operations.md)；独立 MySQL 与 development HTTP wire 两项官方门禁已通过，最终全仓门禁、远端 ref 对齐和冻结 tip 完成前仍标记为候选。
 
 ## 成功信号
 
@@ -106,7 +108,7 @@ Domain evaluator 从显式 root 开始迭代走唯一实际 path，按 selected 
 - 平台能用压测数据解释扩展决策，而非预先堆叠分布式组件。
 - AI Agent 通过受控工具完成可授权任务，高风险动作具备审批和审计。
 
-这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有 Go Lottery/Participation/Marketing 领域切片、十张业务表、可丢弃读取缓存、ephemeral HTTP/React 纵向链、未装配的资格链、routing graph evaluator、Activity publication 和 Governance Policy evaluator；但页面仍只展示不可恢复的临时候选选择，授权内核也没有 runtime consumer。局部算法、MySQL、race/fuzz、领域内核和 UI 证据均不能外推为正式 Draw、在线资格/授权、端到端业务 SLO 或生产吞吐。
+这些信号已经在[非功能需求基线 v1](non-functional-requirements-v1.md)中转为候选 SLO、业务不变量和阶段验证计划。当前已有 Go Lottery/Participation/Marketing 切片、十张业务表、三张 Identity 表、可丢弃读取缓存、ephemeral HTTP/React、真实 Session HTTP/React 候选和 Governance Policy evaluator；授权内核仍没有 runtime consumer。局部算法、MySQL、race/fuzz、Session/UI 或短窗口证据均不能外推为正式 Draw、在线资格/RBAC、完整越权防护、端到端业务 SLO 或生产吞吐。
 
 完整消费者主线、异常恢复和术语定义见[用户增长旅程 v1](user-growth-journey-v1.md)。
 

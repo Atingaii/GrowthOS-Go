@@ -1,10 +1,10 @@
 # 非功能需求基线 v1
 
-**状态：** v1 目标基线；M0/M1 与第 25～30 节工程证据已形成；第 30 节 Strategy snapshot、Activity publication/CAS/rollback/gate、Lottery ACL 与 latest 11 已通过真实 MySQL/Compose 验收，源码另提供 commit unknown 对账，业务 SLO 尚未实测
+**状态：** v1 目标基线；第 1～31 节已验收，第 30 节 historical v11 工程证据继续保留；第 32 节真实 Session 认证候选的独立 MySQL 与 development HTTP wire 两项官方门禁已通过，最终全仓/ref 冻结仍在进行，业务 SLO 尚未实测
 
-**更新日期：** 2026-08-31
+**更新日期：** 2026-09-03
 
-**来源章节：** [第 7 节：确定非功能需求](../course/part-01/lesson-07-non-functional-requirements.md)及第 23～29 节增量证据；第 30 节以[Activity Publication 绑定基线](activity-publication-binding-v1.md)登记并验收 exact Strategy snapshot、immutable publication、CAS、rollback、resolve gate、Lottery ACL、commit unknown 对账与 v11 边界。
+**来源章节：** [第 7 节：确定非功能需求](../course/part-01/lesson-07-non-functional-requirements.md)及第 23～29 节增量证据；第 30 节以[Activity Publication 绑定基线](activity-publication-binding-v1.md)登记并验收 exact Strategy snapshot、immutable publication、CAS、rollback、resolve gate、Lottery ACL、commit unknown 对账与 v11 边界；第 31 节冻结纯 Governance evaluator 边界；第 32 节以[真实 Session 认证基线](identity-session-authentication-v1.md)登记 Identity 安全与运维候选。
 
 ## 1. 使用规则
 
@@ -20,22 +20,23 @@
 
 | 项目 | 当前事实 |
 | --- | --- |
-| Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～21 节新增并装配 Lottery 领域、两表、Repository、选择器、生产随机源与受限 ephemeral API；第 24 节在权威 Reader 外装配可选 Redis cache-aside，Redis 不参与启动或 readiness |
-| 业务数据库 | 源码 latest 11、十张业务表。一次性 MySQL 8.4.11 已从含 7 条非空 FK 行的真实 v5 前向迁移，旧五表结构/数据哈希不变，重复执行 no_change、dirty/restore 可恢复；新五表具备 6 个 RESTRICT FK、20 个 CHECK 与 binary collation，Marketing→Lottery FK 为 0。长期 Compose v5→v11 也保持 MySQL/Redis/Web/网络/卷 identity、旧表零行/checksum，新表为空；`growthos_app` 仅旧两表 `SELECT` 并真实 1142 拒绝其余八表 |
+| Go 运行时基线 | 第 11～16 节已验收 Gin 进程、`GET /health`、MySQL `GET /ready`、类型化配置、文件秘密、结构化日志、请求关联与统一错误；Compose 只发布同源 Web 入口；第 17～21 节新增并装配 Lottery 领域、两表、Repository、选择器、生产随机源与受限 ephemeral API；第 24 节在权威 Reader 外装配可选 Redis cache-aside，Redis 不参与启动或 readiness。第 32 节候选在同一 API 进程装配 Session HTTP，但业务与 Identity 使用独立 credential/pool，`/ready` 同时检查两个必需 MySQL pool |
+| 数据库与历史证据 | 源码 Migration latest 为 14：第 30 节十张业务表及 v11 真实 MySQL/Compose、checksum 与八表 1142 权限负证继续作为历史证据；第 32 节由 `000012`～`000014` 新增 `identity_workforce_account`、`identity_session`、`identity_authentication_throttle`，当前共十三张应用表。`growthos_app` 保持旧两表 `SELECT`；`growthos_identity` 只获账户必要读取/受控 `updated_at` 与 Session/throttle DML；`growthos_identity_provisioner` 只有账户 `INSERT`；`growthos_migrator` 承担 DDL。独立 disposable MySQL 8.4.11 官方门禁已实际通过；最终全仓/ref 冻结仍在验收中 |
+| Identity 认证候选 | MySQL 是 workforce account、Session 与双维 throttle 的唯一 authority；Argon2id、opaque token digest、status/epoch/revoke/idle/absolute expiry、session-bound CSRF、Origin/Cookie 边界已进入候选。Redis 不是 Session authority 或 fallback；认证输出只含 trusted human Principal，不含 Role、Scope、Permission 或 authorization result |
 | Lottery 领域 | Strategy/Award、Repository、WeightedSelector、CryptoSource、会员路由、exact graph/evaluator 与 create-only Strategy snapshot 已形成；真实 MySQL 已验证 snapshot exact RR、并发创建、事务回滚和隔离最小 writer。graph/snapshot service 与 adapter 均未装配，不存在 latest fallback |
 | Marketing Activity | draft/published/retired、immutable publication history、state-version CAS、追加式 rollback、retire、一次 Clock 的 `[start,end)` resolve gate、Lottery/Approval verifier ports与 commit receipt 三态对账已形成。真实 MySQL 已验证 publish/replace/rollback/retire、RR、CAS、half-write 回滚；没有真实 Governance provider、API/UI、runtime composition、权限或业务 SLO 实测 |
 | Participation 资格 | 第 25 节已验证权威注册事实快照、版本化含边界 cutoff、主体/未来时间/freshness 检查，以及 eligible/ineligible 与 not-found/stale/unavailable/invalid/cancelled 的语义分离；第 26 节再增加 source-owned `passed/blocked` 风险快照与具体准入 policy，并用固定 `new-user -> risk` 计划在任何 reader 前捕获一次服务端 logical as-of。只有 confirmed eligible 才继续；拒绝、技术失败和 caller cancellation 均短路，技术失败返回零 aggregate。当前没有生产事实 adapter、持久化、缓存、HTTP/React、Activity、真实 Principal、Lottery/composition 装配或资格性能实测 |
 | Strategy 缓存 | MySQL 始终是权威来源；Redis 只保存可重建读取投影，不保存 not-found、一次选择或最终结果。缓存 miss/错误/写失败 fail-open，staging/production 启用时强制身份验证 TLS；Compose ACL 允许无 key 的 `PING`，并只允许对版本化 key 前缀执行 `GETRANGE/SET/DEL`，48 MiB `allkeys-lru`、无持久化 |
 | 规则决策质量 | 第 25～29 节内核证据保持不变。第 30 节已验证 exact candidate、一次 Clock、`[start,end)`、CAS conflict、append-only rollback provenance、terminal snapshot 闭合集、half-write rollback 与所有失败 zero-result；源码为 COMMIT 应答未知提供 exact receipt/observation 的 committed/not_committed/indeterminate 三态。授权拒绝、完整资格、持久化审计与 runtime 编排仍待后续章节验证 |
 | 求值内核质量门 | 第 29 节最终候选上，Lottery domain/application atomic coverage 分别为 93.6%/88.3%、合并 92.1%；全仓普通与 `-race` 测试通过；独立 10 秒 evaluator fuzz 通过 2,899,250 execs，新发现 1 个 interesting input（总数 43）。这些数据只是内核回归证据，不是业务覆盖率、生产并发安全、穷举证明或 SLO |
-| React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API。第 22 节再用严格 Lottery adapter、运行时解码与请求状态 Hook 让 `/lottery` 真实消费 ephemeral API；其余用户、运营、MCP 与 Agent 工作台仍是显式 Mock 快照或浏览器本地交互；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
-| 前端质量门 | Vitest、TypeScript typecheck 与 Vite build 已纳入验证；第 15 节真实浏览器核对系统探针正常、数据库不可用和 API 离线状态；第 22 节继续核对桌面/移动布局、键盘与焦点交互、请求 pending/成功/失败/取消分支、权限前置缺口以及按路由拆分图表产物 |
+| React | 第 14 节框架与第 15 节系统状态页已完成；系统探针在宿主开发模式经 Vite、Compose 模式经 Nginx 同源代理真实读取 Go API。第 22 节让 `/lottery` 真实消费 ephemeral API；第 32 节候选新增独立 `AuthLayout`、同源 Session transport、`/login` 与 `/session`，并区分 checking/anonymous/authenticated/unavailable。其他业务、Admin、MCP 与 Agent 工作台仍未由权限裁剪，部分仍是显式 Mock/本地状态；要求 Node.js `>=22.22.2`、pnpm `10.13.1` |
+| 前端质量门 | Vitest、TypeScript typecheck、Vite build 与格式检查已纳入验证；第 32 节候选已登记 23 个文件、250 个测试和桌面/移动/认证态浏览器 Design QA。该证据只覆盖 Session transport 与认证 UX；第 34 节按 capability 裁剪导航/路由/操作和第 35 节跨角色越权 E2E 仍未实现 |
 | 性能实测 | M0 `/health` 100 RPS×5min：30,000/30,000 成功、P99 4.1495ms；`/ready` 20 RPS×30s：600/600 成功、P99 6.841375ms。M1 在同一本地 Docker Desktop 上对 ephemeral selection 各跑 50 RPS×10s：warm-cache、cache-disabled、Redis-down 均 500/500 成功且零 error/unexpected/dropped；三组 P99 分别 5.202ms、9.747167ms、8.222959ms。均为单机短窗口开发基线，不是业务 SLO或生产容量 |
 | 可用性实测 | M0 两组与 M1 三组共五个短窗口内，错误、异常状态和丢弃均为 0；没有长稳、跨主机、灾备或生产可用性证据 |
 | 恢复演练 | 已演练 MySQL、API、Redis 单点停止与恢复；第 24 节进一步证明 Redis down 时 cold read 回源、MySQL down 时 warm hit 可用而 cold miss 失败、两者恢复后无需重启 API 可重新填充。未验证宿主机故障、Redis/MySQL HA 或数据灾难恢复 |
-| 安全与故障演练 | 长期 runtime 仅旧两表 `SELECT`、对其余八表真实 1142；一次性 MySQL 隔离 writer 最小权限、长期 Compose v5→v11、status/smoke、独立 Lottery acceptance 与完整清理均已验证。长期服务/资源 identity 和旧事实保持不变。以上仍不等于认证、对象授权或生产渗透测试 |
+| 安全与故障演练 | 第 30 节长期 runtime 旧两表 `SELECT`、其余八表 1142、一次性 writer、Compose v5→v11 与清理证据继续保留。第 32 节候选另验证分离 Identity/provisioner 权限、one-shot maintenance、浏览器登录/恢复/退出与依赖不可用呈现；development HTTP wire 官方门禁已实际通过，最终全仓门禁、远端 ref 对齐与冻结仍在进行。它不等于第 33 节服务端 RBAC、第 34 节前端裁剪、第 35 节越权验收或生产渗透测试 |
 
-第 13～29 节已有证据口径继续按各自 QA 保留。第 30 节真实证据覆盖源码 latest 11、一次性 MySQL 8.4.11、长期 Compose v5→v11、八表权限负证、独立 Lottery acceptance、清理和 `make verify`；它只证明工程与未装配内核边界，不能外推为 API/UI、真实审批、认证授权、正式 Draw 或业务 SLO。
+第 13～29 节已有证据口径继续按各自 QA 保留。第 30 节真实证据覆盖当时源码 latest 11、一次性 MySQL 8.4.11、长期 Compose v5→v11、八表权限负证、独立 Lottery acceptance、清理和 `make verify`；这些历史证据不因源码前进到 latest 14 而被改写。第 32 节候选只证明认证链，不可外推为业务/Admin/MCP/Agent 已授权。
 
 ### M0 工程探针实测
 
@@ -84,6 +85,9 @@ MySQL 计数来自 Performance Schema 的 prepared statement `statement/com/Exec
 | INV-07 | 高风险操作不能绕过权限与审批 | 越权、审批失效和审计测试 |
 | INV-08 | 模型文本不能直接确认业务成功 | Tool 结果校验和失败注入测试 |
 | INV-09 | 每次高风险写操作必须形成完整且不可由普通用户覆盖的审计记录 | 审计完整性对账、故障注入测试 |
+| INV-10 | raw password、raw Session token、CSRF 派生密钥不得落库、进入日志或前端持久层 | 数据指纹、日志负证、浏览器存储检查与故障注入 |
+| INV-11 | Session 只有在 account enabled、authentication epoch 匹配、未撤销且 idle/absolute expiry 均有效时才能恢复 Principal | 时钟边界、并发撤销、epoch bump、touch 与真实 MySQL 测试 |
+| INV-12 | 认证成功不能绕过服务端 Policy；没有 exact Resource facts 与 allow decision 时业务操作必须 default deny | 第 33 节服务端负证与第 35 节跨角色/对象/租户 E2E |
 
 ## 5. 最终一致性目标
 
@@ -111,10 +115,10 @@ MySQL 计数来自 Performance Schema 的 prepared statement `statement/com/Exec
 ```text
 优先保护：参与事实、抽奖结果、权益流水、库存、审批和审计
 可以降级：个性化排序、实时画像、分析查询、搜索和 AI
-不能降级：权限校验、幂等校验、金额/额度正确性和事实验证
+不能降级：Session 权威解析、权限校验、幂等校验、金额/额度正确性和事实验证
 ```
 
-GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能依赖分析链实时可用；外部权益不可用时必须保持处理中或失败状态，不能显示假成功。
+GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能依赖分析链实时可用；外部权益不可用时必须保持处理中或失败状态，不能显示假成功。Identity MySQL 不可用时不能从 Redis、旧 UI snapshot 或客户端字段恢复 Principal；前端必须区分“匿名”和“暂时无法确认身份”。
 
 ## 8. 可观测性验收清单
 
@@ -124,6 +128,7 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 - [ ] 库存差异、消息积压、补偿和外部依赖有业务告警；
 - [ ] 错误、结果未知和高风险操作保留完整 Trace；
 - [ ] 日志、事件与 Prompt 不包含未脱敏秘密和完整个人数据；
+- [ ] 认证指标只使用低基数结果/阶段标签，禁止记录 login name、raw token、password、CSRF、digest 或可反推 source 的值；
 - [ ] 告警关联值班手册、影响范围和恢复验证。
 
 ## 9. AI 与审批目标
@@ -157,6 +162,8 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 | 第 28 节路由图持久化前置 | Lottery-owned bounded immutable rooted DAG、schema v1、latest 5 三表、create-only revision、事务 Create、RR Find、严格恢复、精确测试身份和 disposable MySQL 清理边界 | 已在单元/race/fuzz 与一次性 MySQL 8.4.11 六组 Integration 验证；任务资源零残留、长期 Docker 快照不变。该节仅交付持久化输入边界；当前 evaluator 由第 29 节提供，仍无 Activity/发布、公开 API/UI、runtime composition、认证/RBAC 或业务 SLO |
 | 第 29 节路由图求值前置 | exact immutable graph、closed membership dispatch、one graph/Clock/fact、iterative exact-branch path、worst-depth + actual step hard stop、child deadline/cancellation priority、immutable evidence 和 zero-decision | 已在 domain/application 单元、64-worker、架构、全仓 race、atomic coverage 和 10 秒 fuzz 验证；第 28 节 MySQL 8.4.11 六组 Integration 上游回归重跑通过。没有 Activity/发布、公开 API/UI、runtime composition、生产 fact adapter、认证/RBAC、Strategy selection/Draw 或业务 SLO |
 | 第 30 节 Activity publication 前置 | exact Strategy snapshot、immutable publication、CAS、rollback provenance、retire、一次 Clock 的 `[start,end)` gate、Lottery terminal manifest ACL、latest 11 与八表零权限；源码另提供 commit unknown receipt 对账 | 已通过源码、真实 MySQL 8.4.11、长期 Compose v11、独立 Lottery acceptance、清理与全仓质量门验证；所有 service/Repository/ACL 未装配，API/UI、Governance provider、认证/RBAC、Draw 与业务 SLO 均未实现 |
+| 第 31 节访问控制模型前置 | exact capability、Role ceiling、Scope、immutable Policy revision、default-deny evaluator 与威胁边界 | 已验收纯 domain/application evaluator；没有 credential、Policy repository、服务端 enforcement、HTTP DTO 或 React projection |
+| 第 32 节真实 Session 认证 | Identity account/Session/throttle、Argon2id、独立数据库身份/pool、Session HTTP、`/login`/`/session`、provision/maintenance 与浏览器认证旅程 | 实现候选；独立 disposable MySQL 8.4.11 与 development HTTP wire 两项官方门禁已实际通过，最终全仓门禁、远端 ref 对齐与冻结 tip 仍待完成，状态保持“进行中”；第 33～35 节尚未实现 |
 | M2 · 第 45 节 | 活动参与、库存、锁和幂等报告 | 待验证 |
 | M3 · 第 61 节 | 积分、优惠券、返利与权益闭环报告 | 待验证 |
 | M4 · 第 77 节 | Feed、事件接收与分析水位报告 | 待验证 |
@@ -173,6 +180,8 @@ GrowthOS 的人工运营能力不能依赖 LLM 才能工作；核心交易不能
 第 27 节会员路由证据可追溯到[产品基线](membership-strategy-routing-v1.md)、[课程](../course/part-04/lesson-27-responsibility-chain-limits.md)、[API 零变化记录](../api/lessons/lesson-27.md)、[QA](../qa/lessons/lesson-27.md)、[设计手记](../design-thinking/lessons/lesson-27.md)、[面试问答](../interview/lessons/lesson-27.md)与 [ADR-0023](../decisions/ADR-0023-membership-strategy-routing-boundary.md)。第 28 节持久化证据可追溯到[Strategy Routing Graph 基线](lottery-strategy-routing-graph-v1.md)、[课程](../course/part-04/lesson-28-rule-tree-schema.md)、[API 零变化记录](../api/lessons/lesson-28.md)、[QA](../qa/lessons/lesson-28.md)、[设计手记](../design-thinking/lessons/lesson-28.md)、[面试问答](../interview/lessons/lesson-28.md)与 [ADR-0024](../decisions/ADR-0024-lottery-strategy-routing-graph-persistence.md)。第 29 节求值证据可追溯到[产品基线](lottery-strategy-routing-evaluation-v1.md)、[课程](../course/part-04/lesson-29-rule-decision-engine.md)、[API 零变化记录](../api/lessons/lesson-29.md)、[QA](../qa/lessons/lesson-29.md)、[设计手记](../design-thinking/lessons/lesson-29.md)、[面试问答](../interview/lessons/lesson-29.md)、[运维手册](../runbooks/strategy-routing-graph-evaluation.md)与 [ADR-0025](../decisions/ADR-0025-lottery-strategy-routing-graph-evaluation.md)。第 29 节是内部 evaluation 证据，不是发布/Activity/权限/runtime/浏览器 E2E 证据。
 
 第 30 节证据可追溯到[产品基线](activity-publication-binding-v1.md)、[课程](../course/part-04/lesson-30-strategy-vs-activity.md)、[API 零变化记录](../api/lessons/lesson-30.md)、[QA](../qa/lessons/lesson-30.md)、[设计手记](../design-thinking/lessons/lesson-30.md)、[面试问答](../interview/lessons/lesson-30.md)、[运维手册](../runbooks/activity-publication.md)与 [ADR-0026](../decisions/ADR-0026-activity-publication-binding.md)。这些链接证明未装配发布内核与 v11 工程验收，不是业务运行或权限系统证据。
+
+第 32 节实现候选可追溯到[产品基线](identity-session-authentication-v1.md)、[课程](../course/part-04/lesson-32-real-session-authentication.md)、[API](../api/lessons/lesson-32.md)、[QA](../qa/lessons/lesson-32.md)、[设计手记](../design-thinking/lessons/lesson-32.md)、[面试问答](../interview/lessons/lesson-32.md)、[运维手册](../runbooks/identity-session-operations.md)、[浏览器设计 QA](../../design-qa.md)与 [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)。`design-qa.md` 的 PASS 只表示其视觉与认证交互范围通过，不会把第 32 节整体状态改成“已完成”；独立 MySQL 与 development HTTP wire 两项官方门禁已经通过，最终全仓门禁、远端 ref 对齐和冻结 tip 以主任务最终验收为准。
 
 ## 11. 变更触发条件
 
