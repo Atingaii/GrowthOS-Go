@@ -296,7 +296,10 @@ curl --silent --show-error --include http://127.0.0.1:8088/api/v1/session
 
 ### 7.4 Identity operations-only one-shot
 
-账号 enrollment 与历史清理都不提供 HTTP API，也不会随 `make compose-up` 常驻。详细密码文件、Cookie jar、CSRF 和失败恢复步骤见 [Identity Session 运维手册](identity-session-operations.md)。标准入口为：
+账号 enrollment 与历史清理都不提供 HTTP API，也不会随 `make compose-up` 常驻。第 32 节身份链共有三个运行入口：
+既有的 `growth-api` 承载 Session HTTP，`growth-identity-provision` 与 `growth-identity-maintenance` 是两个 operations-only
+one-shot；既有 `growth-migrate` 只是被本节复用，不是新增的第四个 Identity 入口。详细密码文件、Cookie jar、CSRF 和
+失败恢复步骤见 [Identity Session 运维手册](identity-session-operations.md)。两个 operations 标准入口为：
 
 ```bash
 make compose-identity-provision \
@@ -360,8 +363,11 @@ make compose-lottery-api-acceptance
 
 - `reward`、`no_reward` 与 MaxUint64 identity 的最小 decimal-string DTO；
 - invalid ID/demo header/query/body/idempotency、方法与尾斜杠错误；
-- 非法 Host 是带 no-store/request ID 的 server-level 421，但不是 JSON envelope；
-- 经 API location 识别的空 chunked 与非空 `Trailer` 声明是 JSON 400；不受支持或非法 Transfer-Encoding 可能被 Nginx HTTP parser 更早以非 JSON 501/400 拒绝，不能声称所有 framing 错误都统一 JSON；
+- 非法 Host 在 server-level 先拒绝；对 Session/API 请求返回 correlated canonical JSON 421、no-store、零 Set-Cookie
+  与单值 API security header；
+- 经 API location 识别的 chunked 与非空 `Trailer` 声明均为 canonical JSON 400，普通 Content-Length 的 2049-byte
+  Session body 会到达 Go 并得到 `400 invalid_request`；这不覆盖 raw Content-Length 缺失、零值或 declared/actual
+  mismatch，也不代表可以控制 Nginx/内核在所有非法字节流上的 parser 响应；
 - `HEAD` 在语义上匹配 405 与 `Allow: POST`，但 HEAD 的 wire response 没有 body；
 - 16 KiB + 1 的已知长度请求由 edge 返回 JSON 413；
 - 多 Award 批次**总计 64 个请求，最大并行度 16**，只返回配置内结果；这不是 64 个同时请求、64 RPS、定速负载或生产容量；
@@ -379,6 +385,37 @@ make compose-lottery-api-acceptance
 脚本退出时只清理由 label、Compose project 与精确 ID 共同证明归属本次任务的容器、网络、volumes、临时 Secret/响应和无其他引用的 acceptance images；不会删除长期 `growthos` volumes、Secret、用户容器或可复用依赖。若 cleanup 报错，先按脚本输出解析精确 project/label，不使用全局 prune。
 
 该脚本还运行三组 10 秒、50 RPS、最大 16 workers 的 M1 本地基线：warm-cache、cache disabled/direct-MySQL、Redis down。它同时读取 Performance Schema 的 prepared statement execute 计数和低基数缓存事件，证明 warm hit 没有权威读取、直接回源每请求执行两条 SELECT、Redis 故障时仍然回源。结果只属于本机当次开发证据，不是容量、SLO 或生产性能对比；精确数据与解释见[第 24 节 QA](../qa/lessons/lesson-24.md)。
+
+第 32 节的历史核心 run 在工作树 HEAD `8a5e0ce`、认证代码 baseline `5af29e2` 下执行，project
+`growthosl24d2103fd496568ceac960d315`，302 秒、exit 0；覆盖 201→200→replacement→bodyless 204→old-bearer 401、
+development Cookie/CSRF/Origin/Fetch、同形 401、五 active-session 上限与 MySQL 503/recovery，随后精确清理
+Session/throttle/account `10:3:1`，三表 residue `0:0:0`，任务资源与长期 `growthos` 快照边界也通过。该次运行含尚未提交的
+验收脚本改动，provenance 受限，不能写成 `8a5e0ce` committed tree 的可复现证明；它只保留为历史 core PASS。
+
+增强门禁的 committed-tree 演进链必须完整保留：
+
+1. `903fd9f`、project `growthosl24c1bf7ce29e5efa417fae6932` 的构建、Compose prerequisites、maintenance fixture 等
+   Session 前置门禁已通过，但脚本在进入 Session wire 前因 macOS BSD awk 将循环变量 `index` 解析为内建名而 exit 2；
+   该轮是 `ACTUAL-FAIL`，无可信总时长，退出 trap 精确清理本 project、六个 acceptance images、builder 与临时目录。
+2. `51b52e0` 修复 BSD awk 变量、invalid-Host Session canonical JSON 421 与 Cookie exact tuple；但 project
+   `growthosl240da11b08420700da0d07428f` 在第一轮 backend build 后，第二次相同 build 获取 Docker Hub OAuth token 时
+   收到 EOF，未进入 Session gate。退出后 containers/volumes/networks/images/builder/tempdirs residue 均为 0，不能记作协议 PASS。
+3. `9fc4e06` 把 `api`、`migrate`、`identity-provision`、`identity-maintenance` 四个 image target 合并到一个
+   BuildKit/Bake invocation，共同 Go builder 只执行一次、各 target 复用缓存；Redis 与 Web 保持顺序构建。四个镜像 target
+   不等于第 32 节新增四个运行入口：身份链仍是 `growth-api` 加两个 operations one-shot，迁移命令是既有入口。
+4. exact HEAD `9fc4e06`、project `growthosl24f6a5acf4d242695ad3e2df19` 的 official enhanced run 最终 exit 0；
+   没有可信总时长，因此不填写猜测值。它通过 Session lifecycle/五会话上限、逐状态单值 canonical security header、
+   invalid Host correlated JSON 421、chunked/Trailer/普通 2049-byte body、malformed/query/media/auth/origin/fetch 零
+   Set-Cookie、invalid/replaced/logged-out/expired/epoch/disabled 401 exact clear-Cookie、login/source persistent raw 429，
+   以及 MySQL/Redis outage/recovery、edge JSON 502/504、Secret marker 和既有 Lottery/cache/maintenance 门禁。
+
+增强 run 清理前 account/session/throttle 精确状态为 `disabled:2:10:31`（account status、authentication epoch、Session
+count、throttle count）；HTTP fixture 只删除本轮 Session/throttle/account `10:31:1`，三表 residue `0:0:0`。退出后本
+project containers/volumes/networks、acceptance images、builder 与任务 tempdirs 六类 residue 均为 0；长期 `growthos`
+resource identity 前后不变且保持 healthy。`8fc0302` 修复前曾出现的 handler/edge `Referrer-Policy` 重复是历史缺陷，
+本轮 exact header gate 已关闭该问题。仍待独立验证的是 raw Content-Length 缺失/零值/declared-actual mismatch、
+issue/revoke COMMIT outcome-unknown 真实故障、staging/production TLS + 可信代理 client IP，以及浏览器
+storage/console、全面设备与辅助技术矩阵。
 
 ### 8.3 第 28 节 disposable MySQL 8.4.11 acceptance
 
@@ -400,6 +437,17 @@ GROWTHOS_LESSON30_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 \
 ```
 
 该门禁已在一次性 MySQL 8.4.11 上通过：从含 7 条非空 FK 行的真实 v5 基线前向到 v11，验证旧表结构/数据哈希保持、repeat no_change、dirty/restore、五张新表、6 个 `RESTRICT` FK、20 个 CHECK、binary collation、Marketing→Lottery 零 FK、隔离 writer 最小权限与 1142 拒绝；并覆盖 Strategy snapshot 并发/回滚、Activity publish/replace/rollback/retire/RR/CAS/half-write rollback 与精确清理。
+
+### 8.3.2 第 32 节 disposable Identity MySQL acceptance
+
+```bash
+GROWTHOS_LESSON32_MYSQL_ACCEPTANCE=run-disposable-mysql-8.4.11 \
+  make lesson32-mysql-acceptance
+```
+
+脚本只接受精确 opt-in，启动随机 name/label、随机 loopback port、tmpfs `/var/lib/mysql` 的 `mysql:8.4.11`，并使用私有且互异的 root/Migrator/runtime Secret。它先运行会在退出时恢复空库的 Identity schema integration，再用真实 `growth-migrate up/status` 重建 v14，赋予 runtime workforce `SELECT + UPDATE(updated_at)` 与 Session/throttle DML，最后运行 `TestRepositoryMySQL84Acceptance` 和终态检查。
+
+本轮从 HEAD `4149576` 执行，容器 `growthos-lesson32-mysql-e4e83e6c1b0e7036f42e65f9`、label `com.growthos.acceptance.lesson32=run-e4e83e6c1b0e7036f42e65f9`，`VERSION()=8.4.11`，19 秒 exit 0。schema、migration immutability/inventory、真实 migrator、Repository 并发/Session/maintenance 与 runtime grant allow/deny 均 PASS；终态 `schema_migrations=14:0`、Identity 行 `0:0:0`、`identity_l32_forbidden=0`。Secret 逐文件覆写后 unlink（不保证 SSD/CoW/快照物理擦除）；随机 name/label/temp 外部复核为零，长期 `growthos` containers/volumes/networks 快照不变。
 
 ### 8.4 代码 + Compose 验证
 
@@ -472,7 +520,9 @@ Web access log 允许规范化 path、request ID、status、upstream status、by
 
 正常 Go 响应：response header、Go error body（如有）、Nginx access log 使用同一个 API request ID。
 
-API-down gateway：Nginx 返回一个自身 request ID，response header 与 Nginx access log 一致；没有伪造 Go error body。
+API-down gateway：Nginx 返回自己拥有的 canonical JSON 502/504 和 request ID，response header、JSON body 与 Nginx
+access log 一致；它不会伪造 Go error body。HTML/text `5xx` 只可能来自仓库外层 CDN/LB/proxy 或绕过当前 edge 的入口，
+前端应归为 gateway failure，但不能把它写成当前 Nginx 契约。
 
 如果一个响应出现两个 `X-Request-ID` 或 Go error body/header 不一致，停止验收并检查 `proxy_hide_header`、Nginx `map/add_header` 和 Go middleware。
 
@@ -504,7 +554,12 @@ make compose-migrate
 make compose-grants
 ```
 
-授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先对 `growthos_app`、`growthos_identity`、`growthos_identity_provisioner` 执行 `REVOKE ALL`，再建立第 7.1 节列出的三个精确 allowlist，分别比较 `SHOW GRANTS` 并要求 mandatory role 为空。它还用挂载的两份 Identity Secret 做固定能力探针，证明新建或保留 volume 内的 runtime/provisioner 凭据与文件一致。当前 v14 的负证由 smoke 对业务账号其余十一表、Identity runtime 非 Identity 表和受保护 workforce 列、provisioner 的所有越界读写执行。不要为兼容额外角色而放宽脚本；隔离 Repository 测试身份不是给长期 runtime 恢复业务 INSERT、新表 SELECT 或 credential 写入的理由。
+授权作业只经 `growthos_mysql_socket`，没有 TCP 或容器网络；它先对 `growthos_app`、`growthos_identity`、
+`growthos_identity_provisioner` 执行 `REVOKE ALL`，再建立 [Identity Session 运维手册第 10.1 节](identity-session-operations.md#101-固定-allowlist)
+列出的三个精确 allowlist，分别比较 `SHOW GRANTS` 并要求 mandatory role 为空。它还用挂载的两份 Identity Secret 做固定
+能力探针，证明新建或保留 volume 内的 runtime/provisioner 凭据与文件一致。当前 v14 的负证由 smoke 对业务账号其余
+十一表、Identity runtime 非 Identity 表和受保护 workforce 列、provisioner 的所有越界读写执行。不要为兼容额外角色而
+放宽脚本；隔离 Repository 测试身份不是给长期 runtime 恢复业务 INSERT、新表 SELECT 或 credential 写入的理由。
 
 遵循 [MySQL Migration 运维手册](mysql-migrations.md)：先 status、审批/备份/影子库演练，再 up，成功后再次 status 和授权核对。产品命令不提供 down/drop/force，不能用数据库版本表手工编辑绕过 dirty。
 
@@ -565,7 +620,7 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml stop a
 
 - `/` 和 `/system/status` 静态页面仍可访问；
 - `/container-health=204`；
-- `/health`、`/ready` 为 gateway 502/504，而不是伪造的 Go JSON；
+- `/health`、`/ready` 为 Nginx-owned canonical JSON 502/504，而不是伪造的 Go JSON；
 - gateway response 有一个 Nginx `X-Request-ID`，与 access log 一致；
 - Web 容器保持 healthy、ID 不变。
 
@@ -660,7 +715,8 @@ docker compose --project-name growthos --file deploy/compose/compose.yaml logs -
 
 - volume 是首次初始化还是复用；
 - Secret 集合是否与该 volume 同批；
-- 空 volume 的 init 脚本是否成功创建 `growthos_app`、`growthos_migrator`、`growthos_identity` 三个账号；复用旧 volume 时授权作业是否补建并验证 Identity 账号；
+- 空 volume 的 init 脚本是否成功创建 `growthos_app`、`growthos_migrator`、`growthos_identity`、
+  `growthos_identity_provisioner` 四个非 root 账号；复用旧 volume 时授权作业是否补建并验证两种 Identity 账号；
 - 磁盘/内存是否足够；
 - health 使用的 Migrator 账号是否能对目标 schema 执行认证 `SELECT 1`；
 - 是否有人只编辑 Secret 文件但未轮换 MySQL 账号。
@@ -828,9 +884,26 @@ rm -rf deploy/compose/secrets
 
 ### 14.1 第 32 节当前执行证据与未完成项
 
-截至 2026-09-02，可复核的真实证据包括：两个 disposable provision Compose 环境均成功并精确清理；official maintenance fixture 第一次删除 `2/1/3`、第二次精确 `0/0/0`，active Session fingerprint 不变且 fixture 零残留；development loopback 真实浏览器经 Nginx → Go → MySQL 完成 login、reload/current、logout，并在 MySQL outage 时显示 unknown/unavailable、恢复后重新核查同一 Principal。专用 E2E 最终只清理 2 条 Session、2 条本轮 throttle 与 1 个 account，三类 residue 均为 0；私有测试 password file 和父目录按精确路径清理。
+截至 2026-09-03，可复核的真实证据包括：两个 disposable provision Compose 环境均成功并精确清理；official
+maintenance fixture 第一次删除 `2/1/3`、第二次精确 `0/0/0`，active Session fingerprint 不变且 fixture 零残留；
+development loopback 真实浏览器经 Nginx → Go → MySQL 完成 login、reload/current、logout，并在 MySQL outage 时显示
+unknown/unavailable、恢复后重新核查同一 Principal。早先 browser E2E 只清理 2 Session、2 throttle、1 account；历史
+core HTTP worktree run `growthosl24d2103fd496568ceac960d315` 以 302 秒 exit 0 完成核心链并精确清理 `10:3:1`，但其
+provenance 受限，不能冒充 committed-tree replay。HEAD `4149576` 的独立 MySQL 8.4.11 gate 19 秒 exit 0，终态
+`14:0`、Identity `0:0:0`、reserved probe 0。
 
-浏览器证据没有直接读取 HttpOnly Cookie store，也不替代协议层 Set-Cookie/clear tuple、旧 bearer replay 或 storage/console 全矩阵。原始 Session HTTP 201→200→204→401 与负向 framing/header/429/503/log sentinel、独立 MySQL 最终 migration/Repository/grant 矩阵、staging/production TLS + `__Host-` Cookie、可信代理 client IP 和全仓冻结门禁仍为 `PENDING`。第 33～35 节的服务端 RBAC、capability 驱动 UI 与越权 E2E 也尚未实现。
+当前 official development wire 证据是 exact HEAD `9fc4e06`、project `growthosl24f6a5acf4d242695ad3e2df19`
+的 exit 0 run；无可信总时长。它已实际通过 Session/五会话上限、canonical security headers、invalid Host JSON 421、
+chunked/Trailer/2049-byte body、所有定义错误状态的 no-cookie 或 exact clear-cookie、login/source persistent raw 429，
+以及 MySQL/Redis outage/recovery 和 cleanup。清理前状态为 `disabled:2:10:31`，HTTP fixture 精确删除 `10:31:1`
+且三表 residue `0:0:0`；退出后 containers/volumes/networks/images/builder/tempdirs 六类外部 residue 为 0，长期
+`growthos` resource identity 前后不变且 healthy。完整失败/修复/build 演进链见第 8.2 节，不能省略其中两次实际失败。
+
+浏览器证据没有直接读取 HttpOnly Cookie store；development Set-Cookie/clear tuple 与 replay 是由受控 HTTP header/curl jar
+证明，不是浏览器 storage 检查。仍为 `PENDING` 的范围只有 raw Content-Length 缺失/零值/declared-actual mismatch、
+issue/revoke COMMIT outcome-unknown 真实 fault injection、storage/console/全面设备与 AT、staging/production TLS +
+`__Host-` Cookie、可信代理 client IP 和最终冻结组合门禁。第 33～35 节的服务端 RBAC、capability 驱动 UI 与越权 E2E
+也尚未实现；第 32 节 wire PASS 不能提前宣称授权闭环。
 
 ## 15. 生产迁移提醒
 

@@ -5,8 +5,8 @@
 - **架构决策：** [ADR-0028](../decisions/ADR-0028-identity-session-authentication.md)
 - **HTTP 契约：** [第 32 节 API 记录](../api/lessons/lesson-32.md)
 - **配置总表：** [配置、日志与错误体系](../configuration.md)
-- **记录日期：** 2026-09-02
-- **证据状态：** 运维入口与安全边界已进入源码；真实 Compose、HTTP、maintenance fixture 与浏览器执行仍为 `PENDING`
+- **记录日期：** 2026-09-03
+- **证据状态：** 运维入口与安全边界已进入源码；provision、maintenance、浏览器核心旅程、development HTTP 增强 wire 矩阵与独立 MySQL 8.4.11 已有实际证据，剩余 raw Content-Length 变体、TLS/可信代理、真实 COMMIT outcome-unknown 故障注入、浏览器扩展矩阵与最终冻结门禁仍为 `PENDING`
 
 > 本手册用于本地/受控环境的账号 enrollment、Session 生命周期核查和有界历史清理。
 > 示例从不把 password、Cookie、CSRF 或数据库 Secret 放进命令行、URL、环境变量、终端输出或版本库。
@@ -138,8 +138,17 @@ make compose-smoke
 `/health` 只证明进程存活；`/ready` 同时依赖 business 与 Identity pool。Identity MySQL 不可用时预期
 `/ready=503`、Session API fail closed 为 503，而不是 mock user、Header Principal、Redis Session 或 anonymous fallback。
 
-本段只是命令说明；截至本文日期，本节真实 Compose run 仍为 `PENDING`。执行后必须把 image/commit、Compose project、
-Migration status、service health、grant allow/deny 与清理结果写入验收记录，不能只记“容器启动成功”。
+截至本文日期，两个 provision disposable project、official maintenance fixture、真实浏览器核心旅程和 official
+development HTTP 增强门禁已经分别执行；第 14 节记录其精确边界。增强门禁已覆盖 chunked/Trailer、普通 2049-byte
+body、逐状态 canonical security header、Cookie 签发/清除和持久 throttle，但不能替代 raw Content-Length
+缺失/零值/不匹配变体、staging/production TLS、可信代理来源或 COMMIT outcome-unknown fault injection。后续每次执行仍必须
+把 image/commit、Compose project、Migration status、service health、grant allow/deny 与清理结果写入验收记录，不能只记
+“容器启动成功”。
+
+长驻运行曾暴露 one-shot 判定错误：`docker compose up --wait` 会把已经快速成功的 `mysql-grants`
+`exited:0` 当作失败。提交 `af4245e` 将 provision/maintenance wrapper 改为最长 180 秒的 exact-state 轮询：
+只接受唯一目标容器的 `exited:0`，对非零退出、歧义、意外状态、inspect 失败和超时一律停止；
+`created:0`、`running:0`、`restarting:0` 仅继续等待。不要用长期 service 的 healthy 语义判断 one-shot 成功。
 
 ## 5. 一次性账号 provision
 
@@ -210,7 +219,8 @@ duplicate 不是幂等成功。COMMIT outcome unknown 也不是“失败已回�
 当前没有账号删除、密码修改、disabled/epoch 管理命令。需要临时账号时，应优先使用可整体销毁的独立 Compose project/volume；
 否则把它作为明确记录的学习账号保留。不要假装 provisioner 可以“回滚清理账号”。
 
-本节真实 provision 成功、duplicate 与 outcome-unknown evidence 均为 `PENDING`。
+provision success 已在两个 disposable Compose project 实际通过并精确清理；duplicate 与 COMMIT outcome-unknown
+停止/核查流程仍缺少对应的真实故障注入证据，不得由成功路径外推。
 
 ## 6. 私密 HTTP 验收工作区
 
@@ -264,8 +274,12 @@ chmod 0600 "$cookie_jar" "$login_response_file"
 `growthos_dev_session` HttpOnly/Strict/Path `/` Cookie 与 exact Session JSON。实际 header 证据应使用能对
 `Set-Cookie` value 自动遮盖的采集器；不能把完整 header dump 留存。
 
-POST unknown/wrong/disabled 必须呈现同一 `401 authentication_failed` shape；429/503 测试必须使用受控 fixture，
-并证明 503 没有可用 Cookie。当前这些真实 HTTP 负向证据为 `PENDING`。
+POST unknown/wrong/disabled 的同形 `401 authentication_failed`、CSRF/Origin/Fetch 拒绝、MySQL unavailable 503、
+持久 login/source throttle 的 raw 429 与所有非 Cookie-changing error 的零 Set-Cookie，均已在 HEAD `9fc4e06` 的
+official disposable HTTP 增强门禁通过。invalid/replaced/logged-out/expired/epoch/disabled 401 也已逐类证明 exact
+clear-Cookie；每个 Session 响应的 canonical security header 均为单值。此前 handler 与 edge 重复输出不同
+`Referrer-Policy` 的缺陷已由 `8fc0302` 修复并在本轮复验关闭，不再是当前风险。仍未覆盖的是 raw Content-Length
+缺失、零值和 declared/actual 不匹配等变体，不得把已覆盖的 framing 样例外推为所有 HTTP parser 行为。
 
 ### 7.2 Current 与 CSRF 私密提取
 
@@ -345,7 +359,9 @@ chmod 0600 "$replay_response_file"
 ```
 
 预期是 `401 unauthenticated`，旧 Cookie 不能恢复 Principal。验收报告只记录状态、公开 error code、request ID 与
-“old bearer rejected”，不附 cookie jar 或 CSRF config。整条 201/200/204/401 实际证据目前为 `PENDING`。
+“old bearer rejected”，不附 cookie jar 或 CSRF config。HEAD `9fc4e06` 的 official disposable HTTP gate 已实际通过
+201→200→replacement→bodyless 204→old-bearer 401，并对该 replay 响应验证 exact clear-Cookie 与 canonical
+security header；raw Content-Length 变体和生产 TLS 仍是独立边界。
 
 ## 8. 浏览器验收
 
@@ -362,7 +378,9 @@ chmod 0600 "$replay_response_file"
 
 浏览器证据要遮盖 Cookie/CSRF，并记录 browser/version、origin、commit/image、request ID 与观察结论。
 不得上传包含 bearer 的 HAR。development HTTP 结果不能替代 staging/production 的 HTTPS `__Host-` Cookie 验收。
-截至本文日期，浏览器全链证据为 `PENDING`。
+截至本文日期，真实 development 浏览器已经通过登录、reload/current、logout、匿名刷新，以及 MySQL outage 时
+unknown/unavailable 呈现和恢复后重核同一 Principal。该旅程没有直接读取 HttpOnly Cookie store，也没有完成
+storage/console、全面设备/辅助技术或 production TLS 矩阵；这些仍为 `PENDING`。
 
 ## 9. 一次性 Identity maintenance
 
@@ -423,7 +441,9 @@ candidate 按 cleanup time 与稳定 identity 排序，DELETE 时再次带 eligi
 - 若一次删满 Session 250 或 throttle 250，只说明仍可能有 backlog；确认结果后才能启动下一次，不能改 batch 或循环跑；
 - maintenance 不删除 account/credential，不修改 active Session/throttle，不回收 provision duplicate。
 
-真实 fixed-clock fixture、250+250 边界、partial success、unknown outcome 与 zero-row evidence 均为 `PENDING`。
+official disposable maintenance fixture 已实际证明第一次删除 `2/1/3`、第二次精确 `0/0/0`、active Session
+fingerprint 不变、fixture residue `0:0:0` 与精确清理。250+250 满预算、partial success 和 COMMIT outcome-unknown
+真实故障注入仍为 `PENDING`。
 
 ## 10. Grant drift 检查与收敛
 
@@ -528,7 +548,8 @@ DBA/application 运维路径；不要发明未实现命令或直接手改不变�
 | POST `429 authentication_throttled` | persistent login/source budget 拒绝 | 等待有界 backoff；不绕过 throttle/Argon gate |
 | JSON `503 authentication_unavailable` | Identity/entropy/capacity/timeout/unknown | 看 readiness 与 stable logs；POST 不自动重试 |
 | JSON `503 session_revocation_indeterminate` | logout commit 结果未知 | client cookie 已清；批准读取核查，不盲重试 |
-| HTML/text `502/503/504` | gateway 无可解析上游 JSON | 查 Nginx/API health；前端归 `gateway` |
+| JSON `502/504` | 本仓库 Nginx edge 无可用上游或上游超时 | 查 Nginx/API health；这是 edge 自己的 canonical JSON，不伪造 Go 错误 |
+| HTML/text `5xx` | 仓库外层 CDN/LB/proxy 或非本仓库入口返回了非 JSON | 前端归 `gateway`，按实际外层基础设施排查；不能归因于当前 Nginx 契约 |
 | `/health=200`、`/ready=503` | 进程活着但 required dependency 不 ready | 修复 Identity/business DB，不做 auth fallback |
 | 浏览器 login source 都相同 | 当前 guard 只信 socket peer，Nginx 后会聚合 | 不信 `X-Forwarded-For`；生产 proxy trust 另立设计 |
 | provision duplicate | exact unique identity 已存在 | 另授权读取核查；不把 duplicate 当成功 |
@@ -590,17 +611,63 @@ reset 是破坏性数据操作，不是 Session logout 或普通验收清理手�
 
 | Gate | 当前状态 | 完成时必须记录 |
 | --- | --- | --- |
-| eight-secret validate/upgrade 与 mount matrix | `PENDING` | state 0/4/5/7/8、project、权限、无覆盖结论 |
-| Migration 12～14 clean/second-up/dirty stop | `PENDING` | MySQL version、checksum/status、隔离环境与清理 |
-| exact grants 与反向 deny | `PENDING` | 三账号 allowlist、mandatory roles、1142/1143 deny 摘要 |
-| provision success/duplicate/unknown stop | `PENDING` | exit、稳定日志类别、account 去留、不盲重试 |
-| HTTP login/current/logout/replay | `PENDING` | 201/200/204/401、request ID、no-store、bodyless 204 |
-| HTTP negative/gateway/readiness | `PENDING` | 400/401/403/415/429/500/503、HTML gateway、zero fallback |
-| browser Cookie/storage/CSRF/reload/logout | `PENDING` | browser/version、origin、遮盖截图/文字结论、profile cleanup |
+| eight-secret validate/upgrade 与 mount matrix | `PARTIAL-ACTUAL` | official HTTP project 已验证本轮 fresh/8 Secret、最小挂载与精确清理；state 4/5/7 升级和生产 Secret Manager/轮换另验 |
+| Migration 12～14 clean/second-up/dirty stop | `ACTUAL-PASS（独立 MySQL）` | MySQL 8.4.11、latest 14、second-up/dirty/inventory、隔离环境与清理已实测 |
+| exact grants 与反向 deny | `ACTUAL-PASS（disposable）` | 独立 MySQL runtime 正反向和 official Compose 三身份 allowlist 已实测；生产 host/credential rotation 另验 |
+| provision success/duplicate/unknown stop | `PARTIAL-ACTUAL` | success 两轮通过；duplicate/unknown 真实注入仍待完成 |
+| HTTP login/current/logout/replay | `ACTUAL-PASS（development 增强门禁）` | 201/200/replacement/bodyless 204/old-bearer 401、exact Cookie、request ID、no-store 与 canonical security header 已实测 |
+| HTTP negative/gateway/readiness | `ACTUAL-PASS（已定义 development wire 矩阵）` | 400/401/403/415/421/429/502/503/504、chunked/Trailer/2049-byte body、无 Cookie 与清 Cookie、MySQL/Redis outage/recovery 已实测；raw Content-Length 变体和真实 commit-unknown 另验 |
+| browser Cookie/storage/CSRF/reload/logout | `PARTIAL-ACTUAL` | development 核心旅程已实测；未直接读取 HttpOnly store，storage/console/全面设备与 AT 仍待完成 |
 | staging HTTPS `__Host-` | `PENDING` | TLS host、Secure/host-only/Strict/Path 属性 |
-| maintenance 0/250/250/500/partial/unknown | `PENDING` | fixture、before/after counts、fixed cutoff/budget、retry decision |
+| maintenance 0/250/250/500/partial/unknown | `PARTIAL-ACTUAL` | `2/1/3`→`0/0/0`、active fingerprint 与 cleanup 已实测；满预算/partial/unknown 仍待完成 |
 | rotation drills | `PENDING` | old/new overlap、consumer recreate、old invalid、material cleanup |
-| disposable artifact cleanup | `PENDING` | exact paths/project、removed/retained 及原因 |
+| disposable artifact cleanup | `ACTUAL-PASS（已记录核心、增强与 MySQL 门禁）` | exact project/name/label/path、增强门禁六类外部 residue 为零且长期资源 identity 不变/healthy 已实测；后续每轮仍独立核对 |
+
+### 14.1 已执行证据的精确边界
+
+- 认证 baseline `5af29e2` 修复了 WorkGate 在可用 slot 与 1ms timer 同时 ready 时随机误报 unavailable 的准入时序缺陷：
+  context 预检查后先走 nonblocking available fast-path，只在满槽时启动 timer；对应 `(2,1,false)` seed、count=10、race
+  与 10 秒 fuzz 625,627 次执行已通过。这不是 credential 绕过，也不应把执行次数外推成吞吐能力。
+- 历史核心 HTTP 门禁运行时工作树 HEAD 为 `8a5e0ce`、认证代码 baseline 为 `5af29e2`，project
+  `growthosl24d2103fd496568ceac960d315`，302 秒、exit 0；覆盖 201→200→replacement→bodyless 204→old-bearer 401、
+  development Cookie jar/header、CSRF/Origin/Fetch、同形 401、五会话上限与 MySQL 503/recovery。终态只删除本轮
+  Session/throttle/account `10:3:1`，三表 residue `0:0:0`；password/raw Session/CSRF marker 扫描零命中，
+  disposable 资源和私有文件清零，长期 `growthos` 快照不变。该次是含后续工作树验收改动的历史 run，不能当作
+  `8a5e0ce` committed tree 的可复现证明；这里只保留其 core PASS 边界与受限 provenance。
+- 增强脚本的第一个 committed-tree 候选是 `903fd9f`，project `growthosl24c1bf7ce29e5efa417fae6932`。
+  构建、Compose prerequisites、maintenance fixture 等 Session 前置门禁已经通过，但脚本在进入 Session wire 断言前，
+  因 macOS BSD awk 把循环变量 `index` 解释为内建名而解析失败，exit 2；因此该轮必须记为 `ACTUAL-FAIL`，不能从前置
+  成功推导 Session 结果。没有可信总时长；退出 trap 精确清除了本 project 的 containers/networks/volumes、六个
+  acceptance images、builder 与私有临时目录。
+- `51b52e0` 修复了 BSD awk 变量、invalid-Host Session 的 canonical JSON 421，以及 development Cookie 签发/删除
+  tuple 的严格断言；但随后 project `growthosl240da11b08420700da0d07428f` 只完成第一轮 backend image build，第二次
+  相同 backend build 在获取 Docker Hub OAuth token 时收到 EOF，尚未进入 Session gate。该轮也不是协议 PASS；退出后
+  containers/volumes/networks/images/builder/tempdirs 外部 residue 均为 0。
+- `9fc4e06` 将 `api`、`migrate`、`identity-provision`、`identity-maintenance` 四个 image target 放进同一 BuildKit/Bake
+  invocation：共同 Go builder 只执行一次，随后各 target 复用缓存；Redis 与 Web 仍顺序构建。这里是四个镜像 target，
+  不是第 32 节新增四个身份运行入口：身份链只有既有 `growth-api` 与两个 operations one-shot 共三个入口，
+  `growth-migrate` 是复用的既有迁移命令。
+- 当前可冻结的增强 run 来自 exact HEAD `9fc4e06`，project `growthosl24f6a5acf4d242695ad3e2df19`，exit 0；本轮没有
+  可复核的总时长，因此不填写猜测值。它实际通过 Session lifecycle/五 active-session 上限、所有定义状态的单值
+  canonical security header、invalid Host correlated JSON 421、chunked 与 Trailer 拒绝、普通 2049-byte body 到 Go
+  后的 400、malformed/query/media/auth/origin/fetch 的零 Set-Cookie、invalid/replaced/logged-out/expired/epoch/disabled
+  401 的 exact clear-Cookie，以及 login/source 两维持久 throttle raw 429。它也通过 MySQL outage/recovery、Redis
+  outage/recovery、edge JSON 502/504、Secret marker 与全部既有 Lottery/cache/maintenance 门禁。
+- 增强 run 清理前 account/session/throttle 状态为 `disabled:2:10:31`（account status、authentication epoch、Session
+  count、throttle count），随后只删除本轮 Session/throttle/account `10:31:1`，三表 residue `0:0:0`。退出后的
+  project containers/volumes/networks、acceptance images、builder 与任务临时目录六类 residue 均为 0；长期
+  `growthos` resource identity 前后不变且保持 healthy。
+- 独立 MySQL 门禁从 HEAD `4149576` 启动，随机容器
+  `growthos-lesson32-mysql-e4e83e6c1b0e7036f42e65f9`、label
+  `com.growthos.acceptance.lesson32=run-e4e83e6c1b0e7036f42e65f9`，MySQL 8.4.11，19 秒、exit 0；schema、
+  migration immutability/inventory、真实 migrator、Repository 与 runtime grant 均通过，终态 `14:0`、三表
+  `0:0:0`、reserved probe 0。任务 name/label/temp/Secret 精确清理，长期 `growthos` resources 前后不变。
+
+增强 run 关闭了 raw 429、已定义 framing、401 clear-Cookie、security-header 精确所有权/唯一值与仓库内 edge JSON
+gateway 项；`Referrer-Policy` 重复输出是 `8fc0302` 以前的历史缺陷，不是当前残留。仍不能声称覆盖 raw
+Content-Length 缺失/零值/declared-actual mismatch、issue/revoke COMMIT outcome-unknown 的真实故障、
+staging/production TLS + 可信代理 client IP，或浏览器 storage/console、全面设备与辅助技术矩阵。浏览器证据也没有、
+且不应通过 JavaScript 读取 HttpOnly bearer。
 
 建议交接摘要：
 
@@ -654,5 +721,5 @@ stop-line confirmation: no RBAC/capability/browser-authorization claim
 为什么两事务不追求全局原子、为什么 COMMIT unknown 禁止盲重试、为什么 Secret 文件变化不等于数据库密码轮换、
 为什么 logout 仍需要 CSRF、为什么 204 必须无 body、为什么 Redis 不能成为 Session authority。
 
-这些题型只是表达训练，不是技术规范。本文未使用未经核验的牛客帖子，也不伪造面经 URL；具体帖子、发布日期、访问日期、
-题目原文与可复述结论应在未来 `docs/interview/lessons/lesson-32.md` 单独留证，目前为 `PENDING`。
+这些题型只是表达训练，不是技术规范。已存在的[第 32 节精准面试问答](../interview/lessons/lesson-32.md)将官方技术资料
+与牛客等社区题型线索分层记录；社区链接只用于确认题型存在，不作为规范性技术依据，也不伪造成企业官方题库或本项目实跑证据。
